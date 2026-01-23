@@ -73,6 +73,12 @@
             "model": "indic-parler-tts",
             "voices": ["Rohit", "Divya", "Aman", "Rani"],
             "recommended_voices": ["Rohit", "Divya"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Rohit", "Aman", "Rani"],
+            "recommended_voices": ["Divya", "Rohit"]
           }
         }
       },
@@ -101,6 +107,12 @@
             "model": "indic-parler-tts",
             "voices": ["Arjun", "Aditi", "Tapan", "Rashmi", "Arnav", "Riya"],
             "recommended_voices": ["Arjun", "Aditi"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Arjun", "Aditi", "Riya"],
+            "recommended_voices": ["Divya", "Arjun"]
           }
         }
       },
@@ -157,6 +169,12 @@
             "model": "indic-parler-tts",
             "voices": ["Prakash", "Lalitha", "Kiran"],
             "recommended_voices": ["Prakash", "Lalitha"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Prakash", "Lalitha"],
+            "recommended_voices": ["Divya", "Prakash"]
           }
         }
       },
@@ -185,6 +203,12 @@
             "model": "indic-parler-tts",
             "voices": ["Sanjay", "Sunita", "Nikhil", "Radha", "Varun", "Isha"],
             "recommended_voices": ["Sanjay", "Sunita"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Sanjay", "Sunita", "Isha"],
+            "recommended_voices": ["Divya", "Sanjay"]
           }
         }
       },
@@ -213,6 +237,12 @@
             "model": "indic-parler-tts",
             "voices": ["Yash", "Neha"],
             "recommended_voices": ["Yash", "Neha"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Yash", "Neha"],
+            "recommended_voices": ["Divya", "Yash"]
           }
         }
       },
@@ -241,6 +271,12 @@
             "model": "indic-parler-tts",
             "voices": ["Suresh", "Anu", "Chetan", "Vidya"],
             "recommended_voices": ["Suresh", "Anu"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Suresh", "Anu", "Vidya"],
+            "recommended_voices": ["Divya", "Suresh"]
           }
         }
       },
@@ -269,6 +305,12 @@
             "model": "indic-parler-tts",
             "voices": ["Anjali", "Anju", "Harish"],
             "recommended_voices": ["Anjali", "Harish"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Anjali", "Harish"],
+            "recommended_voices": ["Divya", "Anjali"]
           }
         }
       },
@@ -298,6 +340,12 @@
             "voices": ["Divjot", "Gurpreet"],
             "recommended_voices": ["Divjot", "Gurpreet"],
             "note": "Unofficial support"
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Divjot", "Gurpreet"],
+            "recommended_voices": ["Divya", "Divjot"]
           }
         }
       },
@@ -325,6 +373,12 @@
             "model": "indic-parler-tts",
             "voices": ["Manas", "Debjani"],
             "recommended_voices": ["Manas", "Debjani"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Manas", "Debjani"],
+            "recommended_voices": ["Divya", "Manas"]
           }
         }
       },
@@ -352,6 +406,12 @@
             "model": "indic-parler-tts",
             "voices": ["Amit", "Sita", "Poonam", "Rakesh"],
             "recommended_voices": ["Amit", "Sita"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Amit", "Sita"],
+            "recommended_voices": ["Divya", "Amit"]
           }
         }
       },
@@ -380,6 +440,12 @@
             "voices": ["Urdu speakers available"],
             "recommended_voices": [],
             "note": "Urdu is officially supported"
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya"],
+            "recommended_voices": ["Divya"]
           }
         }
       },
@@ -432,6 +498,12 @@
             "model": "indic-parler-tts",
             "voices": ["Aryan"],
             "recommended_voices": ["Aryan"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Aryan"],
+            "recommended_voices": ["Divya", "Aryan"]
           }
         }
       },
@@ -458,6 +530,12 @@
             "model": "indic-parler-tts",
             "voices": ["Laishram", "Ranjit"],
             "recommended_voices": ["Laishram", "Ranjit"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Laishram", "Ranjit"],
+            "recommended_voices": ["Divya", "Laishram"]
           }
         }
       },
@@ -510,6 +588,12 @@
             "model": "indic-parler-tts",
             "voices": ["Karan"],
             "recommended_voices": ["Karan"]
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Karan"],
+            "recommended_voices": ["Divya", "Karan"]
           }
         }
       },
@@ -537,6 +621,12 @@
             "voices": ["Konkani speakers available"],
             "recommended_voices": [],
             "note": "Officially supported"
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya"],
+            "recommended_voices": ["Divya"]
           }
         }
       },
@@ -564,6 +654,12 @@
             "voices": ["Maithili speakers available"],
             "recommended_voices": [],
             "note": "Officially supported with 95.36% NSS score"
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya"],
+            "recommended_voices": ["Divya"]
           }
         }
       },
@@ -591,6 +687,12 @@
             "voices": ["Santali speakers available"],
             "recommended_voices": [],
             "note": "Officially supported"
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya"],
+            "recommended_voices": ["Divya"]
           }
         }
       },
@@ -618,6 +720,12 @@
             "voices": ["Sindhi speakers available"],
             "recommended_voices": [],
             "note": "Officially supported"
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya"],
+            "recommended_voices": ["Divya"]
           }
         }
       }
@@ -723,6 +831,17 @@
           }
         ],
         "note": "AI4Bharat uses description-based voice control. Select a voice description to customize pitch, pace, and expression."
+      },
+      "bhashini": {
+        "controls": [
+          {
+            "id": "description",
+            "label": "Voice Description",
+            "type": "description_select",
+            "description": "Choose a description that defines the voice characteristics"
+          }
+        ],
+        "note": "Bhashini uses description-based voice control. Select a voice description to customize pitch, pace, and expression."
       }
     },
     "model_details": {
@@ -806,6 +925,18 @@
           },
           "usage_note": "Voice is specified in the description caption, e.g., 'Rohit speaks with a high pitch and fast pace...'"
         }
+      },
+      "bhashini": {
+        "bhashini indic parler": {
+          "description": "Bhashini TTS service for Indic languages with description-based voice control",
+          "streaming": true,
+          "recommended": true,
+          "features": {
+            "controls": ["speaker", "description", "play_steps_in_s"],
+            "note": "Uses speaker and description for voice customization"
+          },
+          "usage_note": "Voice is specified using speaker name and description, e.g., 'Divya speaks with a clear, natural voice...'"
+        }
       }
     },
     "auto_select_logic": {
@@ -813,27 +944,27 @@
       "priority": {
         "English (United States)": ["cartesia:sonic-3", "deepgram:aura-2", "gcp:Chirp3-HD"],
         "English (India)": ["cartesia:sonic-3", "deepgram:aura-2", "gcp:Chirp3-HD"],
-        "Hindi": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "cartesia:sonic-3", "gcp:Chirp3-HD"],
-        "Bengali": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Tamil": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Telugu": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Marathi": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Gujarati": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Kannada": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Malayalam": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Punjabi": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Odia": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts"],
-        "Assamese": ["sarvam:bulbul:v3", "ai4bharat:indic-parler-tts"],
-        "Urdu": ["ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Nepali": ["ai4bharat:indic-parler-tts"],
-        "Sanskrit": ["ai4bharat:indic-parler-tts"],
-        "Manipuri": ["ai4bharat:indic-parler-tts"],
-        "Bodo": ["ai4bharat:indic-parler-tts"],
-        "Dogri": ["ai4bharat:indic-parler-tts"],
-        "Konkani": ["ai4bharat:indic-parler-tts"],
-        "Maithili": ["ai4bharat:indic-parler-tts"],
-        "Santali": ["ai4bharat:indic-parler-tts"],
-        "Sindhi": ["ai4bharat:indic-parler-tts"]
+        "Hindi": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "cartesia:sonic-3", "gcp:Chirp3-HD"],
+        "Bengali": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Tamil": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Telugu": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Marathi": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Gujarati": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Kannada": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Malayalam": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Punjabi": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Odia": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Assamese": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Urdu": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
+        "Nepali": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Sanskrit": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Manipuri": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Bodo": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Dogri": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Konkani": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Maithili": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Santali": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Sindhi": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"]
       }
     }
   }

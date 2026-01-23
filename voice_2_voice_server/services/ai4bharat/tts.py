@@ -5,6 +5,7 @@ import os
 from typing import AsyncGenerator
 
 import aiohttp
+from loguru import logger
 from pipecat.frames.frames import (
     ErrorFrame,
     Frame,
@@ -13,7 +14,6 @@ from pipecat.frames.frames import (
     TTSStoppedFrame,
 )
 from pipecat.services.tts_service import TTSService
-
 
 class IndicParlerRESTTTSService(TTSService):
 
@@ -38,6 +38,7 @@ class IndicParlerRESTTTSService(TTSService):
         self._play_steps_in_s = play_steps_in_s
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
+        logger.info(f"Running TTS for text: {text}")
         if not text.strip():
             return
 
@@ -63,6 +64,7 @@ class IndicParlerRESTTTSService(TTSService):
                         yield ErrorFrame(f"Server error: {response.status}")
                         return
 
+                    first_chunk = True
                     async for line in response.content:
                         if not line:
                             continue
@@ -80,6 +82,7 @@ class IndicParlerRESTTTSService(TTSService):
                             break
 
                         if "audio" in data:
+                            logger.info(f"Audio chunk going out")
                             yield TTSAudioRawFrame(
                                 audio=base64.b64decode(data["audio"]),
                                 sample_rate=data.get("sample_rate", self.sample_rate),

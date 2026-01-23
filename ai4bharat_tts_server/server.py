@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from parler_tts import ParlerTTSForConditionalGeneration, ParlerTTSStreamer
 from pydantic import BaseModel, Field
 from transformers import AutoTokenizer
-
+from loguru import logger
 
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000)
@@ -134,6 +134,7 @@ async def generate_audio_chunks(
                 "sample_rate": state.sample_rate,
                 "samples": new_audio.shape[0],
             }
+            logger.info(f"Audio chunk going out: {len(audio_int16.tobytes())} bytes")
             yield json.dumps(chunk_data) + "\n"
 
         if not client_disconnected:

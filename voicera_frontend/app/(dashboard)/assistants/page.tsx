@@ -673,7 +673,7 @@ export default function AssistantsPage() {
         ...(config.ttsProvider !== "cartesia" && config.ttsProvider !== "gcp" && config.ttsModel && { model: config.ttsModel }),
         speaker: (config.ttsProvider === "cartesia" || config.ttsProvider === "gcp") ? "" : (config.ttsVoice || ""),
       }
-      if (config.ttsProvider === "ai4bharat" && config.ttsDescription) {
+      if ((config.ttsProvider === "ai4bharat" || config.ttsProvider === "bhashini") && config.ttsDescription) {
         ttsModel.description = config.ttsDescription
       }
       if (config.ttsProvider === "gcp" || config.ttsProvider === "cartesia" || config.ttsProvider === "sarvam") {
@@ -1391,8 +1391,8 @@ export default function AssistantsPage() {
                         </div>
                       </div>
 
-                      {/* TTS Description for AI4Bharat */}
-                      {config.ttsProvider === "ai4bharat" && (
+                      {/* TTS Description for AI4Bharat and Bhashini */}
+                      {(config.ttsProvider === "ai4bharat" || config.ttsProvider === "bhashini") && (
                         <div className="space-y-2 pt-3">
                           <label className="text-sm font-semibold text-slate-700">Voice Description</label>
                           <Select value={config.ttsDescription} onValueChange={(v) => updateConfig("ttsDescription", v)}>
@@ -1504,10 +1504,10 @@ export default function AssistantsPage() {
                         </div>
                       )}
 
-                      {config.ttsProvider === "ai4bharat" && (
+                      {(config.ttsProvider === "ai4bharat" || config.ttsProvider === "bhashini") && (
                         <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                           <p className="text-sm text-slate-600">
-                            <span className="font-medium">AI4Bharat</span> uses description-based voice control. Select a voice description above to customize pitch, pace, and expression characteristics.
+                            <span className="font-medium">{config.ttsProvider === "ai4bharat" ? "AI4Bharat" : "Bhashini"}</span> uses description-based voice control. Select a voice description above to customize pitch, pace, and expression characteristics.
                           </p>
                         </div>
                       )}
