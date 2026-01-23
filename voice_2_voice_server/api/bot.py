@@ -36,7 +36,7 @@ from services.audio.greeting_interruption_filter import GreetingInterruptionFilt
 from .call_recording_utils import submit_call_recording
 
 
-load_dotenv(override=True)
+load_dotenv(override=False)
 
 
 def _get_sample_rate() -> int:

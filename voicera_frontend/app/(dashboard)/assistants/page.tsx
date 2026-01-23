@@ -67,6 +67,7 @@ const getProviderOfficialName = (providerId: string): string => {
     sarvam: "Sarvam",
     smallest: "Smallest",
     ai4bharat: "AI4Bharat",
+    bhashini: "Bhashini",
     cartesia: "Cartesia",
     openai: "OpenAI",
     playht: "PlayHT",

@@ -37,3 +37,7 @@ sarvamai==0.1.21
 
 # WebSocket for AI4Bharat custom services
 websockets==15.0.1
+
+# Socket.IO for Bhashini
+python-socketio[asyncio_client]==5.11.0
+aiohttp==3.13.2

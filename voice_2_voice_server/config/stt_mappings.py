@@ -72,7 +72,29 @@ STT_LANGUAGE_MAP = {
         "Assamese": "as",
         "Odia": "or",
         "Nepali": "ne",
-    }
+    },
+    "Bhashini": {
+        "Hindi": "hi",
+        "Bengali": "bn",
+        "Tamil": "ta",
+        "Telugu": "te",
+        "Gujarati": "gu",
+        "Kannada": "kn",
+        "Malayalam": "ml",
+        "Marathi": "mr",
+        "Punjabi": "pa",
+        "Assamese": "as",
+        "Odia": "or",
+        "Nepali": "ne",
+        "Bodo": "brx",
+        "Dogri": "doi",
+        "Kashmiri": "ks",
+        "Konkani": "kok",
+        "Maithili": "mai",
+        "Manipuri": "mni",
+        "Sanskrit": "sa",
+        "Santali": "sat",
+        "Sindhi": "sd",
+        "Urdu": "ur",
+    },
 }
-
-
