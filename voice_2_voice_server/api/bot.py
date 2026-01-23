@@ -84,7 +84,13 @@ async def run_bot(
 
         system_prompt = agent_config.get("system_prompt", None)
         context = OpenAILLMContext([{"role": "system", "content": system_prompt}])
-        context_aggregator = llm.create_context_aggregator(context)
+        
+        # Use stored user aggregator params if available (for OpenAI services)
+        user_params = getattr(llm, "_user_aggregator_params", None)
+        if user_params:
+            context_aggregator = llm.create_context_aggregator(context, user_params=user_params)
+        else:
+            context_aggregator = llm.create_context_aggregator(context)
         
         greeting_filter = GreetingInterruptionFilter()
         
