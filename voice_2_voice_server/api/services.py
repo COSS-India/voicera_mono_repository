@@ -21,6 +21,7 @@ from pipecat.services.sarvam.tts import SarvamTTSService
 from services.kenpath_llm.llm import KenpathLLM
 from services.ai4bharat.tts import IndicParlerRESTTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
+from services.bhashini.stt import BhashiniSTTService
 from config import get_llm_model
 from config.stt_mappings import STT_LANGUAGE_MAP
 from config.tts_mappings import TTS_LANGUAGE_MAP
@@ -82,7 +83,8 @@ def create_stt_service(stt_config: dict, sample_rate: int, vad_analyzer: Any = N
         "google": "Google",
         "openai": "OpenAI",
         "sarvam": "Sarvam",
-        "ai4bharat": "AI4Bharat"
+        "ai4bharat": "AI4Bharat",
+        "bhashini": "Bhashini",
     }
     provider = provider_map.get(provider.lower(), provider)
     
@@ -131,6 +133,14 @@ def create_stt_service(stt_config: dict, sample_rate: int, vad_analyzer: Any = N
         else:
             raise ServiceCreationError(f"Unknown ai4bharat STT model: {model}. Expected 'indic-conformer-stt'")
     
+    elif provider == "Bhashini":
+        return BhashiniSTTService(
+            api_key=os.getenv("BHASHINI_API_KEY"),
+            language=STT_LANGUAGE_MAP[provider][language],
+            service_id=args.get("model", "bhashini/ai4bharat/conformer-multilingual-asr"),
+            sample_rate=sample_rate,
+        )
+    
     elif provider == "Sarvam":
         model = args.get("model")
         return SarvamSTTService(
@@ -139,7 +149,7 @@ def create_stt_service(stt_config: dict, sample_rate: int, vad_analyzer: Any = N
             model=model,
             sample_rate=sample_rate
         )
-    
+
     else:
         raise ServiceCreationError(f"Unknown STT provider: {provider}")
 
@@ -178,10 +188,7 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
             api_key=os.getenv("CARTESIA_API_KEY"),
             model=model,
             encoding="pcm_s16le",
-            voice_id=voice_id,
-            params=CartesiaTTSService.InputParams(
-                language=TTS_LANGUAGE_MAP[provider][language]
-            )
+            voice_id=voice_id
         )
     
     elif provider == "Google":
@@ -232,4 +239,3 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
     
     else:
         raise ServiceCreationError(f"Unknown TTS provider: {provider}")
-
