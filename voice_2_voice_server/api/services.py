@@ -22,6 +22,7 @@ from services.kenpath_llm.llm import KenpathLLM
 from services.ai4bharat.tts import IndicParlerRESTTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
 from services.bhashini.stt import BhashiniSTTService
+from services.bhashini.tts import BhashiniTTSService
 from config import get_llm_model
 from config.stt_mappings import STT_LANGUAGE_MAP
 from config.tts_mappings import TTS_LANGUAGE_MAP
@@ -177,7 +178,8 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
         "google": "Google",
         "openai": "OpenAI",
         "sarvam": "Sarvam",
-        "ai4bharat": "AI4Bharat"
+        "ai4bharat": "AI4Bharat",
+        "bhashini": "Bhashini"
     }
     provider = provider_map.get(provider.lower(), provider)
     
@@ -220,6 +222,17 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
             )
         else:
             raise ServiceCreationError(f"Unknown ai4bharat TTS model: {model}. Expected 'indic-parler-tts'")
+    
+    elif provider == "Bhashini":
+        speaker = tts_config.get("speaker") or args.get("speaker")
+        description = tts_config.get("description") or args.get("description")
+        play_steps_in_s = args.get("play_steps_in_s", 0.3)
+        return BhashiniTTSService(
+            speaker=speaker,
+            description=description,
+            sample_rate=44100,
+            play_steps_in_s=play_steps_in_s
+        )
     
     elif provider == "Sarvam":
         model = args.get("model")
