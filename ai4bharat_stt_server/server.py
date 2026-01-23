@@ -12,6 +12,7 @@ from transformers import AutoModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, default=8001)
+parser.add_argument('--workers', type=int, default=1, help='Number of worker processes')
 args = parser.parse_args()
 
 TARGET_SAMPLE_RATE = 16000
@@ -63,9 +64,63 @@ async def load_model():
         trust_remote_code=True
     ).to(device).eval()
     
+    # Print model memory information
+    if torch.cuda.is_available():
+        # Check ONNX runtime GPU support
+        try:
+            import onnxruntime as ort
+            providers = ort.get_available_providers()
+            print(f"ONNX Runtime providers: {providers}")
+            if 'CUDAExecutionProvider' in providers:
+                print("✓ CUDAExecutionProvider is available - model will use GPU")
+            else:
+                print("⚠ WARNING: CUDAExecutionProvider not available - model will use CPU")
+        except ImportError:
+            print("Note: onnxruntime not imported")
+        
+        # Get GPU memory usage
+        torch.cuda.reset_peak_memory_stats(device)
+        memory_allocated = torch.cuda.memory_allocated(device) / 1024**2  # MB
+        memory_reserved = torch.cuda.memory_reserved(device) / 1024**2  # MB
+        
+        print(f"GPU memory allocated: {memory_allocated:.2f} MB")
+        print(f"GPU memory reserved: {memory_reserved:.2f} MB")
+        
+        # Try to get model parameters info (may not be available for all model types)
+        try:
+            params = list(model.parameters())
+            if params:
+                total_params = sum(p.numel() for p in params)
+                trainable_params = sum(p.numel() for p in params if p.requires_grad)
+                param_dtype = params[0].dtype
+                
+                print(f"Model parameters: {total_params:,} total, {trainable_params:,} trainable")
+                print(f"Model dtype: {param_dtype}")
+                
+                # Calculate expected memory (rough estimate)
+                if param_dtype == torch.float32:
+                    expected_memory = total_params * 4 / 1024**2  # 4 bytes per float32
+                elif param_dtype == torch.float16 or param_dtype == torch.bfloat16:
+                    expected_memory = total_params * 2 / 1024**2  # 2 bytes per float16/bfloat16
+                else:
+                    expected_memory = 0
+                
+                if expected_memory > 0:
+                    print(f"Expected memory (parameters only): {expected_memory:.2f} MB")
+            else:
+                print("Note: Model parameters not accessible (may use ONNX or custom architecture)")
+        except (StopIteration, AttributeError, TypeError) as e:
+            print(f"Note: Could not access model parameters: {type(e).__name__}")
+            print("Model may use ONNX runtime or custom architecture")
+    
     dummy = torch.zeros(1, 16000).to(device)
     with torch.no_grad():
         model(dummy, "hi", "rnnt")
+    
+    if torch.cuda.is_available():
+        peak_memory = torch.cuda.max_memory_allocated(device) / 1024**2  # MB
+        print(f"Peak GPU memory after warmup: {peak_memory:.2f} MB")
+    
     print("Model ready")
 
 
@@ -87,4 +142,9 @@ async def health():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=args.port)
+    if args.workers > 1:
+        # When using workers, uvicorn requires app as import string
+        uvicorn.run("server:app", host="0.0.0.0", port=args.port, workers=args.workers)
+    else:
+        # Single worker can use app object directly
+        uvicorn.run(app, host="0.0.0.0", port=args.port)

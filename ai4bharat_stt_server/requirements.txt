@@ -6,8 +6,6 @@ uvicorn
 transformers
 torchaudio 
 onnx 
-onnxruntime 
-onnxruntime-gpu
+onnxruntime-gpu  # Note: onnxruntime-gpu replaces onnxruntime, don't install both
 pyarr
-
 loguru>=0.7.3
