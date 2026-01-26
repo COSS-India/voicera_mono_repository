@@ -9,6 +9,8 @@ from datetime import datetime
 from loguru import logger
 from dotenv import load_dotenv
 
+
+
 from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -18,6 +20,7 @@ from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.utils.text.base_text_aggregator import BaseTextAggregator, Aggregation, AggregationType
 from typing import Any
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
@@ -42,6 +45,38 @@ load_dotenv(override=False)
 def _get_sample_rate() -> int:
     """Get the audio sample rate from environment."""
     return int(os.getenv("SAMPLE_RATE", "8000"))
+
+
+class FastPunctuationAggregator(BaseTextAggregator):
+    """Fast aggregator that sends text immediately on punctuation - no lookahead/NLTK."""
+    
+    def __init__(self):
+        self._text = ""
+    
+    @property
+    def text(self):
+        return Aggregation(text=self._text.strip(), type=AggregationType.SENTENCE)
+    
+    async def aggregate(self, text: str):
+        for char in text:
+            self._text += char
+            if char in '.!?,|':
+                if self._text.strip():
+                    yield Aggregation(self._text.strip(), AggregationType.SENTENCE)
+                    self._text = ""
+    
+    async def flush(self):
+        if self._text.strip():
+            result = self._text.strip()
+            self._text = ""
+            return Aggregation(result, AggregationType.SENTENCE)
+        return None
+    
+    async def handle_interruption(self):
+        self._text = ""
+    
+    async def reset(self):
+        self._text = ""
 
 
 async def run_bot(
@@ -81,6 +116,10 @@ async def run_bot(
         llm = create_llm_service(llm_config)
         stt = create_stt_service(stt_config, sample_rate, vad_analyzer=vad_analyzer)
         tts = create_tts_service(tts_config, sample_rate)
+        
+        # Use fast aggregator (no lookahead/NLTK) for lower latency
+        tts._aggregate_sentences = True
+        tts._text_aggregator = FastPunctuationAggregator()
 
         system_prompt = agent_config.get("system_prompt", None)
         context = OpenAILLMContext([{"role": "system", "content": system_prompt}])
@@ -176,9 +215,15 @@ async def bot(
         params=VADParams(
             stop_secs=0.3,
             min_volume=0.5,
-            confidence=0.6,
+            confidence=0.4,
         )
     )
+    vad_analyzer._smoothing_factor = 0.1  # Faster volume change response
+    import pipecat.transports.base_input
+    pipecat.transports.base_input.AUDIO_INPUT_TIMEOUT_SECS = 0.1
+
+    import pipecat.transports.base_output
+    pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
     
     transport = FastAPIWebsocketTransport(
         websocket=websocket_client,
@@ -190,8 +235,15 @@ async def bot(
             serializer=serializer,
             audio_in_passthrough=True,
             session_timeout=session_timeout,
+            audio_out_10ms_chunks=1,  # ADD THIS LINE - reduces from 4 to 1
         ),
     )
+
+    original_start = transport.output().start
+    async def optimized_start(self, frame):
+        await original_start(frame)
+        self._send_interval = 0  # Override to send immediately
+    transport.output().start = optimized_start.__get__(transport.output(), type(transport.output()))
     
     # Create audio buffer processor
     audiobuffer = AudioBufferProcessor()

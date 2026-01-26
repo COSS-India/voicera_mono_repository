@@ -24,7 +24,7 @@ class BhashiniTTSService(TTSService):
         speaker: str = "Divya",
         description: str = "A clear, natural voice with good audio quality.",
         sample_rate: int = 44100,
-        play_steps_in_s: float = 0.3,
+        play_steps_in_s: float = 0.1,
         **kwargs,
     ):
         super().__init__(sample_rate=sample_rate, **kwargs)
@@ -39,6 +39,7 @@ class BhashiniTTSService(TTSService):
             raise ValueError("BHASHINI_TTS_AUTH_TOKEN environment variable not set")
         self._speaker = speaker
         self._description = description
+        self._play_steps_in_s = play_steps_in_s
         self._play_steps_in_s = play_steps_in_s
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
@@ -70,29 +71,38 @@ class BhashiniTTSService(TTSService):
                         yield ErrorFrame(f"Server error: {response.status}")
                         return
 
-                    async for line in response.content:
-                        if not line:
+                    buffer = ""
+                    async for chunk in response.content.iter_any():
+                        if not chunk:
                             continue
 
-                        try:
-                            data = json.loads(line.decode("utf-8"))
-                        except json.JSONDecodeError:
-                            continue
+                        buffer += chunk.decode("utf-8")
+                        
+                        while "\n" in buffer:
+                            line, buffer = buffer.split("\n", 1)
+                            if not line.strip():
+                                continue
 
-                        if "error" in data:
-                            yield ErrorFrame(data["error"])
-                            return
+                            try:
+                                data = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
 
-                        if data.get("done"):
-                            break
+                            if "error" in data:
+                                yield ErrorFrame(data["error"])
+                                return
 
-                        if "audio" in data:
-                            logger.info(f"Audio chunk sent to Telephony: {len(base64.b64decode(data['audio']))} bytes")
-                            yield TTSAudioRawFrame(
-                                audio=base64.b64decode(data["audio"]),
-                                sample_rate=data.get("sample_rate", self.sample_rate),
-                                num_channels=1,
-                            )
+                            if data.get("done"):
+                                break
+
+                            if "audio" in data:
+                                audio_bytes = base64.b64decode(data["audio"])
+                                logger.info(f"Audio chunk sent to Telephony: {len(audio_bytes)} bytes")
+                                yield TTSAudioRawFrame(
+                                    audio=audio_bytes,
+                                    sample_rate=data.get("sample_rate", self.sample_rate),
+                                    num_channels=1,
+                                )
 
                 yield TTSStoppedFrame()
 

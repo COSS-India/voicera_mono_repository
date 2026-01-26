@@ -228,8 +228,7 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
             return IndicParlerRESTTTSService(
                 speaker=speaker,
                 description=description,
-                sample_rate=44100,
-                play_steps_in_s=0.5
+                sample_rate=44100
             )
         else:
             raise ServiceCreationError(f"Unknown ai4bharat TTS model: {model}. Expected 'indic-parler-tts'")
@@ -240,8 +239,7 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
         return BhashiniTTSService(
             speaker=speaker,
             description=description,
-            sample_rate=44100,
-            play_steps_in_s=0.5
+            sample_rate=44100
         )
     
     elif provider == "Sarvam":
