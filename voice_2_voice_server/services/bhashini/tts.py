@@ -24,7 +24,7 @@ class BhashiniTTSService(TTSService):
         speaker: str = "Divya",
         description: str = "A clear, natural voice with good audio quality.",
         sample_rate: int = 44100,
-        play_steps_in_s: float = 0.1,
+        play_steps_in_s: float = 0.5,
         **kwargs,
     ):
         super().__init__(sample_rate=sample_rate, **kwargs)
