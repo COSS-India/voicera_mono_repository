@@ -1,0 +1,80 @@
+site_name: VoiceERA Documentation
+site_description: A complete voice AI platform with telephony integration, featuring real-time speech-to-text, text-to-speech, and LLM-powered conversational agents.
+site_author: VoiceERA Team
+site_url: https://voicera-docs.example.com
+
+theme:
+  name: material
+  palette:
+    - scheme: dark
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/lightbulb-outline
+        name: Switch to dark mode
+    - scheme: light
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/lightbulb
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.integrate
+
+markdown_extensions:
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
+  - attr_list
+  - admonition
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Quick Reference: quick-reference.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration: getting-started/configuration.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - System Design: architecture/system-design.md
+    - Data Flow: architecture/data-flow.md
+  - Services:
+    - Backend API: services/backend.md
+    - Voice Server: services/voice-server.md
+    - Frontend: services/frontend.md
+    - AI4Bharat STT: services/ai4bharat-stt.md
+    - AI4Bharat TTS: services/ai4bharat-tts.md
+  - API Documentation:
+    - REST API: api/rest-api.md
+    - WebSocket API: api/websocket-api.md
+    - Endpoints: api/endpoints.md
+  - Deployment:
+    - Docker Setup: deployment/docker.md
+    - Production Deployment: deployment/production.md
+    - Environment Variables: deployment/environment.md
+  - Development:
+    - Local Setup: development/local-setup.md
+    - Contributing: development/contributing.md
+    - Testing: development/testing.md
+  - Troubleshooting: troubleshooting.md
+
+plugins:
+  - search
+  - git-revision-date
