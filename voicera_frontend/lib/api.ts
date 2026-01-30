@@ -2,8 +2,6 @@
  * API utility functions for making authenticated requests
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-
 /**
  * Get the stored auth token from localStorage
  */
@@ -63,7 +61,8 @@ export async function fetchWithAuth(
   headers.set("Content-Type", "application/json")
   headers.set("Accept", "application/json")
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  // Use relative URL so browser hits frontend; frontend proxies to backend (Docker: backend hostname only resolves server-side)
+  const response = await fetch(endpoint, {
     ...options,
     headers,
   })
@@ -757,7 +756,7 @@ export async function getOrgMembers(orgId: string): Promise<Member[]> {
  * Join an existing organization (public endpoint - no auth required)
  */
 export async function joinOrganization(data: JoinOrganizationRequest): Promise<{ status: string; message: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/members/add-member`, {
+  const response = await fetch("/api/v1/members/add-member", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -799,7 +798,7 @@ export async function deleteMember(email: string, orgId: string): Promise<{ stat
  */
 export async function checkUserExists(email: string): Promise<User | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/users/${encodeURIComponent(email)}`, {
+    const response = await fetch(`/api/v1/users/${encodeURIComponent(email)}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
