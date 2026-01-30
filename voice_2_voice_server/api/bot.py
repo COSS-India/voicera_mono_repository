@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 
 
-from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.frames.frames import TTSSpeakFrame, TTSStartedFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -102,6 +102,30 @@ class FastPunctuationAggregator(BaseTextAggregator):
     
     async def reset(self):
         self._text = ""
+
+
+def patch_immediate_first_chunk(transport):
+    """Patch transport to send first audio chunk immediately with zero delay."""
+    output = transport.output()
+    output._send_interval = 0
+    output._first_chunk_sent = False
+    
+    _orig_write = output.write_audio_frame
+    async def _write_immediate(frame):
+        if not output._first_chunk_sent:
+            output._first_chunk_sent = True
+            output._next_send_time = time.monotonic() - 0.001
+            logger.info(f"🚀 Sending first chunk immediately: {len(frame.audio)} bytes (bypassing queue)")
+        await _orig_write(frame)
+    output.write_audio_frame = _write_immediate
+    
+    _orig_process = output.process_frame
+    async def _reset_on_tts(frame, direction):
+        if isinstance(frame, TTSStartedFrame):
+            output._first_chunk_sent = False
+            logger.debug(f"🔄 Reset first_chunk_sent flag for new TTS response")
+        await _orig_process(frame, direction)
+    output.process_frame = _reset_on_tts
 
 
 async def run_bot(
@@ -249,6 +273,7 @@ async def bot(
             stop_secs=0.2,
             min_volume=0.5,
             confidence=0.4,
+            start_secs=0.1,
         )
     )
     vad_analyzer._smoothing_factor = 0.1  # Faster volume change response
@@ -271,99 +296,9 @@ async def bot(
             audio_out_10ms_chunks=2,  # ADD THIS LINE - reduces from 4 to 1
         ),
     )
-    transport.output()._send_interval = 0
 
-
-    original_start = transport.output().start
-    async def optimized_start(self, frame):
-        await original_start(frame)
-        self._send_interval = 0  # Override to send immediately
-    transport.output().start = optimized_start.__get__(transport.output(), type(transport.output()))
-    
-    # Optimize: Send first audio chunk immediately, bypassing queue
-    # Hook into set_transport_ready to patch media senders after they're created
-    original_set_transport_ready = transport.output().set_transport_ready
-    async def patched_set_transport_ready(self, frame):
-        await original_set_transport_ready(frame)
-        # Patch all media senders to use immediate first chunk sending
-        for sender in self._media_senders.values():
-            # Store state directly on the sender instance
-            sender._first_chunk_sent = False
-            
-            async def immediate_first_chunk_handle_audio_frame(sender_self, frame):
-                """Send first chunk immediately, then use normal buffering for subsequent chunks."""
-                if not sender_self._params.audio_out_enabled:
-                    return
-                
-                # Resample if needed
-                resampled = await sender_self._resampler.resample(
-                    frame.audio, frame.sample_rate, sender_self._sample_rate
-                )
-                
-                cls = type(frame)
-                sender_self._audio_buffer.extend(resampled)
-                
-                # Send first chunk immediately when we have enough data
-                if not sender_self._first_chunk_sent and len(sender_self._audio_buffer) >= sender_self._audio_chunk_size:
-                    first_chunk = cls(
-                        bytes(sender_self._audio_buffer[:sender_self._audio_chunk_size]),
-                        sample_rate=sender_self._sample_rate,
-                        num_channels=frame.num_channels,
-                    )
-                    first_chunk.transport_destination = sender_self._destination
-                    
-                    # Send directly to transport, bypassing queue for minimal latency
-                    logger.info(f"🚀 Sending first chunk immediately: {len(first_chunk.audio)} bytes (bypassing queue)")
-                    # Reset _next_send_time to past to ensure zero sleep delay
-                    output_transport = sender_self._transport
-                    if hasattr(output_transport, '_next_send_time'):
-                        import time
-                        # Set to slightly in the past to guarantee sleep_duration = 0
-                        output_transport._next_send_time = time.monotonic() - 0.001
-                    # Send the frame (will have zero sleep delay)
-                    await output_transport.write_audio_frame(first_chunk)
-                    sender_self._first_chunk_sent = True
-                    
-                    # Remove sent chunk from buffer
-                    sender_self._audio_buffer = sender_self._audio_buffer[sender_self._audio_chunk_size:]
-                
-                # Continue with normal buffering for remaining/next chunks
-                while len(sender_self._audio_buffer) >= sender_self._audio_chunk_size:
-                    chunk = cls(
-                        bytes(sender_self._audio_buffer[:sender_self._audio_chunk_size]),
-                        sample_rate=sender_self._sample_rate,
-                        num_channels=frame.num_channels,
-                    )
-                    chunk.transport_destination = sender_self._destination
-                    await sender_self._audio_queue.put(chunk)
-                    sender_self._audio_buffer = sender_self._audio_buffer[sender_self._audio_chunk_size:]
-            
-            sender.handle_audio_frame = immediate_first_chunk_handle_audio_frame.__get__(
-                sender, type(sender)
-            )
-            logger.debug(f"✅ Patched media sender for immediate first chunk sending")
-    
-    transport.output().set_transport_ready = patched_set_transport_ready.__get__(
-        transport.output(), type(transport.output())
-    )
-    
-    # Reset first_chunk_sent flag for each new TTS response
-    from pipecat.frames.frames import TTSStartedFrame
-    original_process_frame = transport.output().process_frame
-    async def patched_process_frame(self, frame, direction):
-        # Reset flag when new TTS session starts
-        if isinstance(frame, TTSStartedFrame):
-            for sender in self._media_senders.values():
-                if hasattr(sender, '_first_chunk_sent'):
-                    sender._first_chunk_sent = False
-                    logger.debug(f"🔄 Reset first_chunk_sent flag for new TTS response")
-        
-        # Call original process_frame
-        await original_process_frame(frame, direction)
-    
-    transport.output().process_frame = patched_process_frame.__get__(
-        transport.output(), type(transport.output())
-    )
+    # Optimized first audio chunk sending
+    patch_immediate_first_chunk(transport)
     
     # Create audio buffer processor
     audiobuffer = AudioBufferProcessor()
