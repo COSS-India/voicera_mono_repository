@@ -16,12 +16,14 @@ from pipecat.services.openai.stt import OpenAISTTService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
+from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 
 # Local services
 from services.kenpath_llm.llm import KenpathLLM
 from services.ai4bharat.tts import IndicParlerRESTTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
 from services.bhashini.stt import BhashiniSTTService
+from services.bhashini.tts import BhashiniTTSService
 from config import get_llm_model
 from config.stt_mappings import STT_LANGUAGE_MAP
 from config.tts_mappings import TTS_LANGUAGE_MAP
@@ -49,10 +51,20 @@ def create_llm_service(llm_config: dict) -> Any:
     model = args.get("model") or llm_config.get("model")
     
     if provider == "OpenAI":
-        return OpenAILLMService(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            model=get_llm_model(provider, model)
+        # Extract user aggregator params from config, with defaults
+        user_aggregator_params = LLMUserAggregatorParams(
+            aggregation_timeout=args.get("aggregation_timeout", 0.05)
         )
+        
+        service = OpenAILLMService(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            model=get_llm_model(provider, model),
+        )
+        
+        # Store user aggregator params on the service instance for later use
+        service._user_aggregator_params = user_aggregator_params
+        
+        return service
     elif provider == "Kenpath":
         return KenpathLLM()
     else:
@@ -127,7 +139,7 @@ def create_stt_service(stt_config: dict, sample_rate: int, vad_analyzer: Any = N
             return IndicConformerRESTSTTService(
                 language_id=STT_LANGUAGE_MAP[provider][language],
                 sample_rate=16000,
-                input_sample_rate=8000,
+                input_sample_rate=sample_rate,
                 vad_analyzer=vad_analyzer
             )
         else:
@@ -177,7 +189,8 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
         "google": "Google",
         "openai": "OpenAI",
         "sarvam": "Sarvam",
-        "ai4bharat": "AI4Bharat"
+        "ai4bharat": "AI4Bharat",
+        "bhashini": "Bhashini"
     }
     provider = provider_map.get(provider.lower(), provider)
     
@@ -215,11 +228,19 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
             return IndicParlerRESTTTSService(
                 speaker=speaker,
                 description=description,
-                sample_rate=44100,
-                play_steps_in_s=0.5
+                sample_rate=sample_rate
             )
         else:
             raise ServiceCreationError(f"Unknown ai4bharat TTS model: {model}. Expected 'indic-parler-tts'")
+    
+    elif provider == "Bhashini":
+        speaker = tts_config.get("speaker") or args.get("speaker")
+        description = tts_config.get("description") or args.get("description")
+        return BhashiniTTSService(
+            speaker=speaker,
+            description=description,
+            sample_rate=44100
+        )
     
     elif provider == "Sarvam":
         model = args.get("model")

@@ -11,3 +11,4 @@ numpy>=1.24.0
 
 
 loguru>=0.7.3
+hypercorn>=0.17.0

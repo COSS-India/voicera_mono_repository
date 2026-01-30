@@ -2,17 +2,20 @@ import asyncio
 import base64
 import json
 import os
+import socket
 from contextlib import asynccontextmanager
 from threading import Thread, Event
 from typing import AsyncGenerator
 
 import numpy as np
 import torch
+import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from parler_tts import ParlerTTSForConditionalGeneration, ParlerTTSStreamer
 from pydantic import BaseModel, Field
 from transformers import AutoTokenizer
+from loguru import logger
 
 
 class TTSRequest(BaseModel):
@@ -134,13 +137,13 @@ async def generate_audio_chunks(
                 "sample_rate": state.sample_rate,
                 "samples": new_audio.shape[0],
             }
+            logger.info(f"Audio chunk going out: {len(audio_int16.tobytes())} bytes")
             yield json.dumps(chunk_data) + "\n"
 
         if not client_disconnected:
             yield json.dumps({"done": True}) + "\n"
 
     finally:
-        # Sync wait - blocks but guarantees cleanup even if task is cancelled
         generation_complete.wait()
         thread.join()
 
@@ -166,7 +169,11 @@ async def stream_tts(request: Request, tts_request: TTSRequest):
             play_steps_in_s=tts_request.play_steps_in_s,
         ),
         media_type="application/x-ndjson",
-        headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -181,6 +188,11 @@ async def health():
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    config = uvicorn.Config(app, host="0.0.0.0", port=8002)
+    server = uvicorn.Server(config)
+    
+    sock = config.bind_socket()
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    logger.info("TCP_NODELAY enabled - Nagle's algorithm disabled")
+    
+    asyncio.run(server.serve(sockets=[sock]))
