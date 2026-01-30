@@ -139,7 +139,7 @@ def create_stt_service(stt_config: dict, sample_rate: int, vad_analyzer: Any = N
             return IndicConformerRESTSTTService(
                 language_id=STT_LANGUAGE_MAP[provider][language],
                 sample_rate=16000,
-                input_sample_rate=8000,
+                input_sample_rate=sample_rate,
                 vad_analyzer=vad_analyzer
             )
         else:
@@ -228,7 +228,7 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
             return IndicParlerRESTTTSService(
                 speaker=speaker,
                 description=description,
-                sample_rate=44100
+                sample_rate=sample_rate
             )
         else:
             raise ServiceCreationError(f"Unknown ai4bharat TTS model: {model}. Expected 'indic-parler-tts'")

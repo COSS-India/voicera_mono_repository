@@ -36,67 +36,90 @@ class IndicParlerRESTTTSService(TTSService):
         self._speaker = speaker
         self._description = description
         self._play_steps_in_s = play_steps_in_s
+        self._session = None
+
+    async def start(self, frame: Frame):
+        logger.info("Starting IndicParler TTS service")
+        # Optimization: Use TCPConnector with keepalive to ensure connection reuse
+        # limit=0 means no limit on concurrent connections
+        # ttl_dns_cache=300 caches DNS lookups for 5 minutes
+        connector = aiohttp.TCPConnector(limit=0, ttl_dns_cache=300)
+        timeout = aiohttp.ClientTimeout(total=120, connect=10)
+        self._session = aiohttp.ClientSession(connector=connector, timeout=timeout)
+        await super().start(frame)
+
+    async def stop(self, frame: Frame):
+        logger.info("Stopping IndicParler TTS service")
+        if self._session:
+            await self._session.close()
+            self._session = None
+        await super().stop(frame)
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         if not text.strip():
             return
 
-        timeout = aiohttp.ClientTimeout(total=120)
+        # Use persistent session if available, otherwise fall back to temporary (safety)
+        session = self._session
+        should_close = False
+        if not session or session.closed:
+            logger.warning("TTS session not available, creating temporary session")
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120))
+            should_close = True
 
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                payload = {
-                    "text": text,
-                    "description": self._description,
-                    "speaker": self._speaker,
-                    "play_steps_in_s": self._play_steps_in_s,
-                }
+            payload = {
+                "text": text,
+                "description": self._description,
+                "speaker": self._speaker,
+                "play_steps_in_s": self._play_steps_in_s,
+            }
 
-                yield TTSStartedFrame()
+            yield TTSStartedFrame()
 
-                async with session.post(
-                    self._server_url,
-                    json=payload,
-                    headers={"Accept": "application/x-ndjson"},
-                ) as response:
-                    if response.status != 200:
-                        yield ErrorFrame(f"Server error: {response.status}")
-                        return
+            async with session.post(
+                self._server_url,
+                json=payload,
+                headers={"Accept": "application/x-ndjson"},
+            ) as response:
+                if response.status != 200:
+                    yield ErrorFrame(f"Server error: {response.status}")
+                    return
 
-                    buffer = ""
-                    async for chunk in response.content.iter_any():
-                        if not chunk:
+                buffer = ""
+                async for chunk in response.content.iter_any():
+                    if not chunk:
+                        continue
+
+                    buffer += chunk.decode("utf-8")
+                    
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        if not line.strip():
                             continue
 
-                        buffer += chunk.decode("utf-8")
-                        
-                        while "\n" in buffer:
-                            line, buffer = buffer.split("\n", 1)
-                            if not line.strip():
-                                continue
+                        try:
+                            data = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
 
-                            try:
-                                data = json.loads(line)
-                            except json.JSONDecodeError:
-                                continue
+                        if "error" in data:
+                            yield ErrorFrame(data["error"])
+                            return
 
-                            if "error" in data:
-                                yield ErrorFrame(data["error"])
-                                return
+                        if data.get("done"):
+                            break
 
-                            if data.get("done"):
-                                break
+                        if "audio" in data:
+                            audio_bytes = base64.b64decode(data["audio"])
+                            logger.info(f"Audio chunk sent to Telephony: {len(audio_bytes)} bytes")
+                            yield TTSAudioRawFrame(
+                                audio=audio_bytes,
+                                sample_rate=data.get("sample_rate", self.sample_rate),
+                                num_channels=1,
+                            )
 
-                            if "audio" in data:
-                                audio_bytes = base64.b64decode(data["audio"])
-                                logger.info(f"Audio chunk sent to Telephony: {len(audio_bytes)} bytes")
-                                yield TTSAudioRawFrame(
-                                    audio=audio_bytes,
-                                    sample_rate=data.get("sample_rate", self.sample_rate),
-                                    num_channels=1,
-                                )
-
-                yield TTSStoppedFrame()
+            yield TTSStoppedFrame()
 
         except aiohttp.ClientError as e:
             yield ErrorFrame(f"Connection error: {e}")
@@ -104,3 +127,6 @@ class IndicParlerRESTTTSService(TTSService):
             yield ErrorFrame("Request timeout")
         except Exception as e:
             yield ErrorFrame(f"TTS error: {e}")
+        finally:
+            if should_close and session:
+                await session.close()

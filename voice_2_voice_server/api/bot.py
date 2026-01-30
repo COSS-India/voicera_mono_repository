@@ -39,7 +39,32 @@ from services.audio.greeting_interruption_filter import GreetingInterruptionFilt
 from .call_recording_utils import submit_call_recording
 
 
+
 load_dotenv(override=False)
+
+
+# Monkey-patch SOXRStreamAudioResampler to reduce latency from ~200ms to near-zero
+# by switching from "VHQ" (Very High Quality) to "Quick" quality.
+try:
+    from pipecat.audio.resamplers.soxr_stream_resampler import SOXRStreamAudioResampler
+    import soxr
+    import time
+    
+    def patched_initialize(self, in_rate: float, out_rate: float):
+        self._in_rate = in_rate
+        self._out_rate = out_rate
+        self._last_resample_time = time.time()
+        # "QQ" = Quick Quality (Cubic/Linear), minimal buffer
+        # "VHQ" = Very High Quality (Sinc), large FIR filter buffer
+        self._soxr_stream = soxr.ResampleStream(
+            in_rate=in_rate, out_rate=out_rate, num_channels=1, quality="QQ", dtype="int16"
+        )
+    
+    SOXRStreamAudioResampler._initialize = patched_initialize
+    logger.info("Monkey-patched SOXRStreamAudioResampler for low latency (Quick quality)")
+except Exception as e:
+    logger.warning(f"Failed to patch SOXRStreamAudioResampler: {e}")
+
 
 
 def _get_sample_rate() -> int:
@@ -60,7 +85,7 @@ class FastPunctuationAggregator(BaseTextAggregator):
     async def aggregate(self, text: str):
         for char in text:
             self._text += char
-            if char in '.!?,|':
+            if char in '.!?,':
                 if self._text.strip():
                     yield Aggregation(self._text.strip(), AggregationType.SENTENCE)
                     self._text = ""
@@ -193,6 +218,14 @@ async def bot(
     """Main bot entry point - sets up transport and runs the pipeline."""
     sample_rate = _get_sample_rate()
     session_timeout = agent_config.get("session_timeout_minutes", 10) * 60
+
+    import time
+    original_send = websocket_client.send_text
+    async def timed_send(data):
+        if "playAudio" in str(data)[:50]:
+            logger.info(f"📤 WS SEND: {len(data)} bytes at {time.perf_counter()*1000:.0f}ms")
+        return await original_send(data)
+    websocket_client.send_text = timed_send
     
     # Track call start time
     call_start_time = time.monotonic()
@@ -213,7 +246,7 @@ async def bot(
     vad_analyzer = SileroVADAnalyzer(
         sample_rate=sample_rate,
         params=VADParams(
-            stop_secs=0.3,
+            stop_secs=0.2,
             min_volume=0.5,
             confidence=0.4,
         )
@@ -235,15 +268,102 @@ async def bot(
             serializer=serializer,
             audio_in_passthrough=True,
             session_timeout=session_timeout,
-            audio_out_10ms_chunks=1,  # ADD THIS LINE - reduces from 4 to 1
+            audio_out_10ms_chunks=2,  # ADD THIS LINE - reduces from 4 to 1
         ),
     )
+    transport.output()._send_interval = 0
+
 
     original_start = transport.output().start
     async def optimized_start(self, frame):
         await original_start(frame)
         self._send_interval = 0  # Override to send immediately
     transport.output().start = optimized_start.__get__(transport.output(), type(transport.output()))
+    
+    # Optimize: Send first audio chunk immediately, bypassing queue
+    # Hook into set_transport_ready to patch media senders after they're created
+    original_set_transport_ready = transport.output().set_transport_ready
+    async def patched_set_transport_ready(self, frame):
+        await original_set_transport_ready(frame)
+        # Patch all media senders to use immediate first chunk sending
+        for sender in self._media_senders.values():
+            # Store state directly on the sender instance
+            sender._first_chunk_sent = False
+            
+            async def immediate_first_chunk_handle_audio_frame(sender_self, frame):
+                """Send first chunk immediately, then use normal buffering for subsequent chunks."""
+                if not sender_self._params.audio_out_enabled:
+                    return
+                
+                # Resample if needed
+                resampled = await sender_self._resampler.resample(
+                    frame.audio, frame.sample_rate, sender_self._sample_rate
+                )
+                
+                cls = type(frame)
+                sender_self._audio_buffer.extend(resampled)
+                
+                # Send first chunk immediately when we have enough data
+                if not sender_self._first_chunk_sent and len(sender_self._audio_buffer) >= sender_self._audio_chunk_size:
+                    first_chunk = cls(
+                        bytes(sender_self._audio_buffer[:sender_self._audio_chunk_size]),
+                        sample_rate=sender_self._sample_rate,
+                        num_channels=frame.num_channels,
+                    )
+                    first_chunk.transport_destination = sender_self._destination
+                    
+                    # Send directly to transport, bypassing queue for minimal latency
+                    logger.info(f"🚀 Sending first chunk immediately: {len(first_chunk.audio)} bytes (bypassing queue)")
+                    # Reset _next_send_time to past to ensure zero sleep delay
+                    output_transport = sender_self._transport
+                    if hasattr(output_transport, '_next_send_time'):
+                        import time
+                        # Set to slightly in the past to guarantee sleep_duration = 0
+                        output_transport._next_send_time = time.monotonic() - 0.001
+                    # Send the frame (will have zero sleep delay)
+                    await output_transport.write_audio_frame(first_chunk)
+                    sender_self._first_chunk_sent = True
+                    
+                    # Remove sent chunk from buffer
+                    sender_self._audio_buffer = sender_self._audio_buffer[sender_self._audio_chunk_size:]
+                
+                # Continue with normal buffering for remaining/next chunks
+                while len(sender_self._audio_buffer) >= sender_self._audio_chunk_size:
+                    chunk = cls(
+                        bytes(sender_self._audio_buffer[:sender_self._audio_chunk_size]),
+                        sample_rate=sender_self._sample_rate,
+                        num_channels=frame.num_channels,
+                    )
+                    chunk.transport_destination = sender_self._destination
+                    await sender_self._audio_queue.put(chunk)
+                    sender_self._audio_buffer = sender_self._audio_buffer[sender_self._audio_chunk_size:]
+            
+            sender.handle_audio_frame = immediate_first_chunk_handle_audio_frame.__get__(
+                sender, type(sender)
+            )
+            logger.debug(f"✅ Patched media sender for immediate first chunk sending")
+    
+    transport.output().set_transport_ready = patched_set_transport_ready.__get__(
+        transport.output(), type(transport.output())
+    )
+    
+    # Reset first_chunk_sent flag for each new TTS response
+    from pipecat.frames.frames import TTSStartedFrame
+    original_process_frame = transport.output().process_frame
+    async def patched_process_frame(self, frame, direction):
+        # Reset flag when new TTS session starts
+        if isinstance(frame, TTSStartedFrame):
+            for sender in self._media_senders.values():
+                if hasattr(sender, '_first_chunk_sent'):
+                    sender._first_chunk_sent = False
+                    logger.debug(f"🔄 Reset first_chunk_sent flag for new TTS response")
+        
+        # Call original process_frame
+        await original_process_frame(frame, direction)
+    
+    transport.output().process_frame = patched_process_frame.__get__(
+        transport.output(), type(transport.output())
+    )
     
     # Create audio buffer processor
     audiobuffer = AudioBufferProcessor()

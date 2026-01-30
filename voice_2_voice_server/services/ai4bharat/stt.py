@@ -64,7 +64,7 @@ class IndicConformerRESTSTTService(STTService):
         
         self._stopping_start_time: Optional[float] = None
         self._stopping_triggered = False
-        self._STOPPING_DURATION_MS = 50
+        self._STOPPING_DURATION_MS = 10
         
         self._resampler = create_stream_resampler()
         
