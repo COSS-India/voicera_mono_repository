@@ -6,12 +6,4 @@
  */
 
 // For server-side API routes - can use Docker service name
-export const SERVER_API_URL = 
-  process.env.API_URL || 
-  process.env.NEXT_PUBLIC_API_URL || 
-  "http://localhost:8000"
-
-// For client-side code - must use public URL
-export const CLIENT_API_URL = 
-  process.env.NEXT_PUBLIC_API_URL || 
-  "http://localhost:8000"
+export const SERVER_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
