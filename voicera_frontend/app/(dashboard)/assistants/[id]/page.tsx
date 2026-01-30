@@ -319,9 +319,9 @@ export default function AgentDetailPage() {
     return []
   }, [language, ttsProvider])
 
-  // Get available TTS descriptions for AI4Bharat provider
+  // Get available TTS descriptions for AI4Bharat and Bhashini providers
   const availableTTSDescriptions = useMemo(() => {
-    if (ttsProvider !== "ai4bharat") return []
+    if (ttsProvider !== "ai4bharat" && ttsProvider !== "bhashini") return []
     return descriptionsData.map((item) => item.description)
   }, [ttsProvider])
 
@@ -467,8 +467,8 @@ export default function AgentDetailPage() {
             ? (ttsArgs.voice_id || ttsModelConfig?.voice_id || "")
             : (ttsModelConfig?.speaker || "")
           setTtsVoice(voiceValue)
-          // Load TTS description for AI4Bharat
-          if (ttsProviderId === "ai4bharat") {
+          // Load TTS description for AI4Bharat and Bhashini
+          if (ttsProviderId === "ai4bharat" || ttsProviderId === "bhashini") {
             setTtsDescription(ttsModelConfig?.description || "")
           } else {
             setTtsDescription("")
@@ -636,7 +636,7 @@ export default function AgentDetailPage() {
             ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsModel && { model: ttsModel }),
             speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp") ? "" : (ttsVoice || ""),
             speed: speed,
-            ...(agent.agent_config?.tts_model?.description && { description: agent.agent_config.tts_model.description }),
+            ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && ttsDescription && { description: ttsDescription }),
             ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
             ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
             ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
@@ -1213,8 +1213,8 @@ export default function AgentDetailPage() {
                                     </SelectContent>
                                   </Select>
 
-                                  {/* TTS Description for AI4Bharat */}
-                                  {ttsProvider === "ai4bharat" && (
+                                  {/* TTS Description for AI4Bharat and Bhashini */}
+                                  {(ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && (
                                     <div className="mt-3">
                                       <label className="text-xs font-semibold text-slate-500 mb-2 block">
                                         Voice Description

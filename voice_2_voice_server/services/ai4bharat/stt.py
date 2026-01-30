@@ -50,13 +50,6 @@ class IndicConformerRESTSTTService(STTService):
         if not server_url:
             raise ValueError("INDIC_STT_SERVER_URL environment variable not set")
         
-        if server_url.startswith("ws://"):
-            server_url = server_url.replace("ws://", "http://")
-        elif server_url.startswith("wss://"):
-            server_url = server_url.replace("wss://", "https://")
-        elif not server_url.startswith("http://") and not server_url.startswith("https://"):
-            server_url = "http://" + server_url
-        
         self._server_url = server_url.rstrip('/') + "/transcribe"
         self._language_id = language_id
         self._sample_rate = sample_rate
@@ -71,7 +64,7 @@ class IndicConformerRESTSTTService(STTService):
         
         self._stopping_start_time: Optional[float] = None
         self._stopping_triggered = False
-        self._STOPPING_DURATION_MS = 50
+        self._STOPPING_DURATION_MS = 10
         
         self._resampler = create_stream_resampler()
         
