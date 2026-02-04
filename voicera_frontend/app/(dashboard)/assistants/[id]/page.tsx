@@ -117,14 +117,23 @@ const llmProviders = {
   openai: {
     name: "OpenAI",
     models: [
+      // GPT-5 series (latest)
+      "gpt-5.2",
+      "gpt-5.1",
+      "gpt-5",
+      "gpt-5-mini",
+      "gpt-5-nano",
+      // GPT-4.1 series
+      "gpt-4.1",
+      "gpt-4.1-mini",
+      "gpt-4.1-nano",
+      // GPT-4o series
       "gpt-4o",
       "gpt-4o-mini",
+      // Legacy
       "gpt-4-turbo",
       "gpt-4",
       "gpt-3.5-turbo",
-      "o1",
-      "o1-mini",
-      "o1-preview",
     ],
   },
   kenpath: {
@@ -143,10 +152,13 @@ const llmProviders = {
   google: {
     name: "Google",
     models: [
-      "gemini-2.0-flash",
-      "gemini-2.0-flash-lite",
-      "gemini-1.5-pro",
-      "gemini-1.5-flash",
+      // Gemini 3 series (latest - preview)
+      "gemini-3.0-pro",
+      "gemini-3.0-flash",
+      // Gemini 2.5 series (GA)
+      "gemini-2.5-pro",
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
     ],
   },
   groq: {

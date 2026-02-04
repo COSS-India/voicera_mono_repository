@@ -98,9 +98,12 @@ const providers: Provider[] = [
     capabilities: ["llm"],
     description: "Ultra-fast LLM inference",
   },
-  
-  
-  
+  {
+    id: "google",
+    name: "Google",
+    capabilities: ["llm"],
+    description: "Gemini family of multimodal AI models",
+  },
 ]
 
 // Capability configuration
