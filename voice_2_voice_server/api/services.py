@@ -105,7 +105,9 @@ def create_stt_service(
     provider = provider_map.get(provider.lower(), provider)
 
     if provider == "Deepgram":
-        model = args.get("model")
+        # Model is at top level for Deepgram (not in args)
+        model = stt_config.get("model") or args.get("model") or "nova-2"
+        logger.info(f"Deepgram STT: model={model}, language={language}")
         return DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             sample_rate=sample_rate,
@@ -164,7 +166,9 @@ def create_stt_service(
         )
 
     elif provider == "Sarvam":
-        model = args.get("model")
+        # Model is at top level for Sarvam (not in args)
+        model = stt_config.get("model") or args.get("model") or "saarika:v2"
+        logger.info(f"Sarvam STT: model={model}, language={language}")
         return SarvamSTTService(
             api_key=os.getenv("SARVAM_API_KEY"),
             language=STT_LANGUAGE_MAP[provider][language],
@@ -275,11 +279,15 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
         )
 
     elif provider == "Sarvam":
-        model = args.get("model")
-        speaker = args.get("speaker") or tts_config.get("speaker")
-        pitch = args.get("pitch")
-        pace = args.get("pace")
-        loudness = args.get("loudness")
+        # Sarvam config is at top level (not in args)
+        model = tts_config.get("model") or args.get("model") or "bulbul:v2"
+        speaker = tts_config.get("speaker") or args.get("speaker")
+        pitch = tts_config.get("pitch") or args.get("pitch")
+        pace = tts_config.get("pace") or args.get("pace") or tts_config.get("speed")
+        loudness = tts_config.get("loudness") or args.get("loudness")
+        logger.info(
+            f"Sarvam TTS: model={model}, speaker={speaker}, pitch={pitch}, pace={pace}, loudness={loudness}"
+        )
         return SarvamTTSService(
             api_key=os.getenv("SARVAM_API_KEY"),
             target_language_code=TTS_LANGUAGE_MAP[provider][language],
