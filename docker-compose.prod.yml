@@ -72,6 +72,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - VOICE_SERVER_URL=http://voice_server:7860
     networks:
       - web
     deploy:
