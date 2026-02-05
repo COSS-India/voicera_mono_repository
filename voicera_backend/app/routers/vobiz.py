@@ -61,7 +61,7 @@ async def get_vobiz_numbers(
         )
     
     # Construct the Vobiz API URL - use VOBIZ_ACCOUNT_ID in the path
-    url = f"{settings.VOBIZ_API_BASE_URL}/account/{settings.VOBIZ_ACCOUNT_ID}/numbers"
+    url = f"{settings.VOBIZ_API_BASE_URL}/account/{settings.VOBIZ_AUTH_ID}/numbers"
     
     # Prepare headers
     headers = {

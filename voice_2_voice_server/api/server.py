@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
 
-from .bot import bot
+from .bot import bot, ubona_bot
 from .backend_utils import (
     create_meeting_in_backend,
     update_meeting_end_time,
@@ -329,6 +329,96 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
     finally:
         logger.info(f"🔌 WebSocket closed: call_sid={call_sid}")
 
+# Ubona: hardcoded to Mahavistaar agent; answer URL is https://vobiz.johnaic.com/ubona
+UBONA_AGENT_TYPE = "Mahavistaar"
+UBONA_STREAM_PATH_ID = "mahavistaar"
+
+
+def _fetch_mahavistaar_config() -> Optional[dict]:
+    """Fetch Mahavistaar agent config from backend (inline, no backend_utils)."""
+    backend_url = os.environ.get("VOICERA_BACKEND_URL", "http://localhost:8000")
+    api_key = os.environ.get("INTERNAL_API_KEY")
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["X-API-Key"] = api_key
+    endpoint = f"{backend_url}/api/v1/agents/config/{UBONA_AGENT_TYPE}"
+    try:
+        response = requests.get(endpoint, headers=headers, timeout=10)
+        response.raise_for_status()
+        agent_data = response.json()
+        agent_config = agent_data.get("agent_config", {})
+        if "org_id" in agent_data:
+            agent_config["org_id"] = agent_data["org_id"]
+        if "agent_type" in agent_data:
+            agent_config["agent_type"] = agent_data["agent_type"]
+        if "greeting_message" in agent_data:
+            agent_config["greeting_message"] = agent_data["greeting_message"]
+        return agent_config
+    except Exception as e:
+        logger.error(f"Failed to fetch Mahavistaar config: {e}")
+        return None
+
+
+@app.api_route("/ubona", methods=["GET", "POST"])
+async def ubona_answer(request: Request):
+    """Ubona answer webhook - returns XML with WebSocket URL. Hardcoded to Mahavistaar."""
+    form_data = dict(await request.form())
+    event = form_data.get("Event", "unknown")
+
+    if event == "StartApp":
+        await log_meeting(UBONA_STREAM_PATH_ID, form_data)
+        ws_prefix = os.environ.get("JOHNAIC_WEBSOCKET_URL", "https://vobiz.johnaic.com")
+        xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+        {ws_prefix}/ubona/stream/{UBONA_STREAM_PATH_ID}
+    </Stream>
+</Response>'''
+        return Response(content=xml, media_type="application/xml")
+    elif event == "Hangup":
+        await log_meeting(UBONA_STREAM_PATH_ID, form_data)
+
+    return Response(status_code=200)
+
+
+@app.websocket("/ubona/stream/{agent_id}")
+async def ubona_stream(websocket: WebSocket, agent_id: str):
+    """Ubona WebSocket endpoint for audio streaming. Hardcoded to Mahavistaar."""
+    await websocket.accept()
+    logger.info(f"🔌 Ubona WS connected: agent={agent_id}")
+
+    call_id = stream_id = None
+
+    try:
+        agent_config = _fetch_mahavistaar_config()
+        if not agent_config:
+            logger.error(f"❌ No config for {UBONA_AGENT_TYPE}")
+            return
+        agent_type = agent_config.get("agent_type", UBONA_AGENT_TYPE)
+
+        # Handle connected event (optional)
+        msg = json.loads(await websocket.receive_text())
+        if msg.get("event") == "connected":
+            msg = json.loads(await websocket.receive_text())
+
+        if msg.get("event") != "start":
+            logger.warning(f"⚠️ Expected 'start', got: {msg.get('event')}")
+            return
+
+        # Spec: callId/streamId at top level or under start (Ubona Media Stream v1.0.0)
+        start_obj = msg.get("start", {})
+        call_id = msg.get("callId") or start_obj.get("callId", "unknown")
+        stream_id = msg.get("streamId") or start_obj.get("streamId", "unknown")
+
+        logger.info(f"📞 Ubona call: call_id={call_id}, stream_id={stream_id}")
+
+        await ubona_bot(websocket, stream_id, call_id, agent_type, agent_config)
+
+    except Exception as e:
+        logger.error(f"❌ Ubona WS error: {e}")
+        logger.debug(traceback.format_exc())
+    finally:
+        logger.info(f"🔌 Ubona WS closed: call_id={call_id}")
 
 def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info"):
     """Run the server with optimized settings for low-latency voice applications.

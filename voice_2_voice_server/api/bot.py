@@ -28,6 +28,7 @@ from pipecat.transports.websocket.fastapi import (
 )
 from storage.minio_client import MinIOStorage
 from serializer.vobiz_serializer import VobizFrameSerializer
+from serializer.ubona_serializer import UbonaFrameSerializer
 from .services import (
     create_llm_service,
     create_stt_service,
@@ -370,3 +371,106 @@ async def bot(
             storage=storage,
             call_start_time=call_start_time
         )
+
+async def ubona_bot(
+    websocket_client,
+    stream_id: str,
+    call_id: str,
+    agent_type: str,
+    agent_config: dict
+) -> None:
+    """Ubona bot entry point - sets up transport and runs the pipeline."""
+    sample_rate = 8000  # Ubona only supports 8kHz PCMU
+    session_timeout = agent_config.get("session_timeout_minutes", 10) * 60
+
+    call_start_time = time.monotonic()
+    storage = MinIOStorage.from_env()
+
+    serializer = UbonaFrameSerializer(
+        stream_id=stream_id,
+        call_id=call_id,
+        params=UbonaFrameSerializer.InputParams(sample_rate=sample_rate),
+    )
+
+    vad_analyzer = SileroVADAnalyzer(
+        sample_rate=sample_rate,
+        params=VADParams(stop_secs=0.2, min_volume=0.5, confidence=0.4, start_secs=0.1),
+    )
+    vad_analyzer._smoothing_factor = 0.1
+
+    import pipecat.transports.base_input
+    pipecat.transports.base_input.AUDIO_INPUT_TIMEOUT_SECS = 0.1
+    import pipecat.transports.base_output
+    pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
+
+    # Wrapper to handle ping/pong inline
+    class PingPongWrapper:
+        def __init__(self, ws):
+            self._ws = ws
+        async def receive_text(self):
+            while True:
+                data = await self._ws.receive_text()
+                try:
+                    msg = json.loads(data)
+                    if msg.get("event") == "ping":
+                        # Spec: pong must contain the same ts as ping for round-trip
+                        ping_ts = msg.get("ts", int(time.time() * 1000))
+                        await self._ws.send_text(json.dumps({"event": "pong", "ts": ping_ts}))
+                        continue
+                except:
+                    pass
+                return data
+        def __getattr__(self, name):
+            return getattr(self._ws, name)
+
+    transport = FastAPIWebsocketTransport(
+        websocket=PingPongWrapper(websocket_client),
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            vad_analyzer=vad_analyzer,
+            serializer=serializer,
+            audio_in_passthrough=True,
+            session_timeout=session_timeout,
+            audio_out_10ms_chunks=2,
+        ),
+    )
+
+    patch_immediate_first_chunk(transport)
+
+    audiobuffer = AudioBufferProcessor()
+    transcript = TranscriptProcessor()
+    call_data = {"audio_chunks": [], "audio_sample_rate": None, "audio_num_channels": None, "transcript_lines": []}
+
+    @audiobuffer.event_handler("on_audio_data")
+    async def on_audio_data(buffer, audio, sample_rate, num_channels):
+        call_data["audio_chunks"].append(audio)
+        if call_data["audio_sample_rate"] is None:
+            call_data["audio_sample_rate"], call_data["audio_num_channels"] = sample_rate, num_channels
+
+    @transcript.event_handler("on_transcript_update")
+    async def on_transcript_update(processor, frame):
+        for message in frame.messages:
+            ts = f"[{message.timestamp}] " if message.timestamp else ""
+            call_data["transcript_lines"].append(f"{ts}{message.role}: {message.content}")
+
+    try:
+        await run_bot(transport, agent_config, audiobuffer, transcript, vad_analyzer=vad_analyzer)
+    finally:
+        logger.info(f"Saving call data for {call_id}...")
+        if call_data["audio_chunks"] and call_data["audio_sample_rate"]:
+            try:
+                await storage.save_recording_from_chunks(call_id, call_data["audio_chunks"], call_data["audio_sample_rate"], call_data["audio_num_channels"])
+                logger.info(f"Saved {len(call_data['audio_chunks'])} audio chunks")
+            except Exception as e:
+                logger.error(f"Failed to save audio: {e}")
+
+        if call_data["transcript_lines"]:
+            try:
+                await storage.save_transcript_from_lines(call_id, call_data["transcript_lines"])
+                logger.info(f"Saved {len(call_data['transcript_lines'])} transcript lines")
+            except Exception as e:
+                logger.error(f"Failed to save transcript: {e}")
+
+        await submit_call_recording(call_sid=call_id, agent_type=agent_type, agent_config=agent_config, storage=storage, call_start_time=call_start_time)
