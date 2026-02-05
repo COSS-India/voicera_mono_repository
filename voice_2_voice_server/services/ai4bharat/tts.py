@@ -37,7 +37,7 @@ class IndicParlerRESTTTSService(TTSService):
         self._description = description
         self._play_steps_in_s = play_steps_in_s
         self._session = None
-
+        
     async def start(self, frame: Frame):
         logger.info("Starting IndicParler TTS service")
         # Optimization: Use TCPConnector with keepalive to ensure connection reuse
@@ -87,6 +87,7 @@ class IndicParlerRESTTTSService(TTSService):
                     return
 
                 buffer = ""
+                counter = 0
                 async for chunk in response.content.iter_any():
                     if not chunk:
                         continue
@@ -112,12 +113,13 @@ class IndicParlerRESTTTSService(TTSService):
 
                         if "audio" in data:
                             audio_bytes = base64.b64decode(data["audio"])
-                            logger.info(f"Audio chunk sent to Telephony: {len(audio_bytes)} bytes")
+                            logger.info(f"{counter} Audio chunk sent to Telephony: {len(audio_bytes)} bytes")
                             yield TTSAudioRawFrame(
                                 audio=audio_bytes,
                                 sample_rate=data.get("sample_rate", self.sample_rate),
                                 num_channels=1,
                             )
+                            counter += 1
 
             yield TTSStoppedFrame()
 
