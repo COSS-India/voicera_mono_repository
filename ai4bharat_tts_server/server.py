@@ -22,7 +22,7 @@ class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000)
     description: str = Field(default="A clear, natural voice with good audio quality.")
     speaker: str = Field(default="Divya")
-    play_steps_in_s: float = Field(default=0.3, gt=0, le=2.0)
+    play_steps_in_s: float = Field(default=0.15, gt=0, le=2.0)
 
 
 class ModelState:

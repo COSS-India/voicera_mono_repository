@@ -248,7 +248,8 @@ async def bot(
     original_send = websocket_client.send_text
     async def timed_send(data):
         if "playAudio" in str(data)[:50]:
-            logger.info(f"📤 WS SEND: {len(data)} bytes at {time.perf_counter()*1000:.0f}ms")
+            #logger.info(f"📤 WS SEND: {len(data)} bytes at {time.perf_counter()*1000:.0f}ms")
+            pass
         return await original_send(data)
     websocket_client.send_text = timed_send
     
