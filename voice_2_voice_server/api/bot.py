@@ -277,12 +277,19 @@ async def run_bot(
         if stop_strategies:
             user_turn_strategies_kwargs["stop"] = stop_strategies
 
+        # user_turn_stop_timeout: fallback timeout when neither Smart Turn nor
+        # transcription triggers a turn-end. Default is 5.0s which is too slow
+        # for telephony — short utterances like "Yes" may not give Smart Turn
+        # enough audio to analyze, so this timeout is the only thing that fires.
+        user_turn_stop_timeout = float(os.getenv("USER_TURN_STOP_TIMEOUT", "1.5"))
+
         # Build the context aggregator with VAD + Smart Turn + strategies
         context_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
                 vad_analyzer=vad_analyzer,
                 user_turn_strategies=UserTurnStrategies(**user_turn_strategies_kwargs),
+                user_turn_stop_timeout=user_turn_stop_timeout,
             ),
         )
 
