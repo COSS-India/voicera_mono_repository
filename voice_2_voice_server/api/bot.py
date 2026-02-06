@@ -36,10 +36,8 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 
 # Smart Turn v3 - ML-based end-of-turn detection
-from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
-    LocalSmartTurnAnalyzerV3,
-    SmartTurnParams,
-)
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 
 # User Turn Strategies (replaces PipelineParams.allow_interruptions)
 from pipecat.turns.user_start import VADUserTurnStartStrategy
