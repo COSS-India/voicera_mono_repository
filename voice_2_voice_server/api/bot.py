@@ -144,7 +144,7 @@ def patch_immediate_first_chunk(transport):
             logger.info(
                 f"🚀 Sending first chunk immediately: {len(frame.audio)} bytes (bypassing queue)"
             )
-        await _orig_write(frame)
+        return await _orig_write(frame)
 
     output.write_audio_frame = _write_immediate
 
