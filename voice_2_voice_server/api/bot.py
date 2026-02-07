@@ -83,33 +83,13 @@ from .call_recording_utils import submit_call_recording
 load_dotenv(override=False)
 
 
-# Monkey-patch SOXRStreamAudioResampler to reduce latency from ~200ms to near-zero
-# by switching from "VHQ" (Very High Quality) to "Quick" quality.
-try:
-    from pipecat.audio.resamplers.soxr_stream_resampler import SOXRStreamAudioResampler
-    import soxr
-    import time
-
-    def patched_initialize(self, in_rate: float, out_rate: float):
-        self._in_rate = in_rate
-        self._out_rate = out_rate
-        self._last_resample_time = time.time()
-        # "QQ" = Quick Quality (Cubic/Linear), minimal buffer
-        # "VHQ" = Very High Quality (Sinc), large FIR filter buffer
-        self._soxr_stream = soxr.ResampleStream(
-            in_rate=in_rate,
-            out_rate=out_rate,
-            num_channels=1,
-            quality="QQ",
-            dtype="int16",
-        )
-
-    SOXRStreamAudioResampler._initialize = patched_initialize
-    logger.info(
-        "Monkey-patched SOXRStreamAudioResampler for low latency (Quick quality)"
-    )
-except Exception as e:
-    logger.warning(f"Failed to patch SOXRStreamAudioResampler: {e}")
+# NOTE: SOXR resampler monkey-patch REMOVED.
+# Previously patched from VHQ (Very High Quality) to QQ (Quick) to reduce latency.
+# With Smart Turn v3 handling end-of-turn detection, the ~200ms resampler latency
+# is negligible compared to Smart Turn inference (~100ms) and network latency (50-200ms).
+# VHQ uses a proper sinc anti-aliasing filter — QQ's cubic interpolation was causing
+# audible "shh" artifacts (aliasing) especially on sibilant sounds.
+# Using Pipecat's default VHQ for clean audio quality.
 
 
 def _get_sample_rate() -> int:
@@ -231,9 +211,9 @@ async def run_bot(
         # Read Smart Turn config from env vars (tuneable without rebuild)
         # stop_secs: silence fallback — if ML model keeps saying "incomplete",
         # force COMPLETE after this many seconds of silence. Lower = more responsive
-        # but may cut off mid-thought. Default 1.5s is good for telephony.
+        # but may cut off mid-thought. Default 1.0s is good for telephony.
         # (Pipecat default is 3.0 but that's too long for phone calls with background noise)
-        smart_turn_stop_secs = float(os.getenv("SMART_TURN_STOP_SECS", "1.5"))
+        smart_turn_stop_secs = float(os.getenv("SMART_TURN_STOP_SECS", "1.0"))
         smart_turn_pre_speech_ms = float(os.getenv("SMART_TURN_PRE_SPEECH_MS", "500.0"))
         smart_turn_max_duration = float(
             os.getenv("SMART_TURN_MAX_DURATION_SECS", "8.0")
