@@ -175,18 +175,23 @@ async def run_bot(
                 None  # Falls back to default TranscriptionUserTurnStopStrategy
             )
 
-        # Build start strategies — match Pipecat defaults but with configurable interruptions
-        # VADUserTurnStartStrategy: detects speech via VAD
+        # Build start strategies — VAD for fast turn detection, transcription for interruptions
+        # VADUserTurnStartStrategy: detects speech start via VAD (fast, ~50ms)
+        #   enable_interruptions=False: VAD alone cannot interrupt the bot.
+        #   This prevents background conversations/noise from killing bot responses.
         # TranscriptionUserTurnStartStrategy: detects speech via STT transcription
-        # Both are needed — VAD catches speech start quickly, transcription is the backup
+        #   enable_interruptions=True: only actual transcribed speech can interrupt.
+        #   Background noise rarely produces coherent transcription, so this is robust.
         enable_interruptions = os.getenv("ENABLE_INTERRUPTIONS", "true").lower() in (
             "true",
             "1",
             "yes",
         )
         start_strategies = [
-            VADUserTurnStartStrategy(enable_interruptions=enable_interruptions),
-            TranscriptionUserTurnStartStrategy(),
+            VADUserTurnStartStrategy(enable_interruptions=False),
+            TranscriptionUserTurnStartStrategy(
+                enable_interruptions=enable_interruptions
+            ),
         ]
 
         # Build user turn strategies
