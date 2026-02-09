@@ -2,3 +2,13 @@ __pycache__/
 *.pyc
 *.pyo
 files/
+
+# Environment files (contain secrets)
+.env
+.env.production
+.env.local
+*.env
+
+# But allow templates
+!.env.example
+!.env.production.example

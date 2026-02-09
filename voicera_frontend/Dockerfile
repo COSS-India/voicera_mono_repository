@@ -19,8 +19,16 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build Next.js (using Turbopack, the default)
-RUN --mount=type=secret,id=frontend_env,target=/app/.env.local npm run build
+# Build args for Next.js (baked in at build time)
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_JOHNAIC_SERVER_URL=http://localhost:7860
+
+# Set as ENV so Next.js can access during build
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_JOHNAIC_SERVER_URL=$NEXT_PUBLIC_JOHNAIC_SERVER_URL
+
+# Build Next.js
+RUN npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner

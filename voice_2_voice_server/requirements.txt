@@ -5,10 +5,15 @@ uvicorn==0.40.0
 pydantic==2.12.0
 
 # Pipecat AI with all required service extras
-pipecat-ai[silero,websocket,google,cartesia,openai,deepgram,sarvam]==0.0.98
+# Upgraded from 0.0.98 to 0.0.101 for:
+#   - Smart Turn v3 (ML-based end-of-turn detection)
+#   - User Turn Strategies (configurable interruption/turn-taking)
+#   - LLMContextAggregatorPair (universal context aggregator)
+#   - Bug fixes for audio timing, transport, and interruption handling
+pipecat-ai[silero,websocket,google,cartesia,openai,deepgram,sarvam,local-smart-turn-v3]==0.0.101
 
 # ML/Audio Processing
-numpy>=1.26.4,<2.0.0
+numpy>=1.26.4,<3
 Pillow>=11.1.0,<12
 
 # Protocol/Serialization
@@ -28,11 +33,12 @@ pyyaml==6.0.3
 minio==7.2.20
 boto3==1.42.21
 
-# External Service SDKs (pulled by pipecat extras, but pinned for reproducibility)
-deepgram-sdk==4.7.0
-google-cloud-texttospeech==2.33.0
-google-cloud-speech==2.35.0
-cartesia==2.0.17
+# External Service SDKs (aligned with pipecat-ai 0.0.101 constraints)
+deepgram-sdk~=4.7.0
+google-cloud-texttospeech>=2.33.0,<3
+google-cloud-speech>=2.35.0,<3
+google-genai>=1.57.0,<2
+cartesia~=2.0.3
 sarvamai==0.1.21
 
 # WebSocket for AI4Bharat custom services
@@ -40,4 +46,3 @@ websockets==15.0.1
 
 # Socket.IO for Bhashini
 python-socketio[asyncio_client]==5.11.0
-aiohttp==3.13.2

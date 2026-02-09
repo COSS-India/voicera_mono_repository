@@ -1,0 +1,127 @@
+services:
+  voicera-db:
+    image: mongo:latest
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE:-voicera}
+    volumes:
+      - voicera_mongodb_data:/data/db
+    networks:
+      - web
+    command: mongod --bind_ip_all
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  voicera-storage:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - voicera_minio_data:/data
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+  backend:
+    image: devopsfl/voicera-backend:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      - MONGODB_HOST=voicera-db
+      - MONGODB_PORT=27017
+      - MONGODB_USER=${MONGODB_USER:-admin}
+      - MONGODB_PASSWORD=${MONGODB_PASSWORD}
+      - MONGODB_DATABASE=${MONGODB_DATABASE:-voicera}
+      - MONGODB_AUTH_SOURCE=admin
+      - SECRET_KEY=${SECRET_KEY}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - MINIO_ENDPOINT=voicera-storage:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - VOBIZ_API_BASE_URL=https://api.vobiz.ai/api/v1
+      - VOBIZ_ACCOUNT_ID=${VOBIZ_AUTH_ID}
+      - VOBIZ_AUTH_ID=${VOBIZ_AUTH_ID}
+      - VOBIZ_AUTH_TOKEN=${VOBIZ_AUTH_TOKEN}
+      - FRONTEND_URL=https://${DOMAIN}
+      - DEBUG=False
+    networks:
+      - web
+    depends_on:
+      - voicera-db
+      - voicera-storage
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.voicera-backend.rule=Host(`api.${DOMAIN}`)"
+        - "traefik.http.routers.voicera-backend.entrypoints=websecure"
+        - "traefik.http.routers.voicera-backend.tls=true"
+        - "traefik.http.routers.voicera-backend.tls.certresolver=suryaumapathyresolver"
+        - "traefik.http.routers.voicera-backend.service=voicera-backend"
+        - "traefik.http.services.voicera-backend.loadbalancer.server.port=8000"
+  frontend:
+    image: devopsfl/voicera-frontend:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - VOICE_SERVER_URL=http://voice_server:7860
+    networks:
+      - web
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.voicera-frontend.rule=Host(`${DOMAIN}`)"
+        - "traefik.http.routers.voicera-frontend.entrypoints=websecure"
+        - "traefik.http.routers.voicera-frontend.tls=true"
+        - "traefik.http.routers.voicera-frontend.tls.certresolver=suryaumapathyresolver"
+        - "traefik.http.routers.voicera-frontend.service=voicera-frontend"
+        - "traefik.http.services.voicera-frontend.loadbalancer.server.port=3000"
+  voice_server:
+    image: devopsfl/voicera-voice:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      - VOBIZ_AUTH_ID=${VOBIZ_AUTH_ID}
+      - VOBIZ_AUTH_TOKEN=${VOBIZ_AUTH_TOKEN}
+      - VOBIZ_API_BASE=https://api.vobiz.ai/api/v1
+      - VOBIZ_CALLER_ID=${VOBIZ_CALLER_ID}
+      - JOHNAIC_SERVER_URL=https://voice.${DOMAIN}
+      - JOHNAIC_WEBSOCKET_URL=wss://voice.${DOMAIN}
+      - VOICERA_BACKEND_URL=http://backend:8000
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - MINIO_ENDPOINT=voicera-storage:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_SECURE=false
+      # AI Service API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - CARTESIA_API_KEY=${CARTESIA_API_KEY:-}
+      - SARVAM_API_KEY=${SARVAM_API_KEY:-}
+      - BHASHINI_API_KEY=${BHASHINI_API_KEY:-}
+    networks:
+      - web
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.voicera-voice.rule=Host(`voice.${DOMAIN}`)"
+        - "traefik.http.routers.voicera-voice.entrypoints=websecure"
+        - "traefik.http.routers.voicera-voice.tls=true"
+        - "traefik.http.routers.voicera-voice.tls.certresolver=suryaumapathyresolver"
+        - "traefik.http.routers.voicera-voice.service=voicera-voice"
+        - "traefik.http.services.voicera-voice.loadbalancer.server.port=7860"
+networks:
+  web:
+    external: true
+volumes:
+  voicera_mongodb_data:
+    driver: local
+  voicera_minio_data:
+    driver: local
