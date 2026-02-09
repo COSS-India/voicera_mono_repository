@@ -17,8 +17,11 @@ from pipecat.services.google.llm import GoogleLLMService
 from pipecat.services.openai.stt import OpenAISTTService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.services.sarvam.stt import SarvamSTTService
-from pipecat.services.sarvam.tts import SarvamTTSService
-from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
+from pipecat.services.sarvam.tts import SarvamTTSService, Language
+
+# NOTE: LLMUserAggregatorParams is no longer needed here.
+# In Pipecat 0.0.101, user aggregator params (aggregation_timeout, etc.)
+# are configured directly in bot.py via LLMContextAggregatorPair.
 
 # Local services
 from services.kenpath_llm.llm import KenpathLLM
@@ -35,6 +38,35 @@ class ServiceCreationError(Exception):
     """Raised when a service cannot be created."""
 
     pass
+
+
+# Map string language codes (from our config) to Pipecat Language enum
+_SARVAM_LANGUAGE_ENUM_MAP = {
+    "hi-IN": Language.HI_IN,
+    "en-IN": Language.EN_IN,
+    "en-US": Language.EN_US,
+    "bn-IN": Language.BN_IN,
+    "ta-IN": Language.TA_IN,
+    "te-IN": Language.TE_IN,
+    "gu-IN": Language.GU_IN,
+    "kn-IN": Language.KN_IN,
+    "ml-IN": Language.ML_IN,
+    "mr-IN": Language.MR_IN,
+    "pa-IN": Language.PA_IN,
+    "od-IN": Language.OR_IN,
+    "as-IN": Language.AS_IN,
+}
+
+
+def _get_sarvam_language(language_code: str) -> Language:
+    """Convert a string language code to Pipecat Language enum for Sarvam services."""
+    lang = _SARVAM_LANGUAGE_ENUM_MAP.get(language_code)
+    if lang is None:
+        logger.warning(
+            f"Unknown Sarvam language code: {language_code}, defaulting to en-IN"
+        )
+        return Language.EN_IN
+    return lang
 
 
 def create_llm_service(llm_config: dict) -> Any:
@@ -63,42 +95,22 @@ def create_llm_service(llm_config: dict) -> Any:
     provider = provider_map.get(provider.lower(), provider) if provider else provider
 
     if provider == "OpenAI":
-        # Extract user aggregator params from config, with defaults
-        user_aggregator_params = LLMUserAggregatorParams(
-            aggregation_timeout=args.get("aggregation_timeout", 0.05)
-        )
-
         resolved_model = get_llm_model(provider, model)
         logger.info(f"OpenAI LLM: model={resolved_model}")
 
-        service = OpenAILLMService(
+        return OpenAILLMService(
             api_key=os.getenv("OPENAI_API_KEY"),
             model=resolved_model,
         )
 
-        # Store user aggregator params on the service instance for later use
-        service._user_aggregator_params = user_aggregator_params
-
-        return service
-
     elif provider == "Gemini":
-        # Google Gemini LLM
         resolved_model = get_llm_model(provider, model)
         logger.info(f"Gemini LLM: model={resolved_model}")
 
-        user_aggregator_params = LLMUserAggregatorParams(
-            aggregation_timeout=args.get("aggregation_timeout", 0.05)
-        )
-
-        service = GoogleLLMService(
+        return GoogleLLMService(
             api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
             model=resolved_model,
         )
-
-        # Store user aggregator params on the service instance for later use
-        service._user_aggregator_params = user_aggregator_params
-
-        return service
 
     elif provider == "Kenpath":
         return KenpathLLM()
@@ -201,13 +213,17 @@ def create_stt_service(
 
     elif provider == "Sarvam":
         # Model is at top level for Sarvam (not in args)
-        model = stt_config.get("model") or args.get("model") or "saarika:v2"
-        logger.info(f"Sarvam STT: model={model}, language={language}")
+        model = stt_config.get("model") or args.get("model") or "saarika:v2.5"
+        lang_code = STT_LANGUAGE_MAP[provider][language]
+        sarvam_lang = _get_sarvam_language(lang_code)
+        logger.info(f"Sarvam STT: model={model}, language={language} ({lang_code})")
         return SarvamSTTService(
             api_key=os.getenv("SARVAM_API_KEY"),
-            language=STT_LANGUAGE_MAP[provider][language],
             model=model,
             sample_rate=sample_rate,
+            params=SarvamSTTService.InputParams(
+                language=sarvam_lang,
+            ),
         )
 
     else:
@@ -328,21 +344,45 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
     elif provider == "Sarvam":
         # Sarvam config is at top level (not in args)
         model = tts_config.get("model") or args.get("model") or "bulbul:v2"
-        speaker = tts_config.get("speaker") or args.get("speaker")
-        pitch = tts_config.get("pitch") or args.get("pitch")
-        pace = tts_config.get("pace") or args.get("pace") or tts_config.get("speed")
-        loudness = tts_config.get("loudness") or args.get("loudness")
-        logger.info(
-            f"Sarvam TTS: model={model}, speaker={speaker}, pitch={pitch}, pace={pace}, loudness={loudness}"
-        )
+        voice_id = tts_config.get("speaker") or args.get("speaker") or "anushka"
+        lang_code = TTS_LANGUAGE_MAP[provider][language]
+        sarvam_lang = _get_sarvam_language(lang_code)
+
+        # Build InputParams based on model version:
+        # - bulbul:v2: supports pitch, pace, loudness
+        # - bulbul:v3 / bulbul:v3-beta: supports temperature (no pace/loudness)
+        if model in ("bulbul:v3", "bulbul:v3-beta"):
+            temperature = (
+                tts_config.get("temperature") or args.get("temperature") or 0.6
+            )
+            logger.info(
+                f"Sarvam TTS: model={model}, voice={voice_id}, "
+                f"language={lang_code}, temperature={temperature}"
+            )
+            params = SarvamTTSService.InputParams(
+                language=sarvam_lang,
+                temperature=float(temperature),
+            )
+        else:
+            pitch = tts_config.get("pitch") or args.get("pitch")
+            pace = tts_config.get("pace") or args.get("pace") or tts_config.get("speed")
+            loudness = tts_config.get("loudness") or args.get("loudness")
+            logger.info(
+                f"Sarvam TTS: model={model}, voice={voice_id}, "
+                f"language={lang_code}, pitch={pitch}, pace={pace}, loudness={loudness}"
+            )
+            params = SarvamTTSService.InputParams(
+                language=sarvam_lang,
+                pitch=float(pitch) if pitch else 0.0,
+                pace=float(pace) if pace else 1.0,
+                loudness=float(loudness) if loudness else 1.0,
+            )
+
         return SarvamTTSService(
             api_key=os.getenv("SARVAM_API_KEY"),
-            target_language_code=TTS_LANGUAGE_MAP[provider][language],
             model=model,
-            speaker=speaker,
-            pitch=pitch,
-            pace=pace,
-            loudness=loudness,
+            voice_id=voice_id,
+            params=params,
         )
 
     else:

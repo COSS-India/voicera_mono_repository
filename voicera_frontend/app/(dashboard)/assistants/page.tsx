@@ -323,82 +323,56 @@ export default function AssistantsPage() {
 
   // Get all unique languages from both STT and TTS
   const allLanguages = useMemo(() => {
-    const sttLangs = Object.keys(sttData.stt.languages)
-    const ttsLangs = Object.keys(ttsData.tts.languages)
-    const merged = new Set([...sttLangs, ...ttsLangs])
-    return Array.from(merged).sort().map(name => ({ code: name, name }))
+    const langSet = new Set<string>()
+    // From STT
+    Object.values(sttData.stt.providers).forEach((provider: any) => {
+      Object.values(provider.models).forEach((model: any) => {
+        if (Array.isArray(model.languages)) {
+          model.languages.forEach((lang: string) => langSet.add(lang))
+        }
+      })
+    })
+    // From TTS
+    Object.values(ttsData.tts.providers).forEach((provider: any) => {
+      Object.values(provider.models).forEach((model: any) => {
+        if (model.languages) {
+          Object.keys(model.languages).forEach((lang: string) => langSet.add(lang))
+        }
+      })
+    })
+    return Array.from(langSet).sort().map(name => ({ code: name, name }))
   }, [])
 
-  // Derive all STT providers from JSON (across all languages)
+  // Derive all STT providers from JSON
   const allSTTProviders = useMemo(() => {
-    const providerSet = new Set<string>()
-    Object.values(sttData.stt.languages).forEach((langData) => {
-      Object.keys(langData.models).forEach((provider) => {
-        providerSet.add(provider)
-      })
-    })
-    return Array.from(providerSet).map((id) => ({
+    return Object.entries(sttData.stt.providers).map(([id, provider]: [string, any]) => ({
       id,
-      name: getProviderDisplayName(id),
+      name: provider.display_name || getProviderDisplayName(id),
     }))
   }, [])
 
-  // Derive all TTS providers from JSON (across all languages)
+  // Derive all TTS providers from JSON
   const allTTSProviders = useMemo(() => {
-    const providerSet = new Set<string>()
-    Object.values(ttsData.tts.languages).forEach((langData) => {
-      Object.keys(langData.models).forEach((provider) => {
-        providerSet.add(provider)
-      })
-    })
-    return Array.from(providerSet).map((id) => ({
+    return Object.entries(ttsData.tts.providers).map(([id, provider]: [string, any]) => ({
       id,
-      name: getProviderDisplayName(id),
+      name: provider.display_name || getProviderDisplayName(id),
     }))
   }, [])
 
-  // Derive all STT models for a provider from JSON (across all languages)
+  // Derive all STT models for a provider from JSON
   const getAllSTTModelsForProvider = useMemo(() => {
-    const modelMap: Record<string, Set<string>> = {}
-    Object.values(sttData.stt.languages).forEach((langData) => {
-      Object.entries(langData.models).forEach(([provider, models]) => {
-        if (!modelMap[provider]) {
-          modelMap[provider] = new Set<string>()
-        }
-        if (Array.isArray(models)) {
-          models.forEach((model) => modelMap[provider].add(model))
-        }
-      })
-    })
-    // Convert Sets to Arrays for easier use
     const result: Record<string, string[]> = {}
-    Object.entries(modelMap).forEach(([provider, modelSet]) => {
-      result[provider] = Array.from(modelSet)
+    Object.entries(sttData.stt.providers).forEach(([providerId, provider]: [string, any]) => {
+      result[providerId] = Object.keys(provider.models)
     })
     return result
   }, [])
 
-  // Derive all TTS models for a provider from JSON (across all languages)
+  // Derive all TTS models for a provider from JSON
   const getAllTTSModelsForProvider = useMemo(() => {
-    const modelMap: Record<string, Set<string>> = {}
-    Object.values(ttsData.tts.languages).forEach((langData) => {
-      Object.entries(langData.models).forEach(([provider, providerData]) => {
-        if (!modelMap[provider]) {
-          modelMap[provider] = new Set<string>()
-        }
-        const data = providerData as { model?: string; models?: string[]; available?: boolean }
-        if (data.models && Array.isArray(data.models)) {
-          data.models.forEach((model) => modelMap[provider].add(model))
-        }
-        if (data.model) {
-          modelMap[provider].add(data.model)
-        }
-      })
-    })
-    // Convert Sets to Arrays for easier use
     const result: Record<string, string[]> = {}
-    Object.entries(modelMap).forEach(([provider, modelSet]) => {
-      result[provider] = Array.from(modelSet)
+    Object.entries(ttsData.tts.providers).forEach(([providerId, provider]: [string, any]) => {
+      result[providerId] = Object.keys(provider.models)
     })
     return result
   }, [])
@@ -406,86 +380,68 @@ export default function AssistantsPage() {
   // Get supported STT providers for selected language
   const supportedSTTProviders = useMemo(() => {
     if (!config.language) return new Set<string>()
-    const langData =
-      sttData.stt.languages[config.language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
-
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, models]) => Array.isArray(models) && models.length > 0)
-        .map(([provider]) => provider)
-    )
+    const supported = new Set<string>()
+    Object.entries(sttData.stt.providers).forEach(([providerId, provider]: [string, any]) => {
+      const hasLanguage = Object.values(provider.models).some((model: any) =>
+        Array.isArray(model.languages) && model.languages.includes(config.language)
+      )
+      if (hasLanguage) supported.add(providerId)
+    })
+    return supported
   }, [config.language])
 
   // Get supported STT models for selected provider
   const supportedSTTModels = useMemo(() => {
     if (!config.language || !config.sttProvider) return new Set<string>()
-    const langData =
-      sttData.stt.languages[config.language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
-
-    const models = langData.models[config.sttProvider as keyof typeof langData.models]
-    return new Set(Array.isArray(models) ? models : [])
+    const provider = (sttData.stt.providers as any)[config.sttProvider]
+    if (!provider) return new Set<string>()
+    const models = new Set<string>()
+    Object.entries(provider.models).forEach(([modelId, model]: [string, any]) => {
+      if (Array.isArray(model.languages) && model.languages.includes(config.language)) {
+        models.add(modelId)
+      }
+    })
+    return models
   }, [config.language, config.sttProvider])
 
   // Get supported TTS providers for selected language
   const supportedTTSProviders = useMemo(() => {
     if (!config.language) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
-
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, data]) => {
-          const modelData = data as { available?: boolean }
-          return modelData.available === true
-        })
-        .map(([provider]) => provider)
-    )
+    const supported = new Set<string>()
+    Object.entries(ttsData.tts.providers).forEach(([providerId, provider]: [string, any]) => {
+      const hasLanguage = Object.values(provider.models).some((model: any) =>
+        model.languages && config.language in model.languages
+      )
+      if (hasLanguage) supported.add(providerId)
+    })
+    return supported
   }, [config.language])
 
   // Get supported TTS models for selected provider
   const supportedTTSModels = useMemo(() => {
     if (!config.language || !config.ttsProvider) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
-
-    const providerData = langData.models[config.ttsProvider as keyof typeof langData.models] as {
-      model?: string
-      models?: string[]
-      available?: boolean
-    }
-    if (!providerData || !providerData.available) return new Set<string>()
-
-    const models: string[] = []
-    if (providerData.models && Array.isArray(providerData.models)) {
-      models.push(...providerData.models)
-    }
-    if (providerData.model) {
-      models.push(providerData.model)
-    }
-    return new Set(models)
+    const provider = (ttsData.tts.providers as any)[config.ttsProvider]
+    if (!provider) return new Set<string>()
+    const models = new Set<string>()
+    Object.entries(provider.models).forEach(([modelId, model]: [string, any]) => {
+      if (model.languages && config.language in model.languages) {
+        models.add(modelId)
+      }
+    })
+    return models
   }, [config.language, config.ttsProvider])
 
   // Get available TTS voices for selected provider/model
   const availableTTSVoices = useMemo(() => {
-    if (!config.language || !config.ttsProvider) return []
-    const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
-    if (!langData) return []
-
-    const providerData = langData.models[config.ttsProvider as keyof typeof langData.models] as {
-      voices?: string | string[]
-    }
-    if (!providerData) return []
-
-    if (Array.isArray(providerData.voices)) {
-      return providerData.voices
-    }
-    return []
-  }, [config.language, config.ttsProvider])
+    if (!config.language || !config.ttsProvider || !config.ttsModel) return []
+    const provider = (ttsData.tts.providers as any)[config.ttsProvider]
+    if (!provider) return []
+    const model = provider.models[config.ttsModel]
+    if (!model || !model.languages) return []
+    const langData = model.languages[config.language]
+    if (!langData || !Array.isArray(langData.voices)) return []
+    return langData.voices
+  }, [config.language, config.ttsProvider, config.ttsModel])
 
   // Get LLM models for selected provider
   const availableLLMModels = useMemo(() => {
@@ -602,24 +558,33 @@ export default function AssistantsPage() {
         updated.ttsModel = ""
         updated.ttsVoice = ""
         
-        // Auto-select ai4bharat for languages other than English (United States) and English (India)
+        // Auto-select ai4bharat for non-English languages if available
         if (newLanguage && newLanguage !== "English (United States)" && newLanguage !== "English (India)") {
-          // Check if ai4bharat is available for STT
-          const sttLangData = sttData.stt.languages[newLanguage as keyof typeof sttData.stt.languages]
-          if (sttLangData?.models?.ai4bharat && Array.isArray(sttLangData.models.ai4bharat) && sttLangData.models.ai4bharat.length > 0) {
-            updated.sttProvider = "ai4bharat"
-            updated.sttModel = sttLangData.models.ai4bharat[0] // Use first available model
+          // Check if ai4bharat STT supports this language
+          const ai4bharatSTT = (sttData.stt.providers as any).ai4bharat
+          if (ai4bharatSTT) {
+            const sttModel = Object.entries(ai4bharatSTT.models).find(([, m]: [string, any]) =>
+              Array.isArray(m.languages) && m.languages.includes(newLanguage)
+            )
+            if (sttModel) {
+              updated.sttProvider = "ai4bharat"
+              updated.sttModel = sttModel[0]
+            }
           }
           
-          // Check if ai4bharat is available for TTS
-          const ttsLangData = ttsData.tts.languages[newLanguage as keyof typeof ttsData.tts.languages]
-          const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as { available?: boolean; model?: string; voices?: string[] } | undefined
-          if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
-            updated.ttsProvider = "ai4bharat"
-            updated.ttsModel = ttsAi4bharatData.model
-            // Set first voice if available
-            if (ttsAi4bharatData.voices && Array.isArray(ttsAi4bharatData.voices) && ttsAi4bharatData.voices.length > 0) {
-              updated.ttsVoice = ttsAi4bharatData.voices[0]
+          // Check if ai4bharat TTS supports this language
+          const ai4bharatTTS = (ttsData.tts.providers as any).ai4bharat
+          if (ai4bharatTTS) {
+            const ttsModel = Object.entries(ai4bharatTTS.models).find(([, m]: [string, any]) =>
+              m.languages && newLanguage in m.languages
+            )
+            if (ttsModel) {
+              updated.ttsProvider = "ai4bharat"
+              updated.ttsModel = ttsModel[0]
+              const langVoices = (ttsModel[1] as any).languages[newLanguage]?.voices
+              if (Array.isArray(langVoices) && langVoices.length > 0) {
+                updated.ttsVoice = langVoices[0]
+              }
             }
           }
         }
@@ -631,6 +596,10 @@ export default function AssistantsPage() {
         updated.ttsModel = ""
         updated.ttsVoice = ""
         updated.ttsDescription = ""
+      }
+      if (key === "ttsModel") {
+        // Reset voice when model changes (different models may have different voice lists)
+        updated.ttsVoice = ""
       }
       if (key === "llmProvider") {
         updated.llmModel = ""

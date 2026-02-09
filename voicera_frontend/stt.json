@@ -1,219 +1,256 @@
 {
   "stt": {
-    "languages": {
-      "English (United States)": {
-        "models": {
-          "deepgram": ["nova-3", "nova-2", "flux-general-en"],
-          "gcp": ["chirp_3", "chirp_2", "long", "short", "telephony"],
-          "sarvam": []
-        }
-      },
-      "English (India)": {
-        "models": {
-          "deepgram": ["nova-3", "nova-2"],
-          "gcp": ["chirp_3", "chirp_2", "long", "short"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"]
-        }
-      },
-      "Hindi": {
-        "models": {
-          "deepgram": ["nova-3", "nova-2"],
-          "gcp": ["chirp_3", "chirp_2", "long", "short", "telephony"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Bengali": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Tamil": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Telugu": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Marathi": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Gujarati": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Kannada": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Malayalam": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Punjabi": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Odia": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Assamese": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": [],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      },
-      "Urdu": {
-        "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": [],
-          "ai4bharat": ["indic-conformer-stt"],
-          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
-        }
-      }
-    },
-    "model_details": {
+    "providers": {
       "deepgram": {
-        "nova-3": {
-          "description": "Latest, highest accuracy model",
-          "streaming": true,
-          "recommended": true
-        },
-        "nova-2": {
-          "description": "Previous generation, stable",
-          "streaming": true,
-          "recommended": false
-        },
-        "flux-general-en": {
-          "description": "Voice agent optimized with turn detection",
-          "streaming": true,
-          "recommended": true,
-          "english_only": true
+        "display_name": "Deepgram",
+        "models": {
+          "nova-3": {
+            "description": "Latest, highest accuracy model",
+            "streaming": true,
+            "recommended": true,
+            "languages": [
+              "English (United States)",
+              "English (India)",
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Marathi",
+              "Kannada",
+              "Urdu"
+            ]
+          },
+          "nova-2": {
+            "description": "Previous generation, stable",
+            "streaming": true,
+            "recommended": false,
+            "languages": [
+              "English (United States)",
+              "English (India)",
+              "Hindi"
+            ]
+          },
+          "flux-general-en": {
+            "description": "Voice agent optimized with native turn detection",
+            "streaming": true,
+            "recommended": true,
+            "languages": [
+              "English (United States)"
+            ]
+          }
         }
       },
       "gcp": {
-        "chirp_3": {
-          "description": "Latest universal speech model",
-          "streaming": true,
-          "recommended": true
-        },
-        "chirp_2": {
-          "description": "Previous Chirp version",
-          "streaming": true,
-          "recommended": false
-        },
-        "long": {
-          "description": "Optimized for long audio",
-          "streaming": false,
-          "recommended": false
-        },
-        "short": {
-          "description": "Optimized for short audio",
-          "streaming": true,
-          "recommended": false
-        },
-        "telephony": {
-          "description": "Optimized for phone calls",
-          "streaming": true,
-          "recommended": false
+        "display_name": "Google",
+        "models": {
+          "chirp_3": {
+            "description": "Latest universal speech model with auto language detection",
+            "streaming": true,
+            "recommended": true,
+            "languages": [
+              "English (United States)",
+              "English (India)",
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Marathi",
+              "Gujarati",
+              "Kannada",
+              "Malayalam",
+              "Punjabi",
+              "Odia",
+              "Assamese",
+              "Urdu"
+            ]
+          },
+          "chirp_2": {
+            "description": "Previous Chirp version with translation support",
+            "streaming": true,
+            "recommended": false,
+            "languages": [
+              "English (United States)",
+              "English (India)",
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Marathi",
+              "Gujarati",
+              "Kannada",
+              "Malayalam",
+              "Punjabi",
+              "Odia",
+              "Assamese",
+              "Urdu"
+            ]
+          },
+          "long": {
+            "description": "Optimized for long-form audio",
+            "streaming": false,
+            "recommended": false,
+            "languages": [
+              "English (United States)",
+              "English (India)",
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Marathi",
+              "Kannada",
+              "Malayalam"
+            ]
+          },
+          "short": {
+            "description": "Optimized for short utterances",
+            "streaming": true,
+            "recommended": false,
+            "languages": [
+              "English (United States)",
+              "English (India)",
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Marathi",
+              "Kannada",
+              "Malayalam"
+            ]
+          },
+          "telephony": {
+            "description": "Optimized for phone calls (8kHz)",
+            "streaming": true,
+            "recommended": false,
+            "languages": [
+              "English (United States)",
+              "English (India)",
+              "Hindi"
+            ]
+          }
         }
       },
       "sarvam": {
-        "saarika:v2": {
-          "description": "Production-ready Indian language STT",
-          "streaming": true,
-          "recommended": false
-        },
-        "saarika:v2.5": {
-          "description": "Latest Sarvam STT model",
-          "streaming": true,
-          "recommended": true
+        "display_name": "Sarvam",
+        "models": {
+          "saarika:v2.5": {
+            "description": "Production-ready Indian language STT",
+            "streaming": true,
+            "recommended": true,
+            "languages": [
+              "English (India)",
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Gujarati",
+              "Kannada",
+              "Malayalam",
+              "Marathi",
+              "Punjabi",
+              "Odia"
+            ]
+          },
+          "saaras:v3": {
+            "description": "Multi-mode STT with transcribe and verbatim modes",
+            "streaming": true,
+            "recommended": false,
+            "languages": [
+              "English (India)",
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Gujarati",
+              "Kannada",
+              "Malayalam",
+              "Marathi",
+              "Punjabi",
+              "Odia"
+            ]
+          }
+        }
+      },
+      "openai": {
+        "display_name": "OpenAI",
+        "models": {
+          "whisper-1": {
+            "description": "OpenAI Whisper speech recognition",
+            "streaming": false,
+            "recommended": false,
+            "languages": [
+              "English (United States)",
+              "English (India)",
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Marathi",
+              "Gujarati",
+              "Kannada",
+              "Malayalam",
+              "Punjabi",
+              "Urdu",
+              "Nepali"
+            ]
+          }
         }
       },
       "ai4bharat": {
-        "indic-conformer-stt": {
-          "description": "AI4Bharat Indic Conformer ASR model for Indian languages",
-          "streaming": true,
-          "recommended": true
+        "display_name": "AI4Bharat",
+        "models": {
+          "indic-conformer-stt": {
+            "description": "AI4Bharat Indic Conformer ASR model",
+            "streaming": true,
+            "recommended": true,
+            "languages": [
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Gujarati",
+              "Kannada",
+              "Malayalam",
+              "Marathi",
+              "Punjabi",
+              "Assamese",
+              "Odia",
+              "Nepali"
+            ]
+          }
         }
       },
       "bhashini": {
-        "bhashini/ai4bharat/conformer-multilingual-asr": {
-          "description": "Bhashini multilingual ASR model powered by AI4Bharat Conformer",
-          "streaming": true,
-          "recommended": true
+        "display_name": "Bhashini",
+        "models": {
+          "bhashini/ai4bharat/conformer-multilingual-asr": {
+            "description": "Bhashini multilingual ASR powered by AI4Bharat",
+            "streaming": true,
+            "recommended": true,
+            "languages": [
+              "Hindi",
+              "Bengali",
+              "Tamil",
+              "Telugu",
+              "Gujarati",
+              "Kannada",
+              "Malayalam",
+              "Marathi",
+              "Punjabi",
+              "Assamese",
+              "Odia",
+              "Nepali",
+              "Urdu",
+              "Bodo",
+              "Dogri",
+              "Konkani",
+              "Maithili",
+              "Manipuri",
+              "Sanskrit",
+              "Santali",
+              "Sindhi"
+            ]
+          }
         }
-      }
-    },
-    "auto_select_logic": {
-      "description": "Priority order for auto-selecting STT model based on language",
-      "priority": {
-        "English (United States)": ["deepgram:flux-general-en", "deepgram:nova-3", "gcp:chirp_3"],
-        "English (India)": ["sarvam:saarika:v2.5", "deepgram:nova-3", "gcp:chirp_3"],
-        "Hindi": ["sarvam:saarika:v2.5", "deepgram:nova-3", "gcp:chirp_3"],
-        "Bengali": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Tamil": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Telugu": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Marathi": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Gujarati": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Kannada": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Malayalam": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Punjabi": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Odia": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Assamese": ["gcp:chirp_3"],
-        "Urdu": ["gcp:chirp_3"]
       }
     }
   }
