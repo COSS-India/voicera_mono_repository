@@ -1,12 +1,12 @@
-# Voicera Mono Repository
+# VoicERA Mono Repository
 
-A complete voice AI platform with telephony integration, featuring real-time speech-to-text, text-to-speech, and LLM-powered conversational agents.
+A complete voice AI building block with telephony integration, featuring real-time speech-to-text, text-to-speech, and LLM-powered conversational agents.
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         voicera_mono_repository                  │
+│                         VoicERA_mono_repository                  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
@@ -150,7 +150,7 @@ SECRET_KEY=your-secret-key      # Generate: python -c "import secrets; print(sec
 # Email (Mailtrap)
 MAILTRAP_API_TOKEN=your-mailtrap-token
 MAILTRAP_FROM_EMAIL=noreply@voicera.com
-MAILTRAP_FROM_NAME=Voicera
+MAILTRAP_FROM_NAME=VoicERA
 FRONTEND_URL=http://localhost:3000
 
 # Internal API (service-to-service auth)
