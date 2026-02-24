@@ -368,35 +368,26 @@ function HistoryPageContent() {
       }
     }
 
-    // Format the duration
     if (typeof totalSeconds === 'number' && isFinite(totalSeconds) && totalSeconds >= 0) {
-      // Convert to string to examine integer part length
-      const [intPart] = totalSeconds.toString().split('.')
-      const intDigits = intPart.length
+      const rounding = Math.round(Number(totalSeconds));
+      const mins = Math.floor(rounding / 60);
+      const secs = rounding % 60;
 
-      if (intDigits === 2) {
-        // Two digits before dot: just show integer seconds
-        return `${intPart}s`
-      } else if (intDigits === 3) {
-        // Three digits before dot: show mm:ss, or preserve some fractional seconds for granularity if desired
-        const mins = Math.floor(Number(totalSeconds) / 60)
-        const secs = Math.floor(Number(totalSeconds) % 60)
-        return `${mins}:${secs.toString().padStart(2, '0')} minutes`
-      } else if (intDigits === 1) {
-        // single-digit seconds
-        return `${intPart}s`
-      } else if (intDigits > 3) {
-        // Big durations: fallback to mm:ss but indicate "minutes"
-        const mins = Math.floor(Number(totalSeconds) / 60)
-        const secs = Math.floor(Number(totalSeconds) % 60)
-        return `${mins}:${secs.toString().padStart(2, '0')} minutes`
+      if (mins > 0) {
+        // display as "Xm Ys"
+        let result = '';
+        result += `${mins}m`;
+        if (secs > 0) {
+          result += ` ${secs}s`;
+        }
+        return result.trim();
       } else {
-        // Fallback: just show rounded seconds
-        return `${Math.round(totalSeconds)}s`
+        // just seconds
+        return `${secs}s`;
       }
     }
 
-    return "N/A"
+    return "N/A";
   }
 
   // Export functions
