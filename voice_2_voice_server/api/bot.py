@@ -191,9 +191,9 @@ async def run_bot(
             context_aggregator.user(),
             llm,
             tts,
-            transport.output(),
             transcript.assistant(),
             audiobuffer,
+            transport.output(),
             context_aggregator.assistant(),
         ])
         
@@ -272,7 +272,7 @@ async def bot(
     vad_analyzer = SileroVADAnalyzer(
         sample_rate=sample_rate,
         params=VADParams(
-            stop_secs=0.2,
+            stop_secs=0.35,
             min_volume=0.5,
             confidence=0.4,
             start_secs=0.1,

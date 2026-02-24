@@ -41,3 +41,5 @@ websockets==15.0.1
 # Socket.IO for Bhashini
 python-socketio[asyncio_client]==5.11.0
 aiohttp==3.13.2
+PyJWT==2.10.1
+cryptography
