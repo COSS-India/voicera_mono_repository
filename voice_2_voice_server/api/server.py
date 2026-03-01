@@ -264,10 +264,20 @@ async def vobiz_answer_webhook(request: Request):
     event = form_data_dict.get("Event", "unknown")
     hangup_cause = form_data_dict.get("HangupCause", "USER_BUSY")
 
+    logger.info(
+        "📞 Answer webhook: method=%s, agent_id=%s, Event=%s, HangupCause=%s, form_keys=%s",
+        request.method,
+        agent_id,
+        event,
+        hangup_cause,
+        list(form_data_dict.keys()),
+    )
+
     if event == "StartApp":
         await log_meeting(agent_id, form_data_dict)
         websocket_prefix = os.environ.get("JOHNAIC_WEBSOCKET_URL", "")
         websocket_url = f"{websocket_prefix}/agent/{agent_id}"
+        logger.info("📞 Answer webhook: returning Stream XML, websocket_url=%s", websocket_url)
         return Response(
             content=_build_stream_xml(websocket_url),
             media_type="application/xml",
@@ -303,12 +313,21 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
             logger.error(f"❌ Failed to fetch agent config from backend: {agent_id}")
             return
 
-        # Wait for start event with call metadata
+        # Wait for start event with call metadata (Vobiz may send "connected" first)
         first_message = await websocket.receive_text()
         data = json.loads(first_message)
+        first_event = data.get("event", "<no event key>")
+        logger.info(f"📨 First WebSocket message: event={first_event}, keys={list(data.keys())}")
 
-        if data.get("event") != "start":
-            logger.warning(f"⚠️ Expected 'start' event, got: {data.get('event')}")
+        if first_event == "connected":
+            logger.info("📨 Skipping 'connected' event, waiting for 'start'")
+            first_message = await websocket.receive_text()
+            data = json.loads(first_message)
+            first_event = data.get("event", "<no event key>")
+            logger.info(f"📨 Second WebSocket message: event={first_event}, keys={list(data.keys())}")
+
+        if first_event != "start":
+            logger.warning(f"⚠️ Expected 'start' event, got: {first_event}. Full message keys: {list(data.keys())}")
             return
 
         start_info = data.get("start", {})
