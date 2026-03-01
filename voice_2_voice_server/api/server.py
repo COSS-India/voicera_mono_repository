@@ -114,14 +114,23 @@ def make_outbound_call_vobiz(
         "X-Auth-Token": auth_token,
         "Content-Type": "application/json",
     }
+    answer_url = f"{server_url}/answer?agent_id={agent_id}"
     payload = {
         "from": from_number,
         "to": customer_number,
-        "answer_url": f"{server_url}/answer?agent_id={agent_id}",
+        "answer_url": answer_url,
         "answer_method": "POST",
     }
 
-    logger.info(f"📞 Outbound call: {from_number} → {customer_number} (agent: {agent_id})")
+    ws_url = os.environ.get("JOHNAIC_WEBSOCKET_URL", "<not set>")
+    logger.info(
+        "📞 Outbound call: {} → {} agent={} | answer_url={} | websocket_base={}",
+        from_number,
+        customer_number,
+        agent_id,
+        answer_url,
+        ws_url,
+    )
     
     vobiz_api_url = f"{vobiz_api_base_url}/Account/{auth_id}/Call/"
     response = requests.post(vobiz_api_url, json=payload, headers=headers, timeout=30)
@@ -168,6 +177,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _log_voice_urls_at_startup():
+    """Log URLs at startup so we can verify they are set and public."""
+    server_url = os.environ.get("JOHNAIC_SERVER_URL", "")
+    ws_url = os.environ.get("JOHNAIC_WEBSOCKET_URL", "")
+    logger.info(
+        "📞 Voice server startup: JOHNAIC_SERVER_URL={} JOHNAIC_WEBSOCKET_URL={} (Vobiz must reach these)",
+        server_url or "<not set>",
+        ws_url or "<not set>",
+    )
+    if not ws_url:
+        logger.warning("📞 JOHNAIC_WEBSOCKET_URL not set - WebSocket for call audio will not work")
 
 
 # === Routes ===
@@ -265,7 +288,7 @@ async def vobiz_answer_webhook(request: Request):
     hangup_cause = form_data_dict.get("HangupCause", "USER_BUSY")
 
     logger.info(
-        "📞 Answer webhook: method=%s, agent_id=%s, Event=%s, HangupCause=%s, form_keys=%s",
+        "📞 Answer webhook: method={} agent_id={} Event={} HangupCause={} form_keys={}",
         request.method,
         agent_id,
         event,
@@ -277,16 +300,24 @@ async def vobiz_answer_webhook(request: Request):
         await log_meeting(agent_id, form_data_dict)
         websocket_prefix = os.environ.get("JOHNAIC_WEBSOCKET_URL", "")
         websocket_url = f"{websocket_prefix}/agent/{agent_id}"
-        logger.info("📞 Answer webhook: returning Stream XML, websocket_url=%s", websocket_url)
+        xml_body = _build_stream_xml(websocket_url)
+        logger.info(
+            "📞 Answer webhook: returning Stream XML | websocket_url={} | Vobiz should connect here for audio",
+            websocket_url,
+        )
+        logger.info(
+            "📞 Answer webhook: XML length={} (contentType=audio/x-mulaw;rate=8000 or L16)",
+            len(xml_body),
+        )
         return Response(
-            content=_build_stream_xml(websocket_url),
+            content=xml_body,
             media_type="application/xml",
         )
     elif event == "Hangup" and hangup_cause == "USER_BUSY":
-        logger.info("User hung up the call")
+        logger.info("📞 Answer webhook: Hangup USER_BUSY - user hung up")
         await log_meeting(agent_id, form_data_dict)
     else:
-        logger.info("Hang URL Event Sent")
+        logger.info("📞 Answer webhook: Event={} - no Stream XML returned", event)
 
 
 @app.websocket("/agent/{agent_id}")
@@ -297,8 +328,16 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
         websocket: WebSocket connection
         agent_id: Agent ID to use
     """
+    # Log immediately when connection attempt is received (before accept)
+    logger.info(
+        "🔌 WebSocket CONNECTION ATTEMPT: /agent/{} - if you see this, Vobiz connected to this pod",
+        agent_id,
+    )
     await websocket.accept()
-    logger.info(f"🔌 WebSocket connected: agent={agent_id}")
+    logger.info(
+        "🔌 WebSocket ACCEPTED: agent_id={} - call audio stream started, next: wait for 'start' message",
+        agent_id,
+    )
 
     call_sid = None
     stream_sid = None
