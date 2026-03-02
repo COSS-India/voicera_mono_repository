@@ -1,0 +1,103 @@
+pipeline {
+    agent any
+    
+    parameters {
+        string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Enter branch to deploy to PROD')
+    }
+
+    environment {
+        IMAGE_NAME = "voicera-backend-prod"
+        HARBOR_REGISTRY = "registryharbor.bhashini.co.in"
+        HARBOR_REPO = "bhashini/voicera"
+        IMAGE_TAG = "1.0.${BUILD_ID}"
+    }
+
+    stages {
+
+        stage('Validate Branch') {
+            steps {
+                script {
+                    if (params.BRANCH_NAME.trim() == "") {
+                        error("Branch name cannot be empty.")
+                    }
+                    echo "Deploying branch: ${params.BRANCH_NAME} to PROD"
+                }
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'github-creds',
+                        usernameVariable: 'GIT_USERNAME',
+                        passwordVariable: 'GIT_PASSWORD'
+                    )]) {
+
+                        checkout([$class: 'GitSCM',
+                            branches: [[name: "*/${params.BRANCH_NAME}"]],
+                            userRemoteConfigs: [[
+                                url: 'https://github.com/bhashini-dibd/voicera_mono_repository.git',
+                                credentialsId: 'github-creds'
+                            ]]
+                        ])
+
+                        echo "Checked out branch ${params.BRANCH_NAME} for build #${BUILD_ID}"
+                    }
+                }
+            }
+        }
+
+        stage('Build Image') {
+            steps {
+                sh """
+                    cd voicera_backend
+                    podman build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    podman tag ${IMAGE_NAME}:${IMAGE_TAG} \
+                    ${HARBOR_REGISTRY}/${HARBOR_REPO}/${IMAGE_NAME}:${IMAGE_TAG}
+                """
+            }
+        }
+
+        stage('Push Image') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-cred',
+                    usernameVariable: 'Username',
+                    passwordVariable: 'Password'
+                )]) {
+                    sh """
+                        podman login ${HARBOR_REGISTRY} -u "$Username" -p "$Password"
+                        podman push ${HARBOR_REGISTRY}/${HARBOR_REPO}/${IMAGE_NAME}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to PROD Cluster') {
+            steps {
+                withKubeConfig([credentialsId: 'voicera-prod-cluster']) {
+                    sh """
+                        kubectl set image deployment/voicera-backend \
+                        voicera-backend=${HARBOR_REGISTRY}/${HARBOR_REPO}/${IMAGE_NAME}:${IMAGE_TAG} \
+                        -n voicera-backend
+
+                        kubectl rollout status deployment/voicera-backend -n voicera-backend
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Production deployment successful 🚀"
+        }
+        failure {
+            echo "Production deployment failed ❌"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
