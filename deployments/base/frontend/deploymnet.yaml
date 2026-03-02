@@ -22,7 +22,7 @@ spec:
         app: voicera
       containers:
         - name: voicera-frontend
-          image: registryharbor.bhashini.co.in/bhashini/voicera/voicera-frontend-prod:1.0.1
+          image: registryharbor.bhashini.co.in/bhashini/voicera/voicera-frontend-prod
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
