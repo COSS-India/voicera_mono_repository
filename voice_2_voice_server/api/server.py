@@ -268,6 +268,7 @@ async def vobiz_answer_webhook(request: Request):
         await log_meeting(agent_id, form_data_dict)
         websocket_prefix = os.environ.get("JOHNAIC_WEBSOCKET_URL", "")
         websocket_url = f"{websocket_prefix}/agent/{agent_id}"
+        logger.info(f"Returning Stream XML for agent_id={agent_id}")
         return Response(
             content=_build_stream_xml(websocket_url),
             media_type="application/xml",
