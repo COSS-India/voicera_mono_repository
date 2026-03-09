@@ -59,7 +59,7 @@ const providers: Provider[] = [
   {
     id: "sarvam",
     name: "Sarvam",
-    capabilities: ["stt", "tts"],
+    capabilities: ["stt", "tts", "llm"],
     description: "Indian language speech recognition and synthesis",
   },
   {

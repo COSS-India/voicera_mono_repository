@@ -127,6 +127,12 @@ const llmProviders = {
       "o1-preview",
     ],
   },
+  sarvam: {
+    name: "Sarvam",
+    models: [
+      "sarvamai/sarvam-30b",
+    ],
+  },
   kenpath: {
     name: "Kenpath",
     models: [],
@@ -825,8 +831,8 @@ export default function AgentDetailPage() {
                       </SelectTrigger>
                       <SelectContent className="z-[100] rounded-md shadow-lg">
                         {Object.entries(llmProviders).map(([id, provider]) => {
-                          // OpenAI and Kenpath are always available (built-in)
-                          const isBuiltIn = id === "openai" || id === "kenpath"
+                          // OpenAI, Sarvam, and Kenpath are always available (env-based / built-in)
+                          const isBuiltIn = id === "openai" || id === "sarvam" || id === "kenpath"
                           // Check if provider has integration (API key configured)
                           const isIntegrated = integratedProviders.has(id) || integratedProviders.has(provider.name.toLowerCase())
                           const isAvailable = isBuiltIn || isIntegrated

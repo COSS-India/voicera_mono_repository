@@ -57,6 +57,8 @@ voice_2_voice_server/
    
    # Provider API keys (as needed)
    export OPENAI_API_KEY="sk-..."
+   export SARVAM_LLM_API_KEY="your-sarvam-llm-api-key"
+   export SARVAM_LLM_ENDPOINT="https://e75f29cc-857c-4a05-ac2c-70f4291e0bef.invocation.api.nvcf.nvidia.com/v1/chat/completions"
    export DEEPGRAM_API_KEY="..."
    export CARTESIA_API_KEY="..."
    
@@ -151,6 +153,7 @@ Agent configs are JSON files in `agent_configs/`. Example:
 | Provider | Name | Models |
 |----------|------|--------|
 | OpenAI | `openai` | gpt-4o, gpt-4o-mini, gpt-3.5-turbo |
+| Sarvam | `sarvam` | sarvamai/sarvam-30b |
 | Kenpath | `kenpath` | Custom LLM |
 
 ### STT (Speech-to-Text)
@@ -211,6 +214,13 @@ Agent configs are JSON files in `agent_configs/`. Example:
 | `VOICERA_BACKEND_URL` | No | `http://localhost:8000` | Backend API URL |
 | `INTERNAL_API_KEY` | No | - | Internal API key for backend communication |
 | `OPENAI_API_KEY` | * | - | OpenAI API key |
+| `SARVAM_LLM_API_KEY` | * | - | Sarvam LLM API key (Bearer token) |
+| `SARVAM_LLM_ENDPOINT` | No | NVIDIA NVCF chat completion URL | Sarvam LLM endpoint |
+| `SARVAM_LLM_MODEL` | No | `sarvamai/sarvam-30b` | Sarvam LLM model id |
+| `SARVAM_LLM_TEMPERATURE` | No | `0.8` | Sarvam LLM temperature |
+| `SARVAM_LLM_MAX_TOKENS` | No | `2048` | Sarvam LLM max tokens |
+| `SARVAM_LLM_REPETITION_PENALTY` | No | `1.0` | Sarvam repetition penalty |
+| `SARVAM_LLM_TIMEOUT_SECONDS` | No | `60` | Sarvam request timeout |
 | `DEEPGRAM_API_KEY` | * | - | Deepgram API key |
 | `CARTESIA_API_KEY` | * | - | Cartesia API key |
 | `GOOGLE_STT_CREDENTIALS_PATH` | * | credentials/google_stt.json | Google STT credentials |

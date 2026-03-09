@@ -108,6 +108,9 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_SECURE=false
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SARVAM_LLM_API_KEY=${SARVAM_LLM_API_KEY}
+      - SARVAM_LLM_ENDPOINT=${SARVAM_LLM_ENDPOINT:-https://e75f29cc-857c-4a05-ac2c-70f4291e0bef.invocation.api.nvcf.nvidia.com/v1/chat/completions}
     networks:
       - voicera_network
     depends_on:

@@ -2,8 +2,9 @@
 # Default models for each LLM provider
 
 LLM_DEFAULT_MODELS = {
-    "OpenAI": "gpt-4o",
-    "Kenpath": None,  # Kenpath doesn't need a model parameter
+    "openai": "gpt-4o",
+    "kenpath": None,  # Kenpath doesn't need a model parameter
+    "sarvam": "sarvamai/sarvam-30b",
 }
 
 
