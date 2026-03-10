@@ -1,7 +1,7 @@
 """Service factory functions for creating LLM, STT, and TTS services."""
 
 import os
-from typing import Any
+from typing import Any, Optional
 
 from loguru import logger
 from deepgram import LiveOptions
@@ -34,39 +34,48 @@ class ServiceCreationError(Exception):
     pass
 
 
-def create_llm_service(llm_config: dict) -> Any:
+def create_llm_service(
+    llm_config: dict,
+    vistaar_session_id: Optional[str] = None,
+    language: Optional[str] = None,
+) -> Any:
     """Create an LLM service based on configuration.
-    
+
     Args:
         llm_config: LLM configuration dict with 'name' and optional 'args'
-        
+        vistaar_session_id: Optional session ID for Kenpath/Vistaar
+        language: Optional agent language (e.g. "hindi", "marathi") for Kenpath
+
     Returns:
         Configured LLM service instance
-        
+
     Raises:
         ServiceCreationError: If the LLM provider is unknown
     """
     provider = llm_config.get("name") or llm_config.get("provider")
     args = llm_config.get("args", {})
     model = args.get("model") or llm_config.get("model")
-    
+
     if provider == "OpenAI":
         # Extract user aggregator params from config, with defaults
         user_aggregator_params = LLMUserAggregatorParams(
             aggregation_timeout=args.get("aggregation_timeout", 0.05)
         )
-        
+
         service = OpenAILLMService(
             api_key=os.getenv("OPENAI_API_KEY"),
             model=get_llm_model(provider, model),
         )
-        
+
         # Store user aggregator params on the service instance for later use
         service._user_aggregator_params = user_aggregator_params
-        
+
         return service
     elif provider == "Kenpath":
-        return KenpathLLM()
+        return KenpathLLM(
+            vistaar_session_id=vistaar_session_id,
+            language=language,
+        )
     else:
         raise ServiceCreationError(f"Unknown LLM provider: {provider}")
 

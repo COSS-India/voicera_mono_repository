@@ -21,7 +21,7 @@ from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.utils.text.base_text_aggregator import BaseTextAggregator, Aggregation, AggregationType
-from typing import Any
+from typing import Any, Optional
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
@@ -135,7 +135,8 @@ async def run_bot(
     audiobuffer: AudioBufferProcessor,
     transcript: TranscriptProcessor,
     handle_sigint: bool = False,
-    vad_analyzer: Any = None
+    vad_analyzer: Any = None,
+    vistaar_session_id: Optional[str] = None,
 ) -> None:
     """Run the voice bot pipeline with the given configuration.
     
@@ -163,7 +164,11 @@ async def run_bot(
             if not tts_config.get("language"):
                 tts_config["language"] = language
      
-        llm = create_llm_service(llm_config)
+        llm = create_llm_service(
+            llm_config,
+            vistaar_session_id=vistaar_session_id,
+            language=agent_config.get("language"),
+        )
         stt = create_stt_service(stt_config, sample_rate, vad_analyzer=vad_analyzer)
         tts = create_tts_service(tts_config, sample_rate)
         
@@ -273,7 +278,7 @@ async def bot(
         sample_rate=sample_rate,
         params=VADParams(
             stop_secs=0.35,
-            min_volume=0.5,
+            min_volume=0.3,
             confidence=0.4,
             start_secs=0.1,
         )
@@ -338,7 +343,7 @@ async def bot(
             call_data["transcript_lines"].append(line)
     
     try:
-        await run_bot(transport, agent_config, audiobuffer, transcript, handle_sigint=False, vad_analyzer=vad_analyzer)
+        await run_bot(transport, agent_config, audiobuffer, transcript, handle_sigint=False, vad_analyzer=vad_analyzer, vistaar_session_id=call_sid)
     finally:
         logger.info(f"Saving call data for {call_sid}...")
         if call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:
@@ -457,7 +462,7 @@ async def ubona_bot(
             call_data["transcript_lines"].append(f"{ts}{message.role}: {message.content}")
 
     try:
-        await run_bot(transport, agent_config, audiobuffer, transcript, vad_analyzer=vad_analyzer)
+        await run_bot(transport, agent_config, audiobuffer, transcript, vad_analyzer=vad_analyzer, vistaar_session_id=call_id)
     finally:
         logger.info(f"Saving call data for {call_id}...")
         if call_data["audio_chunks"] and call_data["audio_sample_rate"]:
