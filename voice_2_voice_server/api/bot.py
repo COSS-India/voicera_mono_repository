@@ -44,6 +44,41 @@ from .call_recording_utils import submit_call_recording
 load_dotenv(override=False)
 
 
+class _LoggingWebSocketWrapper:
+    """Wraps a WebSocket to log inbound message events (for debugging voice receive path)."""
+
+    def __init__(self, ws, call_sid: str = ""):
+        self._ws = ws
+        self._call_sid = call_sid or "unknown"
+        self._inbound_count = 0
+        self._media_count = 0
+
+    async def receive_text(self):
+        data = await self._ws.receive_text()
+        self._inbound_count += 1
+        try:
+            msg = json.loads(data)
+            ev = msg.get("event", "?")
+            if ev == "media":
+                self._media_count += 1
+                payload_len = len(msg.get("media", {}).get("payload") or "")
+                if self._media_count <= 3 or self._media_count % 100 == 0:
+                    logger.info(
+                        "📨 WS inbound [%s]: event=media, media_count=%d, payload_b64_len=%d",
+                        self._call_sid[:8],
+                        self._media_count,
+                        payload_len,
+                    )
+            else:
+                logger.info("📨 WS inbound [%s]: event=%s, keys=%s", self._call_sid[:8], ev, list(msg.keys()))
+        except (json.JSONDecodeError, TypeError):
+            logger.debug("📨 WS inbound [%s]: non-JSON, len=%d", self._call_sid[:8], len(data) if data else 0)
+        return data
+
+    def __getattr__(self, name):
+        return getattr(self._ws, name)
+
+
 # Monkey-patch SOXRStreamAudioResampler to reduce latency from ~200ms to near-zero
 # by switching from "VHQ" (Very High Quality) to "Quick" quality.
 try:
@@ -289,7 +324,11 @@ async def bot(
 
     import pipecat.transports.base_output
     pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
-    
+
+    # Wrap WebSocket to log inbound messages (customer voice path debugging)
+    websocket_client = _LoggingWebSocketWrapper(websocket_client, call_sid=call_sid)
+    logger.info("📨 WebSocket logging enabled for call_sid=%s (inbound media will be logged)", call_sid)
+
     transport = FastAPIWebsocketTransport(
         websocket=websocket_client,
         params=FastAPIWebsocketParams(

@@ -162,7 +162,7 @@ export default function SignupPage() {
             transition={{ type: "spring", stiffness: 60, damping: 16, delay: 0.67 }}
           >
             <div className="flex items-center gap-4 text-white/60 text-sm mb-2">
-              <span>EkStep Foundation © 2026</span>
+              <span>Digital India BHASHINI Division © 2026</span>
               <span>·</span>
               <Link href="#" className="hover:text-white transition-colors">Privacy</Link>
               <span>·</span>

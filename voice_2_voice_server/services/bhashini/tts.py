@@ -44,19 +44,26 @@ class BhashiniTTSService(TTSService):
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         if not text.strip():
+            logger.debug("🔊 Bhashini TTS: run_tts skipped - empty text")
             return
 
         timeout = aiohttp.ClientTimeout(total=120)
+        payload = {
+            "text": text,
+            "description": self._description,
+            "speaker": self._speaker,
+            "play_steps_in_s": self._play_steps_in_s,
+        }
+        logger.info(
+            "🔊 Bhashini TTS: calling API url=%s text_len=%d text_preview=%s speaker=%s",
+            self._server_url,
+            len(text),
+            text[:80].replace("\n", " "),
+            self._speaker,
+        )
 
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                payload = {
-                    "text": text,
-                    "description": self._description,
-                    "speaker": self._speaker,
-                    "play_steps_in_s": self._play_steps_in_s,
-                }
-
                 yield TTSStartedFrame()
 
                 async with session.post(
@@ -67,17 +74,39 @@ class BhashiniTTSService(TTSService):
                         "Authorization": f"Bearer {self._auth_token}",
                     },
                 ) as response:
-                    if response.status != 200:
-                        yield ErrorFrame(f"Server error: {response.status}")
+                    status = response.status
+                    logger.info(
+                        "🔊 Bhashini TTS: response status=%s reason=%s content_type=%s",
+                        status,
+                        getattr(response, "reason", ""),
+                        response.headers.get("Content-Type", ""),
+                    )
+                    if status != 200:
+                        body = ""
+                        try:
+                            body = (await response.read()).decode("utf-8", errors="replace")[:500]
+                        except Exception:
+                            pass
+                        logger.error(
+                            "🔊 Bhashini TTS: API error status=%s body=%s",
+                            status,
+                            body,
+                        )
+                        yield ErrorFrame(f"Server error: {status}")
                         return
 
                     buffer = ""
+                    chunk_count = 0
+                    total_audio_bytes = 0
+                    stream_done = False
                     async for chunk in response.content.iter_any():
+                        if stream_done:
+                            break
                         if not chunk:
                             continue
 
                         buffer += chunk.decode("utf-8")
-                        
+
                         while "\n" in buffer:
                             line, buffer = buffer.split("\n", 1)
                             if not line.strip():
@@ -89,26 +118,51 @@ class BhashiniTTSService(TTSService):
                                 continue
 
                             if "error" in data:
+                                logger.error("🔊 Bhashini TTS: API returned error in payload: %s", data.get("error"))
                                 yield ErrorFrame(data["error"])
                                 return
 
                             if data.get("done"):
+                                logger.info(
+                                    "🔊 Bhashini TTS: stream done chunk_count=%d total_audio_bytes=%d",
+                                    chunk_count,
+                                    total_audio_bytes,
+                                )
+                                stream_done = True
                                 break
 
                             if "audio" in data:
                                 audio_bytes = base64.b64decode(data["audio"])
-                                logger.info(f"Audio chunk sent to Telephony: {len(audio_bytes)} bytes")
+                                total_audio_bytes += len(audio_bytes)
+                                chunk_count += 1
+                                if chunk_count <= 3 or chunk_count % 20 == 0:
+                                    logger.info(
+                                        "🔊 Bhashini TTS: audio chunk %d len=%d total_so_far=%d",
+                                        chunk_count,
+                                        len(audio_bytes),
+                                        total_audio_bytes,
+                                    )
                                 yield TTSAudioRawFrame(
                                     audio=audio_bytes,
                                     sample_rate=data.get("sample_rate", self.sample_rate),
                                     num_channels=1,
                                 )
 
+                    if chunk_count > 0 and not stream_done:
+                        logger.info(
+                            "🔊 Bhashini TTS: completed chunk_count=%d total_audio_bytes=%d",
+                            chunk_count,
+                            total_audio_bytes,
+                        )
+
                 yield TTSStoppedFrame()
 
         except aiohttp.ClientError as e:
+            logger.error("🔊 Bhashini TTS: ClientError: %s", e)
             yield ErrorFrame(f"Connection error: {e}")
         except asyncio.TimeoutError:
+            logger.error("🔊 Bhashini TTS: Request timeout")
             yield ErrorFrame("Request timeout")
         except Exception as e:
+            logger.error("🔊 Bhashini TTS: error: %s", e)
             yield ErrorFrame(f"TTS error: {e}")
