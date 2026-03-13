@@ -29,7 +29,13 @@
           "deepgram": {
             "available": true,
             "model": "aura-2",
-            "voices": ["thalia", "arcas"]
+            "voices": [
+              "thalia",
+              "arcas",
+              "helena",
+              "andromeda",
+              "apollo"
+            ]
           },
           "gcp": {
             "available": true,
@@ -733,7 +739,7 @@
     "voice_settings": {
       "deepgram": {
         "controls": [],
-        "note": "Deepgram voices are pre-configured with optimal settings"
+        "note": "Deepgram Aura-2 voices (e.g. aura-2-thalia-en). Speaking rate / speed is not exposed by Deepgram TTS or Pipecat's DeepgramTTSService—only model, encoding, and sample_rate. Use GCP or Sarvam TTS if you need speed control."
       },
       "gcp": {
         "controls": [

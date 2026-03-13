@@ -164,6 +164,7 @@ Agent configs are JSON files in `agent_configs/`. Example:
 ### TTS (Text-to-Speech)
 | Provider | Name | Models |
 |----------|------|--------|
+| Deepgram | `deepgram` | Aura voices (e.g. `aura-2-helena-en`); set `args.voice` |
 | Cartesia | `cartesia` | sonic-3, sonic-2, sonic-multilingual |
 | Google | `google` | Various voices |
 | OpenAI | `openai` | alloy, echo, fable, onyx, nova, shimmer |

@@ -10,6 +10,7 @@ from deepgram import LiveOptions
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.google.stt import GoogleSTTService
 from pipecat.services.google.tts import GoogleTTSService
 from pipecat.services.openai.stt import OpenAISTTService
@@ -195,11 +196,12 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
     # Normalize provider name to match map keys (capitalize first letter, handle special cases)
     provider_map = {
         "cartesia": "Cartesia",
+        "deepgram": "Deepgram",
         "google": "Google",
         "openai": "OpenAI",
         "sarvam": "Sarvam",
         "ai4bharat": "AI4Bharat",
-        "bhashini": "Bhashini"
+        "bhashini": "Bhashini",
     }
     provider = provider_map.get(provider.lower(), provider)
     
@@ -266,6 +268,39 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
             pace=pace,
             loudness=loudness
         )
-    
+
+    elif provider == "Deepgram":
+        api_key = os.getenv("DEEPGRAM_API_KEY")
+        if not api_key:
+            raise ServiceCreationError("DEEPGRAM_API_KEY is required for Deepgram TTS")
+        raw_voice = (
+            args.get("voice")
+            or args.get("voice_id")
+            or tts_config.get("voice_id")
+            or tts_config.get("speaker")
+            or "aura-2-helena-en"
+        )
+        # Frontend sends short names (e.g. thalia); Deepgram expects full model id (aura-2-thalia-en)
+        if isinstance(raw_voice, str) and raw_voice.strip():
+            v = raw_voice.strip()
+            if v.startswith("aura-"):
+                voice = v
+            else:
+                voice = f"aura-2-{v.lower()}-en"
+        else:
+            voice = "aura-2-helena-en"
+        encoding = args.get("encoding", "linear16")
+        if encoding not in ("linear16", "mulaw", "alaw"):
+            logger.warning(
+                f"Deepgram TTS encoding {encoding!r} may be unsupported; using linear16"
+            )
+            encoding = "linear16"
+        return DeepgramTTSService(
+            api_key=api_key,
+            voice=voice,
+            sample_rate=sample_rate,
+            encoding=encoding,
+        )
+
     else:
         raise ServiceCreationError(f"Unknown TTS provider: {provider}")
