@@ -69,7 +69,21 @@ TTS_LANGUAGE_MAP = {
         "Punjabi": "pa",
         "Assamese": "as",
         "Odia": "or",
-    }
+    },
+    "ElevenLabs": {
+        "Hindi": "hi",
+        "English": "en",
+        "English (India)": "en",
+        "English (United States)": "en",
+        "Bengali": "bn",
+        "Tamil": "ta",
+        "Telugu": "te",
+        "Gujarati": "gu",
+        "Kannada": "kn",
+        "Malayalam": "ml",
+        "Marathi": "mr",
+        "Punjabi": "pa",
+    },
 }
 
 

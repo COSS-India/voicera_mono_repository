@@ -75,6 +75,12 @@ const providers: Provider[] = [
     description: "Low-latency voice synthesis with emotion control",
   },
   {
+    id: "elevenlabs",
+    name: "Elevenlabs",
+    capabilities: ["tts"],
+    description: "High-quality text-to-speech with multilingual support",
+  },
+  {
     id: "openai",
     name: "OpenAI",
     capabilities: ["llm"],

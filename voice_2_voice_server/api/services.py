@@ -16,6 +16,7 @@ from pipecat.services.openai.stt import OpenAISTTService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService, ElevenLabsTTSSettings
 from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 
 # Local services
@@ -199,7 +200,8 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
         "openai": "OpenAI",
         "sarvam": "Sarvam",
         "ai4bharat": "AI4Bharat",
-        "bhashini": "Bhashini"
+        "bhashini": "Bhashini",
+        "elevenlabs": "ElevenLabs",
     }
     provider = provider_map.get(provider.lower(), provider)
     
@@ -265,6 +267,29 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
             pitch=pitch,
             pace=pace,
             loudness=loudness
+        )
+    
+    elif provider == "ElevenLabs":
+        model = args.get("model")
+        voice_id = args.get("voice_id")
+        if not voice_id or not model:
+            raise ServiceCreationError(
+                "ElevenLabs TTS requires 'model' and 'voice_id' in tts_model.args (same as Cartesia)"
+            )
+        api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not api_key:
+            raise ServiceCreationError(
+                "ELEVENLABS_API_KEY environment variable is not set. Add it to voice_2_voice_server/.env"
+            )
+        lang_code = TTS_LANGUAGE_MAP[provider].get(language) if language else None
+        return ElevenLabsTTSService(
+            api_key=api_key,
+            sample_rate=sample_rate,
+            settings=ElevenLabsTTSSettings(
+                voice=voice_id,
+                model=model,
+                language=lang_code,
+            ),
         )
     
     else:

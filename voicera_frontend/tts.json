@@ -18,6 +18,11 @@
             "models": ["sonic-3", "sonic-2", "sonic-english"],
             "voices": "use Cartesia voice library"
           },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
+          },
           "sarvam": {
             "available": false,
             "voices": []
@@ -79,6 +84,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Rohit", "Aman", "Rani"],
             "recommended_voices": ["Divya", "Rohit"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -113,6 +123,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Arjun", "Aditi", "Riya"],
             "recommended_voices": ["Divya", "Arjun"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -141,6 +156,11 @@
             "model": "indic-parler-tts",
             "voices": ["Kavitha", "Jaya"],
             "recommended_voices": ["Jaya"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -175,6 +195,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Prakash", "Lalitha"],
             "recommended_voices": ["Divya", "Prakash"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -209,6 +234,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Sanjay", "Sunita", "Isha"],
             "recommended_voices": ["Divya", "Sanjay"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -243,6 +273,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Yash", "Neha"],
             "recommended_voices": ["Divya", "Yash"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -277,6 +312,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Suresh", "Anu", "Vidya"],
             "recommended_voices": ["Divya", "Suresh"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -311,6 +351,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Anjali", "Harish"],
             "recommended_voices": ["Divya", "Anjali"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -346,6 +391,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Divjot", "Gurpreet"],
             "recommended_voices": ["Divya", "Divjot"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -379,6 +429,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Manas", "Debjani"],
             "recommended_voices": ["Divya", "Manas"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -412,6 +467,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Amit", "Sita"],
             "recommended_voices": ["Divya", "Amit"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -446,6 +506,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya"],
             "recommended_voices": ["Divya"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -504,6 +569,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Aryan"],
             "recommended_voices": ["Divya", "Aryan"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -536,6 +606,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Laishram", "Ranjit"],
             "recommended_voices": ["Divya", "Laishram"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -562,6 +637,11 @@
             "model": "indic-parler-tts",
             "voices": ["Bikram", "Maya", "Kalpana"],
             "recommended_voices": ["Bikram", "Maya"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -594,6 +674,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya", "Karan"],
             "recommended_voices": ["Divya", "Karan"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -627,6 +712,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya"],
             "recommended_voices": ["Divya"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -660,6 +750,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya"],
             "recommended_voices": ["Divya"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -693,6 +788,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya"],
             "recommended_voices": ["Divya"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       },
@@ -726,6 +826,11 @@
             "model": "bhashini-indic-parler",
             "voices": ["Divya"],
             "recommended_voices": ["Divya"]
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library"
           }
         }
       }

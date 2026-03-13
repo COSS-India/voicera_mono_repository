@@ -455,15 +455,16 @@ export default function AgentDetailPage() {
           const ttsProviderName = agentData.agent_config?.tts_model?.name || ""
           const ttsProviderId = getProviderIdFromName(ttsProviderName)
           setTtsProvider(ttsProviderId)
-          // For Cartesia and Google, load from args; for others, load from top level
+          // For Cartesia, Google, and ElevenLabs, load from args; for others, load from top level
           const ttsModelConfig = agentData.agent_config?.tts_model as any
           const ttsArgs = ttsModelConfig?.args || {}
-          const modelValue = (ttsProviderId === "cartesia" || ttsProviderId === "gcp")
+          const argsProviders = ["cartesia", "gcp", "elevenlabs"]
+          const modelValue = argsProviders.includes(ttsProviderId)
             ? (ttsArgs.model || ttsModelConfig?.model || "")
             : (ttsModelConfig?.model || "")
           setTtsModel(modelValue)
-          // For Cartesia and Google, load voice_id from args; for others, load from speaker
-          const voiceValue = (ttsProviderId === "cartesia" || ttsProviderId === "gcp")
+          // For Cartesia, Google, and ElevenLabs, load voice_id from args; for others, load from speaker
+          const voiceValue = argsProviders.includes(ttsProviderId)
             ? (ttsArgs.voice_id || ttsModelConfig?.voice_id || "")
             : (ttsModelConfig?.speaker || "")
           setTtsVoice(voiceValue)
@@ -556,8 +557,8 @@ export default function AgentDetailPage() {
         name: ttsProvider || "",
         ...(ttsModel && { model: ttsModel }),
         language: languageName || "",
-        ...(ttsProvider === "cartesia" && ttsVoice && { voice_id: ttsVoice }),
-        speaker: ttsProvider === "cartesia" ? "" : (ttsVoice || ""),
+        ...((ttsProvider === "cartesia" || ttsProvider === "elevenlabs") && ttsVoice && { voice_id: ttsVoice }),
+        speaker: (ttsProvider === "cartesia" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
         speed: speed || 1.0,
         ...(agent.agent_config?.tts_model?.description && { description: agent.agent_config.tts_model.description }),
         ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
@@ -627,14 +628,14 @@ export default function AgentDetailPage() {
           tts_model: {
             name: getProviderOfficialName(ttsProvider),
             // language: languageName,
-            ...((ttsProvider === "cartesia" || ttsProvider === "gcp") && {
+            ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && {
               args: {
                 ...(ttsModel && { model: ttsModel }),
                 ...(ttsVoice && { voice_id: ttsVoice }),
               },
             }),
-            ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsModel && { model: ttsModel }),
-            speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp") ? "" : (ttsVoice || ""),
+            ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsProvider !== "elevenlabs" && ttsModel && { model: ttsModel }),
+            speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
             speed: speed,
             ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && ttsDescription && { description: ttsDescription }),
             ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
@@ -1174,7 +1175,7 @@ export default function AgentDetailPage() {
                           {ttsModel && ttsProvider && (
                             <>
                               {/* Voice or Voice ID */}
-                              {(ttsProvider === "gcp" || ttsProvider === "cartesia") ? (
+                              {(ttsProvider === "gcp" || ttsProvider === "cartesia" || ttsProvider === "elevenlabs") ? (
                                 <div>
                                   <label className="text-xs font-semibold text-slate-500 mb-2 block">
                                     Voice ID

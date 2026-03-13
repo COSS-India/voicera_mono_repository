@@ -664,14 +664,14 @@ export default function AssistantsPage() {
       // Build TTS model object WITHOUT language, using official provider name
       const ttsModel: any = {
         name: getProviderOfficialName(config.ttsProvider),
-        ...((config.ttsProvider === "cartesia" || config.ttsProvider === "gcp") && {
+        ...((config.ttsProvider === "cartesia" || config.ttsProvider === "gcp" || config.ttsProvider === "elevenlabs") && {
           args: {
             ...(config.ttsModel && { model: config.ttsModel }),
             ...(config.ttsVoice && { voice_id: config.ttsVoice }),
           },
         }),
-        ...(config.ttsProvider !== "cartesia" && config.ttsProvider !== "gcp" && config.ttsModel && { model: config.ttsModel }),
-        speaker: (config.ttsProvider === "cartesia" || config.ttsProvider === "gcp") ? "" : (config.ttsVoice || ""),
+        ...(config.ttsProvider !== "cartesia" && config.ttsProvider !== "gcp" && config.ttsProvider !== "elevenlabs" && config.ttsModel && { model: config.ttsModel }),
+        speaker: (config.ttsProvider === "cartesia" || config.ttsProvider === "gcp" || config.ttsProvider === "elevenlabs") ? "" : (config.ttsVoice || ""),
       }
       if ((config.ttsProvider === "ai4bharat" || config.ttsProvider === "bhashini") && config.ttsDescription) {
         ttsModel.description = config.ttsDescription
@@ -1366,7 +1366,7 @@ export default function AssistantsPage() {
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Voice</label>
                           <div className="flex items-center gap-2">
-                            {(config.ttsProvider === "gcp" || config.ttsProvider === "cartesia") ? (
+                            {(config.ttsProvider === "gcp" || config.ttsProvider === "cartesia" || config.ttsProvider === "elevenlabs") ? (
                               <Input
                                 value={config.ttsVoice}
                                 onChange={(e) => updateConfig("ttsVoice", e.target.value)}
