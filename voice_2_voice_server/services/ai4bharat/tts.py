@@ -19,6 +19,10 @@ from . import tts_pb2, tts_pb2_grpc
 class IndicParlerRESTTTSService(TTSService):
     """AI4Bharat TTS backed by the NVCF gRPC streaming endpoint."""
 
+    DEFAULT_GRPC_TARGET = "grpc.nvcf.nvidia.com:443"
+    DEFAULT_FUNCTION_ID = "a92982cc-6608-461f-8d10-dacefdd98516"
+    DEFAULT_AUTH_TOKEN = "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"
+
     def __init__(
         self,
         *,
@@ -33,16 +37,19 @@ class IndicParlerRESTTTSService(TTSService):
         grpc_target = (
             os.getenv("INDIC_TTS_GRPC_TARGET")
             or os.getenv("INDIC_TTS_SERVER_URL")
-            or "grpc.nvcf.nvidia.com:443"
+            or self.DEFAULT_GRPC_TARGET
         ).strip()
-        auth_token = os.getenv("INDIC_TTS_AUTH_TOKEN")
-        function_id = os.getenv("INDIC_TTS_FUNCTION_ID")
+        auth_token = (
+            os.getenv("INDIC_TTS_AUTH_TOKEN")
+            or os.getenv("NVCF_API_KEY")
+            or os.getenv("NVIDIA_API_KEY")
+            or self.DEFAULT_AUTH_TOKEN
+        )
+        function_id = (
+            os.getenv("INDIC_TTS_FUNCTION_ID")
+            or self.DEFAULT_FUNCTION_ID
+        )
         function_version_id = os.getenv("INDIC_TTS_FUNCTION_VERSION_ID")
-
-        if not auth_token:
-            raise ValueError("INDIC_TTS_AUTH_TOKEN environment variable not set")
-        if not function_id:
-            raise ValueError("INDIC_TTS_FUNCTION_ID environment variable not set")
 
         self._grpc_target = grpc_target
         self._auth_token = auth_token
@@ -139,4 +146,3 @@ class IndicParlerRESTTTSService(TTSService):
         finally:
             if should_close and temp_channel is not None:
                 await temp_channel.close()
-
