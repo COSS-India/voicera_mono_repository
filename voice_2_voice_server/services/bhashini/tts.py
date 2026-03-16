@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from typing import AsyncGenerator, Optional
 
 import grpc
@@ -71,7 +72,13 @@ class BhashiniTTSService(TTSService):
         self._stub: Optional[tts_pb2_grpc.TTSServiceStub] = None
 
     async def start(self, frame: Frame):
-        logger.info(f"Starting Bhashini gRPC TTS service: {self._grpc_target}")
+        logger.info(
+            "Starting Bhashini gRPC TTS service | target={} | function_id={} | version_id={} | sample_rate={}",
+            self._grpc_target,
+            self._function_id,
+            self._function_version_id or "default",
+            self.sample_rate,
+        )
         self._channel = grpc.aio.secure_channel(
             self._grpc_target,
             grpc.ssl_channel_credentials(),
@@ -95,6 +102,13 @@ class BhashiniTTSService(TTSService):
         if self._function_version_id:
             metadata.append(("function-version-id", self._function_version_id))
         return metadata
+
+    def _masked_token(self) -> str:
+        if not self._auth_token:
+            return "missing"
+        if len(self._auth_token) <= 10:
+            return "***"
+        return f"{self._auth_token[:8]}...{self._auth_token[-4:]}"
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         if not text.strip():
@@ -121,16 +135,36 @@ class BhashiniTTSService(TTSService):
         )
 
         try:
+            started_at = time.perf_counter()
+            logger.info(
+                "Bhashini gRPC TTS request started | chars={} | speaker={} | target={} | function_id={} | token={}",
+                len(text),
+                self._speaker,
+                self._grpc_target,
+                self._function_id,
+                self._masked_token(),
+            )
             yield TTSStartedFrame()
 
             chunk_count = 0
+            total_bytes = 0
+            first_chunk_ms = None
             async for chunk in stub.StreamTTS(
                 request,
                 metadata=self._build_metadata(),
                 timeout=self._request_timeout,
             ):
                 if not chunk.audio:
+                    logger.debug("Bhashini gRPC returned empty audio chunk")
                     continue
+
+                if first_chunk_ms is None:
+                    first_chunk_ms = (time.perf_counter() - started_at) * 1000
+                    logger.info(
+                        "Bhashini gRPC first audio chunk received in {:.1f} ms | sample_rate={}",
+                        first_chunk_ms,
+                        chunk.sample_rate or self.sample_rate,
+                    )
 
                 yield TTSAudioRawFrame(
                     audio=chunk.audio,
@@ -138,8 +172,24 @@ class BhashiniTTSService(TTSService):
                     num_channels=1,
                 )
                 chunk_count += 1
+                total_bytes += len(chunk.audio)
 
-            logger.info(f"Bhashini gRPC TTS streamed {chunk_count} chunks")
+                if chunk_count <= 3 or chunk_count % 25 == 0:
+                    logger.debug(
+                        "Bhashini gRPC audio chunk {} | bytes={} | sample_rate={}",
+                        chunk_count,
+                        len(chunk.audio),
+                        chunk.sample_rate or self.sample_rate,
+                    )
+
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.info(
+                "Bhashini gRPC TTS completed | chunks={} | bytes={} | ttft_ms={} | total_ms={:.1f}",
+                chunk_count,
+                total_bytes,
+                f"{first_chunk_ms:.1f}" if first_chunk_ms is not None else "n/a",
+                elapsed_ms,
+            )
             yield TTSStoppedFrame()
 
         except grpc.aio.AioRpcError as e:
@@ -153,4 +203,3 @@ class BhashiniTTSService(TTSService):
         finally:
             if should_close and temp_channel is not None:
                 await temp_channel.close()
-
