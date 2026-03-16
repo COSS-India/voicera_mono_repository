@@ -13,6 +13,7 @@ Pillow>=11.1.0,<12
 
 # Protocol/Serialization
 protobuf~=5.29.5
+grpcio>=1.66.0
 
 # HTTP/Async
 aiohttp==3.13.2
