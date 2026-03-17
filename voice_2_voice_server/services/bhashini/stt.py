@@ -82,38 +82,54 @@ class BhashiniSTTService(STTService):
         await super().cancel(frame)
 
     async def _connect(self):
-        logger.debug(f"Connecting to Bhashini: {self._socket_url}")
-        
+        task_seq = self._build_task_sequence()
+        logger.info(
+            "🎤 Bhashini STT: connecting url=%s service_id=%s language=%s sample_rate=%s",
+            self._socket_url,
+            self._service_id,
+            self._language,
+            self.sample_rate,
+        )
+        logger.info("🎤 Bhashini STT: start task_sequence=%s", task_seq)
         self._ready_event = asyncio.Event()
         self._sio = socketio.AsyncClient(reconnection_attempts=5)
 
         @self._sio.event
         async def connect():
-            logger.debug(f"Bhashini socket connected: {self._sio.get_sid()}")
+            sid = self._sio.get_sid()
+            logger.info("🎤 Bhashini STT: socket connected sid=%s", sid)
             self._is_connected = True
             await self._sio.emit("start", (
-                self._build_task_sequence(),
+                task_seq,
                 {"responseFrequencyInSecs": self._response_frequency_secs}
             ))
+            logger.info("🎤 Bhashini STT: emitted 'start' (waiting for 'ready')")
 
         @self._sio.event
         async def connect_error(data):
-            logger.error(f"Bhashini connection error: {data}")
+            logger.error("🎤 Bhashini STT: connection_error: %s", data)
             await self.push_error(ErrorFrame(error=f"Connection error: {data}"))
 
         @self._sio.on("ready")
         async def on_ready():
-            logger.debug("Bhashini server ready")
+            logger.info("🎤 Bhashini STT: server 'ready' received - STT ready for audio")
             self._is_ready = True
             self._ready_event.set()
 
         @self._sio.on("response")
         async def on_response(response, streaming_status):
+            is_interim = streaming_status.get("isIntermediateResult", True)
+            logger.info(
+                "🎤 Bhashini STT: 'response' received is_interim=%s streaming_status_keys=%s response_keys=%s",
+                is_interim,
+                list(streaming_status.keys()) if isinstance(streaming_status, dict) else type(streaming_status).__name__,
+                list(response.keys()) if isinstance(response, dict) else type(response).__name__,
+            )
             await self._handle_response(response, streaming_status)
 
         @self._sio.on("abort")
         async def on_abort(message):
-            logger.warning(f"Bhashini aborted: {message}")
+            logger.warning("🎤 Bhashini STT: abort received: %s", message)
             await self.push_error(ErrorFrame(error=f"Aborted: {message}"))
 
         @self._sio.on("terminate")
@@ -129,6 +145,7 @@ class BhashiniSTTService(STTService):
             self._is_ready = False
 
         try:
+            logger.info("🎤 Bhashini STT: connecting (auth key present=%s)", bool(self._api_key))
             await self._sio.connect(
                 url=self._socket_url,
                 transports=["websocket", "polling"],
@@ -136,12 +153,12 @@ class BhashiniSTTService(STTService):
                 auth={"authorization": self._api_key}
             )
             await asyncio.wait_for(self._ready_event.wait(), timeout=10.0)
-            logger.info("Bhashini STT service ready")
+            logger.info("🎤 Bhashini STT: service ready - connected and received 'ready'")
         except asyncio.TimeoutError:
-            logger.error("Bhashini connection timeout")
+            logger.error("🎤 Bhashini STT: connection timeout (no 'ready' within 10s)")
             await self.push_error(ErrorFrame(error="Connection timeout"))
         except Exception as e:
-            logger.error(f"Bhashini connection failed: {e}")
+            logger.error("🎤 Bhashini STT: connection failed: %s", e)
             await self.push_error(ErrorFrame(error=str(e)))
 
     async def _disconnect(self):
@@ -158,26 +175,28 @@ class BhashiniSTTService(STTService):
     async def _send_end_of_stream(self):
         """Signal end of speech to server - triggers final transcription."""
         if not self._sio or not self._is_connected:
+            logger.debug("🎤 Bhashini STT: _send_end_of_stream skipped - not connected")
             return
         try:
-            # clear_server_state=True tells server speaking stopped
             await self._sio.emit("data", (None, None, True, False))
             await self._sio.emit("data", (None, None, True, True))
-            logger.debug("Sent end of stream signal")
+            logger.info("🎤 Bhashini STT: sent end-of-stream signal (stop)")
         except Exception as e:
-            logger.warning(f"End of stream error: {e}")
+            logger.warning("🎤 Bhashini STT: end of stream error: %s", e)
 
     async def _handle_response(self, response: dict, streaming_status: dict):
         """Process transcription response from Bhashini."""
         try:
             is_interim = streaming_status.get("isIntermediateResult", True)
-            
+
             pipeline_response = response.get("pipelineResponse", [])
             if not pipeline_response:
+                logger.debug("🎤 Bhashini STT: response has no pipelineResponse")
                 return
-            
+
             outputs = pipeline_response[0].get("output", [])
             if not outputs:
+                logger.debug("🎤 Bhashini STT: pipelineResponse has no output")
                 return
 
             if is_interim:
@@ -190,17 +209,18 @@ class BhashiniSTTService(STTService):
                 )
 
             if not transcript.strip():
+                logger.debug("🎤 Bhashini STT: empty transcript in response")
                 return
 
             if is_interim:
-                logger.debug(f"Bhashini interim: {transcript}")
+                logger.info("🎤 Bhashini STT: interim transcript len=%d text=%s", len(transcript), transcript[:80])
                 await self.push_frame(InterimTranscriptionFrame(
                     text=transcript,
                     user_id=self._user_id,
                     timestamp=time_now_iso8601(),
                 ))
             else:
-                logger.info(f"Bhashini final: {transcript}")
+                logger.info("🎤 Bhashini STT: final transcript len=%d text=%s", len(transcript), transcript)
                 await self.push_frame(TranscriptionFrame(
                     text=transcript,
                     user_id=self._user_id,
@@ -208,14 +228,26 @@ class BhashiniSTTService(STTService):
                 ))
 
         except Exception as e:
-            logger.error(f"Response handling error: {e}")
+            logger.error("🎤 Bhashini STT: response handling error: %s", e)
+
+    _stt_audio_chunk_count = 0  # class-level for trace
 
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
         """Send audio to Bhashini for transcription."""
         if not self._is_ready or not audio:
+            if not self._is_ready:
+                logger.debug("🎤 Bhashini STT: run_stt skipped - not ready")
             yield None
             return
 
+        BhashiniSTTService._stt_audio_chunk_count += 1
+        c = BhashiniSTTService._stt_audio_chunk_count
+        if c <= 5 or c % 100 == 0:
+            logger.info(
+                "🎤 Bhashini STT: sending audio to API chunk_count=%d audio_len=%d bytes",
+                c,
+                len(audio),
+            )
         try:
             await self._sio.emit("data", (
                 {"audio": [{"audioContent": audio}]},
@@ -224,10 +256,10 @@ class BhashiniSTTService(STTService):
                 False   # is_stream_inactive
             ))
         except Exception as e:
-            logger.error(f"Audio send error: {e}")
+            logger.error("🎤 Bhashini STT: audio send error: %s", e)
             yield ErrorFrame(error=str(e))
             return
-        
+
         yield None
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -235,18 +267,19 @@ class BhashiniSTTService(STTService):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, UserStartedSpeakingFrame):
-            logger.debug("User started speaking")
+            logger.info("🎤 Bhashini STT: UserStartedSpeakingFrame - user started speaking")
             self._is_speaking = True
-            
+
         elif isinstance(frame, UserStoppedSpeakingFrame):
-            logger.debug("User stopped speaking - sending finalize signal")
+            logger.info("🎤 Bhashini STT: UserStoppedSpeakingFrame - sending finalize signal to Bhashini")
             self._is_speaking = False
             # Like Deepgram's finalize() - tell server to flush and send final result
             if self._sio and self._is_ready:
                 try:
                     await self._sio.emit("data", (None, None, True, False))
+                    logger.info("🎤 Bhashini STT: emitted end-of-stream (clear_server_state=True)")
                 except Exception as e:
-                    logger.error(f"Finalize signal error: {e}")
+                    logger.error("🎤 Bhashini STT: finalize signal error: %s", e)
 
     async def set_language(self, language: str):
         logger.info(f"Switching language to: {language}")

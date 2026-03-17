@@ -104,6 +104,7 @@ class BhashiniTTSService(TTSService):
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         if not text.strip():
+            logger.debug("🔊 Bhashini TTS: run_tts skipped - empty text")
             return
 
         if self._stub is None:

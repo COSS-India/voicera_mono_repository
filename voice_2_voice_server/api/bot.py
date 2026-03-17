@@ -21,7 +21,7 @@ from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.utils.text.base_text_aggregator import BaseTextAggregator, Aggregation, AggregationType
-from typing import Any
+from typing import Any, Optional
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
@@ -42,6 +42,41 @@ from .call_recording_utils import submit_call_recording
 
 
 load_dotenv(override=False)
+
+
+class _LoggingWebSocketWrapper:
+    """Wraps a WebSocket to log inbound message events (for debugging voice receive path)."""
+
+    def __init__(self, ws, call_sid: str = ""):
+        self._ws = ws
+        self._call_sid = call_sid or "unknown"
+        self._inbound_count = 0
+        self._media_count = 0
+
+    async def receive_text(self):
+        data = await self._ws.receive_text()
+        self._inbound_count += 1
+        try:
+            msg = json.loads(data)
+            ev = msg.get("event", "?")
+            if ev == "media":
+                self._media_count += 1
+                payload_len = len(msg.get("media", {}).get("payload") or "")
+                if self._media_count <= 3 or self._media_count % 100 == 0:
+                    logger.info(
+                        "📨 WS inbound [%s]: event=media, media_count=%d, payload_b64_len=%d",
+                        self._call_sid[:8],
+                        self._media_count,
+                        payload_len,
+                    )
+            else:
+                logger.info("📨 WS inbound [%s]: event=%s, keys=%s", self._call_sid[:8], ev, list(msg.keys()))
+        except (json.JSONDecodeError, TypeError):
+            logger.debug("📨 WS inbound [%s]: non-JSON, len=%d", self._call_sid[:8], len(data) if data else 0)
+        return data
+
+    def __getattr__(self, name):
+        return getattr(self._ws, name)
 
 
 # Monkey-patch SOXRStreamAudioResampler to reduce latency from ~200ms to near-zero
@@ -135,7 +170,8 @@ async def run_bot(
     audiobuffer: AudioBufferProcessor,
     transcript: TranscriptProcessor,
     handle_sigint: bool = False,
-    vad_analyzer: Any = None
+    vad_analyzer: Any = None,
+    vistaar_session_id: Optional[str] = None,
 ) -> None:
     """Run the voice bot pipeline with the given configuration.
     
@@ -163,7 +199,11 @@ async def run_bot(
             if not tts_config.get("language"):
                 tts_config["language"] = language
      
-        llm = create_llm_service(llm_config)
+        llm = create_llm_service(
+            llm_config,
+            vistaar_session_id=vistaar_session_id,
+            language=agent_config.get("language"),
+        )
         stt = create_stt_service(stt_config, sample_rate, vad_analyzer=vad_analyzer)
         tts = create_tts_service(tts_config, sample_rate)
         
@@ -273,7 +313,7 @@ async def bot(
         sample_rate=sample_rate,
         params=VADParams(
             stop_secs=0.35,
-            min_volume=0.5,
+            min_volume=0.3,
             confidence=0.4,
             start_secs=0.1,
         )
@@ -284,7 +324,11 @@ async def bot(
 
     import pipecat.transports.base_output
     pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
-    
+
+    # Wrap WebSocket to log inbound messages (customer voice path debugging)
+    websocket_client = _LoggingWebSocketWrapper(websocket_client, call_sid=call_sid)
+    logger.info("📨 WebSocket logging enabled for call_sid=%s (inbound media will be logged)", call_sid)
+
     transport = FastAPIWebsocketTransport(
         websocket=websocket_client,
         params=FastAPIWebsocketParams(
@@ -338,7 +382,7 @@ async def bot(
             call_data["transcript_lines"].append(line)
     
     try:
-        await run_bot(transport, agent_config, audiobuffer, transcript, handle_sigint=False, vad_analyzer=vad_analyzer)
+        await run_bot(transport, agent_config, audiobuffer, transcript, handle_sigint=False, vad_analyzer=vad_analyzer, vistaar_session_id=call_sid)
     finally:
         logger.info(f"Saving call data for {call_sid}...")
         if call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:
@@ -457,7 +501,7 @@ async def ubona_bot(
             call_data["transcript_lines"].append(f"{ts}{message.role}: {message.content}")
 
     try:
-        await run_bot(transport, agent_config, audiobuffer, transcript, vad_analyzer=vad_analyzer)
+        await run_bot(transport, agent_config, audiobuffer, transcript, vad_analyzer=vad_analyzer, vistaar_session_id=call_id)
     finally:
         logger.info(f"Saving call data for {call_id}...")
         if call_data["audio_chunks"] and call_data["audio_sample_rate"]:
