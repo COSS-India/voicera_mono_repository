@@ -255,7 +255,6 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
         speaker = tts_config.get("speaker") or args.get("speaker")
         description = tts_config.get("description") or args.get("description")
         return BhashiniTTSService(
-            api_key=os.getenv("BHASHINI_API_KEY"),
             speaker=speaker,
             description=description,
             sample_rate=sample_rate

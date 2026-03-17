@@ -29,7 +29,6 @@ class BhashiniTTSService(TTSService):
         speaker: str = "Divya",
         description: str = "A clear, natural voice with good audio quality.",
         sample_rate: int = 24000,
-        api_key: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(sample_rate=sample_rate, **kwargs)
@@ -39,8 +38,7 @@ class BhashiniTTSService(TTSService):
             or self.DEFAULT_GRPC_TARGET
         ).strip()
         auth_token = (
-            api_key
-            or os.getenv("BHASHINI_NVCF_TTS_AUTH_TOKEN")
+            os.getenv("BHASHINI_NVCF_TTS_AUTH_TOKEN")
         )
         function_id = (
             os.getenv("BHASHINI_TTS_FUNCTION_ID")
