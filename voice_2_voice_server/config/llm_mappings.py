@@ -4,6 +4,7 @@
 LLM_DEFAULT_MODELS = {
     "OpenAI": "gpt-4o",
     "Kenpath": None,  # Kenpath doesn't need a model parameter
+    "anthropic": "claude-sonnet-4-5-20250929",
 }
 
 

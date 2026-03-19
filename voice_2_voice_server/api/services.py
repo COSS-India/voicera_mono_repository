@@ -8,6 +8,7 @@ from deepgram import LiveOptions
 
 # Pipecat services
 from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
@@ -60,10 +61,14 @@ def create_llm_service(
         ServiceCreationError: If the LLM provider is unknown
     """
     provider = llm_config.get("name") or llm_config.get("provider")
+    if isinstance(provider, str):
+        provider_normalized = provider.strip()
+    else:
+        provider_normalized = provider
     args = llm_config.get("args", {})
     model = args.get("model") or llm_config.get("model")
 
-    if provider == "OpenAI":
+    if provider_normalized == "OpenAI":
         if org_id:
             api_key = fetch_integration_key(org_id, "OpenAI")
             if not api_key:
@@ -80,18 +85,48 @@ def create_llm_service(
 
         service = OpenAILLMService(
             api_key=api_key,
-            model=get_llm_model(provider, model),
+            model=get_llm_model(provider_normalized, model),
         )
 
         # Store user aggregator params on the service instance for later use
         service._user_aggregator_params = user_aggregator_params
 
         return service
-    elif provider == "Kenpath":
+    elif provider_normalized == "Kenpath":
         return KenpathLLM(
             vistaar_session_id=vistaar_session_id,
             language=language,
         )
+    elif provider_normalized in ("Anthropic", "anthropic"):
+        if not org_id:
+            raise ServiceCreationError(
+                "Anthropic requires an organization context. Use an agent that belongs to an organization."
+            )
+        api_key = fetch_integration_key(org_id, "Anthropic")
+        if not api_key:
+            raise ServiceCreationError(
+                "Anthropic API key must be configured in Integrations for this organization. Add your Anthropic API key on the Integrations page."
+            )
+        resolved_model = get_llm_model("Anthropic", model)
+        settings_kw = {
+            "model": resolved_model,
+            "max_tokens": args.get("max_tokens", 4096),
+        }
+        if "temperature" in args:
+            settings_kw["temperature"] = args["temperature"]
+        if "top_p" in args:
+            settings_kw["top_p"] = args["top_p"]
+        if "top_k" in args:
+            settings_kw["top_k"] = args["top_k"]
+        if "enable_prompt_caching" in args:
+            settings_kw["enable_prompt_caching"] = args["enable_prompt_caching"]
+        settings = AnthropicLLMService.Settings(**settings_kw)
+        service = AnthropicLLMService(api_key=api_key, settings=settings)
+        user_aggregator_params = LLMUserAggregatorParams(
+            aggregation_timeout=args.get("aggregation_timeout", 0.05)
+        )
+        service._user_aggregator_params = user_aggregator_params
+        return service
     else:
         raise ServiceCreationError(f"Unknown LLM provider: {provider}")
 

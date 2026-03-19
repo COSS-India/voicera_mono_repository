@@ -61,11 +61,13 @@ const getProviderOfficialName = (providerId: string): string => {
   const nameMap: Record<string, string> = {
     assembly: "Assembly",
     azure: "Azure",
+    anthropic: "Anthropic",
     deepgram: "Deepgram",
     elevenlabs: "Elevenlabs",
     gladia: "Gladia",
     google: "Google",
     gcp: "Google", // GCP is officially called Google
+    kenpath: "Kenpath",
     pixa: "Pixa",
     sarvam: "Sarvam",
     smallest: "Smallest",
@@ -82,12 +84,14 @@ const getProviderOfficialName = (providerId: string): string => {
 const getProviderIdFromName = (providerName: string): string => {
   const reverseMap: Record<string, string> = {
     "Assembly": "assembly",
+    "Anthropic": "anthropic",
     "Azure": "azure",
     "Deepgram": "deepgram",
     "Elevenlabs": "elevenlabs",
     "Gladia": "gladia",
     "Google": "gcp", // Google maps to "gcp" internally
     "GCP": "gcp", // Handle legacy "GCP" name
+    "Kenpath": "kenpath",
     "Pixa": "pixa",
     "Sarvam": "sarvam",
     "Smallest": "smallest",
@@ -134,6 +138,8 @@ const llmProviders = {
   anthropic: {
     name: "Anthropic",
     models: [
+      "claude-sonnet-4-5-20250929",
+      "claude-opus-4-6-20250929",
       "claude-sonnet-4-20250514",
       "claude-3-5-sonnet-20241022",
       "claude-3-5-haiku-20241022",
