@@ -60,7 +60,9 @@ TTS_LANGUAGE_MAP = {
     },
     "Sarvam": {
         "Hindi": "hi-IN",
+        "English": "en-IN",
         "English (India)": "en-IN",
+        "English (United States)": "en-IN",
         "Bengali": "bn-IN",
         "Tamil": "ta-IN",
         "Telugu": "te-IN",

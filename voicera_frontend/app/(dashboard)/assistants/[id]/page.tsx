@@ -301,7 +301,7 @@ export default function AgentDetailPage() {
     return new Set(models)
   }, [language, ttsProvider])
 
-  // Get available TTS voices for selected provider/model
+  // Get available TTS voices for selected provider/model (Sarvam: voices vary by model)
   const availableTTSVoices = useMemo(() => {
     if (!language || !ttsProvider) return []
     const langData =
@@ -310,14 +310,18 @@ export default function AgentDetailPage() {
 
     const providerData = langData.models[ttsProvider as keyof typeof langData.models] as {
       voices?: string | string[]
+      voices_by_model?: Record<string, string[]>
     }
     if (!providerData) return []
 
+    if (ttsProvider === "sarvam" && ttsModel && providerData.voices_by_model?.[ttsModel]) {
+      return providerData.voices_by_model[ttsModel]
+    }
     if (Array.isArray(providerData.voices)) {
       return providerData.voices
     }
     return []
-  }, [language, ttsProvider])
+  }, [language, ttsProvider, ttsModel])
 
   // Get available TTS descriptions for AI4Bharat and Bhashini providers
   const availableTTSDescriptions = useMemo(() => {
@@ -521,13 +525,17 @@ export default function AgentDetailPage() {
       }
     }
 
-    // Clear TTS voice if it's not available for current provider
+    // Clear TTS voice if it's not available for current provider; for Sarvam set to first voice of model
     if (ttsProvider && ttsVoice && availableTTSVoices.length > 0) {
       if (!availableTTSVoices.includes(ttsVoice)) {
-        setTtsVoice("")
+        if (ttsProvider === "sarvam") {
+          setTtsVoice(availableTTSVoices[0])
+        } else {
+          setTtsVoice("")
+        }
       }
     }
-  }, [language, sttProvider, ttsProvider, supportedSTTModels, supportedTTSModels, availableTTSVoices, isLoading])
+  }, [language, sttProvider, ttsProvider, ttsModel, supportedSTTModels, supportedTTSModels, availableTTSVoices, isLoading])
 
   // Detect changes
   useEffect(() => {
