@@ -5,7 +5,7 @@
         "models": {
           "deepgram": ["nova-3", "nova-2", "flux-general-en"],
           "gcp": ["chirp_3", "chirp_2", "long", "short", "telephony"],
-          "sarvam": [],
+          "sarvam": ["saarika:v2", "saarika:v2.5"],
           "elevenlabs": ["scribe-v2", "scribe-v2-realtime"]
         }
       },

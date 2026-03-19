@@ -250,7 +250,8 @@ def create_stt_service(
         )
     
     elif provider == "Sarvam":
-        model = args.get("model")
+        # Model can be at stt_config.model (from agent config) or stt_config.args.model
+        model = args.get("model") or stt_config.get("model") or "saarika:v2.5"
         if org_id:
             api_key = fetch_integration_key(org_id, "Sarvam")
             if not api_key:
@@ -420,11 +421,18 @@ def create_tts_service(
         )
     
     elif provider == "Sarvam":
-        model = args.get("model")
+        model = args.get("model") or tts_config.get("model") or "bulbul:v3"
         speaker = args.get("speaker") or tts_config.get("speaker")
+        # Default speaker by model: bulbul:v2 -> anushka, bulbul:v3 -> aditya (per Sarvam docs)
+        if not speaker:
+            speaker = "anushka" if model == "bulbul:v2" else "aditya"
         pitch = args.get("pitch")
         pace = args.get("pace")
         loudness = args.get("loudness")
+        # bulbul:v3 does not support pitch/loudness; do not pass them
+        if model == "bulbul:v3":
+            pitch = None
+            loudness = None
         if org_id:
             api_key = fetch_integration_key(org_id, "Sarvam")
             if not api_key:
@@ -433,11 +441,15 @@ def create_tts_service(
                 )
         else:
             api_key = os.getenv("SARVAM_API_KEY")
+            if not api_key:
+                raise ServiceCreationError(
+                    "SARVAM_API_KEY is required for Sarvam TTS when not using org integration."
+                )
         return SarvamTTSService(
             api_key=api_key,
             target_language_code=TTS_LANGUAGE_MAP[provider][language],
             model=model,
-            speaker=speaker,
+            voice_id=speaker,
             pitch=pitch,
             pace=pace,
             loudness=loudness
