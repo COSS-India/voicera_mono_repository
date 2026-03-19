@@ -18,6 +18,11 @@
             "models": ["sonic-3", "sonic-2", "sonic-english"],
             "voices": "use Cartesia voice library"
           },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library (voice ID from dashboard)"
+          },
           "sarvam": {
             "available": false,
             "voices": []
@@ -47,6 +52,11 @@
             "models": ["sonic-3", "sonic-2", "sonic-english"],
             "voices": "use Cartesia voice library"
           },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library (voice ID from dashboard)"
+          },
           "sarvam": {
             "available": false,
             "voices": []
@@ -68,6 +78,11 @@
             "available": true,
             "models": ["sonic-3", "sonic-multilingual"],
             "voices": "use Cartesia voice library"
+          },
+          "elevenlabs": {
+            "available": true,
+            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
@@ -737,6 +752,42 @@
       }
     },
     "voice_settings": {
+      "elevenlabs": {
+        "controls": [
+          {
+            "id": "stability",
+            "label": "Stability",
+            "type": "slider",
+            "min": 0,
+            "max": 1,
+            "step": 0.1,
+            "default": 0.5,
+            "description": "Voice consistency (0 = expressive, 1 = consistent)"
+          },
+          {
+            "id": "similarity_boost",
+            "label": "Similarity",
+            "type": "slider",
+            "min": 0,
+            "max": 1,
+            "step": 0.1,
+            "default": 0.75,
+            "description": "Voice clarity and similarity"
+          },
+          {
+            "id": "speed",
+            "label": "Speed",
+            "type": "slider",
+            "min": 0.7,
+            "max": 1.2,
+            "step": 0.05,
+            "default": 1.0,
+            "unit": "x",
+            "description": "Speech rate"
+          }
+        ],
+        "note": "Use voice ID from ElevenLabs voice library. Multilingual model recommended for non-English."
+      },
       "deepgram": {
         "controls": [],
         "note": "Deepgram Aura-2 voices (e.g. aura-2-thalia-en). Speaking rate / speed is not exposed by Deepgram TTS or Pipecat's DeepgramTTSService—only model, encoding, and sample_rate. Use GCP or Sarvam TTS if you need speed control."
@@ -851,6 +902,23 @@
       }
     },
     "model_details": {
+      "elevenlabs": {
+        "eleven_multilingual_v2": {
+          "description": "Multilingual TTS for 29+ languages",
+          "streaming": true,
+          "recommended": true
+        },
+        "eleven_turbo_v2_5": {
+          "description": "Low-latency turbo model",
+          "streaming": true,
+          "recommended": false
+        },
+        "eleven_flash_v2_5": {
+          "description": "Fastest model for real-time use",
+          "streaming": true,
+          "recommended": false
+        }
+      },
       "deepgram": {
         "aura-2": {
           "description": "Latest Deepgram TTS with natural voices",

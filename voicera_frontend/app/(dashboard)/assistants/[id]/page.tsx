@@ -455,16 +455,18 @@ export default function AgentDetailPage() {
           const ttsProviderName = agentData.agent_config?.tts_model?.name || ""
           const ttsProviderId = getProviderIdFromName(ttsProviderName)
           setTtsProvider(ttsProviderId)
-          // For Cartesia and Google, load from args; for others, load from top level
+          // For Cartesia, Google, and ElevenLabs, load from args; for others, load from top level
           const ttsModelConfig = agentData.agent_config?.tts_model as any
           const ttsArgs = ttsModelConfig?.args || {}
-          const modelValue = (ttsProviderId === "cartesia" || ttsProviderId === "gcp")
+          const usesArgsForModel = ttsProviderId === "cartesia" || ttsProviderId === "gcp" || ttsProviderId === "elevenlabs"
+          const modelValue = usesArgsForModel
             ? (ttsArgs.model || ttsModelConfig?.model || "")
             : (ttsModelConfig?.model || "")
           setTtsModel(modelValue)
-          // For Cartesia and Google, load voice_id from args; for others, load from speaker
-          const voiceValue = (ttsProviderId === "cartesia" || ttsProviderId === "gcp")
-            ? (ttsArgs.voice_id || ttsModelConfig?.voice_id || "")
+          // For Cartesia, Google, and ElevenLabs, load voice_id from args; for others, load from speaker
+          const usesArgsForVoice = ttsProviderId === "cartesia" || ttsProviderId === "gcp" || ttsProviderId === "elevenlabs"
+          const voiceValue = usesArgsForVoice
+            ? (ttsArgs.voice_id || ttsModelConfig?.voice_id || ttsArgs.voice || "")
             : (ttsModelConfig?.speaker || "")
           setTtsVoice(voiceValue)
           // Load TTS description for AI4Bharat and Bhashini
@@ -556,8 +558,8 @@ export default function AgentDetailPage() {
         name: ttsProvider || "",
         ...(ttsModel && { model: ttsModel }),
         language: languageName || "",
-        ...(ttsProvider === "cartesia" && ttsVoice && { voice_id: ttsVoice }),
-        speaker: ttsProvider === "cartesia" ? "" : (ttsVoice || ""),
+        ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && ttsVoice && { voice_id: ttsVoice }),
+        speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
         speed: speed || 1.0,
         ...(agent.agent_config?.tts_model?.description && { description: agent.agent_config.tts_model.description }),
         ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
@@ -627,14 +629,14 @@ export default function AgentDetailPage() {
           tts_model: {
             name: getProviderOfficialName(ttsProvider),
             // language: languageName,
-            ...((ttsProvider === "cartesia" || ttsProvider === "gcp") && {
+            ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && {
               args: {
                 ...(ttsModel && { model: ttsModel }),
                 ...(ttsVoice && { voice_id: ttsVoice }),
               },
             }),
-            ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsModel && { model: ttsModel }),
-            speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp") ? "" : (ttsVoice || ""),
+            ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsProvider !== "elevenlabs" && ttsModel && { model: ttsModel }),
+            speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
             speed: speed,
             ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && ttsDescription && { description: ttsDescription }),
             ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
@@ -1174,7 +1176,7 @@ export default function AgentDetailPage() {
                           {ttsModel && ttsProvider && (
                             <>
                               {/* Voice or Voice ID */}
-                              {(ttsProvider === "gcp" || ttsProvider === "cartesia") ? (
+                              {(ttsProvider === "gcp" || ttsProvider === "cartesia" || ttsProvider === "elevenlabs") ? (
                                 <div>
                                   <label className="text-xs font-semibold text-slate-500 mb-2 block">
                                     Voice ID
@@ -1185,7 +1187,7 @@ export default function AgentDetailPage() {
                                   <Input
                                     value={ttsVoice}
                                     onChange={(e) => setTtsVoice(e.target.value)}
-                                    placeholder="Enter voice ID"
+                                    placeholder={ttsProvider === "elevenlabs" ? "e.g. 21m00Tcm4TlvDq8ikWAM (Rachel)" : "Enter voice ID"}
                                     className="h-11 border-slate-200 rounded-md bg-slate-50 focus:border-slate-400"
                                   />
                                 </div>

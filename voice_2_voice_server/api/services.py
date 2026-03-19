@@ -17,6 +17,8 @@ from pipecat.services.openai.stt import OpenAISTTService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
+from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 
 # Local services
@@ -107,8 +109,42 @@ def create_stt_service(stt_config: dict, sample_rate: int, vad_analyzer: Any = N
         "sarvam": "Sarvam",
         "ai4bharat": "AI4Bharat",
         "bhashini": "Bhashini",
+        "elevenlabs": "ElevenLabs",
     }
     provider = provider_map.get(provider.lower(), provider)
+    
+    if provider == "ElevenLabs":
+        api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not api_key:
+            raise ServiceCreationError("ELEVENLABS_API_KEY is required for ElevenLabs STT")
+        raw_model = args.get("model") or stt_config.get("model")
+        # ElevenLabs API expects model_id with underscores (e.g. scribe_v2_realtime), not hyphens
+        model = (
+            raw_model.replace("-", "_") if isinstance(raw_model, str) and raw_model else raw_model
+        )
+        lang_code = STT_LANGUAGE_MAP[provider].get(language) if language else None
+        # Pipecat < 0.0.105 uses params=InputParams(language_code=...); >= 0.0.105 uses settings=
+        try:
+            from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTSettings
+            settings = ElevenLabsRealtimeSTTSettings(
+                language=lang_code,
+                **({"model": model} if model else {}),
+            )
+            return ElevenLabsRealtimeSTTService(
+                api_key=api_key,
+                sample_rate=sample_rate,
+                settings=settings,
+            )
+        except ImportError:
+            params = ElevenLabsRealtimeSTTService.InputParams(
+                language_code=lang_code,
+            )
+            return ElevenLabsRealtimeSTTService(
+                api_key=api_key,
+                sample_rate=sample_rate,
+                model=model,
+                params=params,
+            )
     
     if provider == "Deepgram":
         model = args.get("model")
@@ -202,8 +238,52 @@ def create_tts_service(tts_config: dict, sample_rate: int) -> Any:
         "sarvam": "Sarvam",
         "ai4bharat": "AI4Bharat",
         "bhashini": "Bhashini",
+        "elevenlabs": "ElevenLabs",
     }
     provider = provider_map.get(provider.lower(), provider)
+    
+    if provider == "ElevenLabs":
+        api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not api_key:
+            raise ServiceCreationError("ELEVENLABS_API_KEY is required for ElevenLabs TTS")
+        voice_id = (
+            args.get("voice_id")
+            or args.get("voice")
+            or tts_config.get("voice_id")
+            or tts_config.get("speaker")
+        )
+        if not voice_id:
+            raise ServiceCreationError(
+                "ElevenLabs TTS requires a voice ID (from ElevenLabs voice library)"
+            )
+        model = args.get("model") or tts_config.get("model") or "eleven_turbo_v2_5"
+        lang_code = TTS_LANGUAGE_MAP[provider].get(language) if language else None
+        
+        # Consistent with Deepgram/Cartesia: use standard kwargs
+        try:
+            from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+            from pipecat.transcriptions.language import Language
+            
+            params = None
+            if lang_code:
+                try:
+                    params = ElevenLabsTTSService.InputParams(language=Language(lang_code))
+                except Exception:
+                    logger.warning(f"Could not initialize ElevenLabs params with language {lang_code}")
+
+            return ElevenLabsTTSService(
+                api_key=api_key,
+                voice_id=voice_id,
+                model=model,
+                params=params,
+            )
+        except (TypeError, AttributeError, ImportError):
+            # Fallback for very old pipecat if needed
+            return ElevenLabsTTSService(
+                api_key=api_key,
+                voice_id=voice_id,
+                model=model,
+            )
     
     if provider == "Cartesia":
         model = args.get("model")
