@@ -44,3 +44,10 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# RAG: local Chroma DB and generated artifacts
+rag_system/chroma_data/
+rag_system/vectors.npz
+rag_system/chunks.txt
+rag_system/out.txt
+rag_system/*.pdf
+
