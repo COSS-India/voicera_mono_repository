@@ -1,12 +1,11 @@
 """
 Shared PDF -> chunk -> embed -> Chroma pipeline.
 
-Used by rag_server.py and the main Voicera API (knowledge upload).
+Used by the main Voicera API (Knowledge Base upload / ingest).
 """
 
 from __future__ import annotations
 
-import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,11 +44,11 @@ class IngestResult:
 
 
 def resolve_openai_api_key(explicit: str | None = None) -> str:
-    """Use explicit key (e.g. org integration) or OPENAI_API_KEY from environment."""
-    key = (explicit or os.environ.get("OPENAI_API_KEY") or "").strip()
+    """Use only the explicit key from the caller (org Integrations via knowledge_service)."""
+    key = (explicit or "").strip()
     if not key:
         raise IngestPipelineError(
-            "No OpenAI API key: set org integration for model 'openai' or OPENAI_API_KEY"
+            "No OpenAI API key: add your OpenAI key in Integrations for this organization."
         )
     return key
 

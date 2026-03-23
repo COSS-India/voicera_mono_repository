@@ -1,8 +1,8 @@
 """
 Embed text chunks with the OpenAI Embeddings API (vectors for RAG).
 
-Loads OPENAI_API_KEY from voice_2_voice_server/.env at the repo root (if present),
-then falls back to the process environment or a .env in the current working directory.
+Standalone CLI: set ``OPENAI_API_KEY`` in the environment (Voicera app KB uses
+Integrations only, not this script).
 
 Reads chunks from:
   - JSON file: array of strings (from: chunk_text.py ... --json -o chunks.json)
@@ -11,8 +11,8 @@ Reads chunks from:
 Writes a compressed .npz with embeddings + original texts + model name.
 
 Examples:
+  export OPENAI_API_KEY=...  # required for this CLI
   python embed_chunks.py chunks.txt -o vectors.npz
-  # or: export OPENAI_API_KEY=...  if not using voice_2_voice_server/.env
   python embed_chunks.py chunks.json --model text-embedding-3-large -o vectors.npz
 
 Requires: openai, numpy (see voicera_backend/requirements.txt)
@@ -28,9 +28,6 @@ from pathlib import Path
 
 import numpy as np
 from openai import OpenAI
-
-from rag_env import load_rag_env, repo_root
-
 
 def load_chunks(path: Path) -> list[str]:
     suffix = path.suffix.lower()
@@ -75,8 +72,6 @@ def embed_openai(
 
 
 def main() -> None:
-    load_rag_env()
-
     parser = argparse.ArgumentParser(
         description="Embed text chunks with the OpenAI Embeddings API.",
     )
@@ -113,10 +108,9 @@ def main() -> None:
 
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
-        v2v = repo_root() / "voice_2_voice_server" / ".env"
         print(
-            "Missing OPENAI_API_KEY. Add it to voice_2_voice_server/.env, "
-            f"or set the variable in your environment (looked for {v2v}).",
+            "Missing OPENAI_API_KEY. For this CLI, export it in your shell. "
+            "The Voicera app uses the OpenAI key from Integrations instead.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -135,7 +129,7 @@ def main() -> None:
         print("No chunks to embed.", file=sys.stderr)
         sys.exit(1)
 
-    client = OpenAI()
+    client = OpenAI(api_key=key)
 
     print(
         f"Embedding {len(chunks)} chunks with {args.model!r}...",

@@ -41,9 +41,6 @@ class Settings:
         "CHROMA_BASE_DIR",
         str(Path(__file__).resolve().parent.parent / "rag_system" / "chroma_data"),
     )
-    # If set (e.g. http://127.0.0.1:8090), Knowledge Base ingest POSTs PDFs to rag_server /ingest
-    # instead of importing chromadb inside the main API process.
-    RAG_INGEST_SERVICE_URL: str = os.getenv("RAG_INGEST_SERVICE_URL", "").strip()
 
     # Vobiz API Configuration
     VOBIZ_API_BASE_URL: str = os.getenv("VOBIZ_API_BASE_URL", "https://api.vobiz.ai/api/v1")

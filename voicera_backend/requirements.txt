@@ -12,7 +12,7 @@ mailtrap>=2.0.0
 minio>=7.2.0
 httpx>=0.25.0
 
-# RAG / knowledge (rag_system scripts + rag_server)
+# RAG / knowledge (rag_system + Knowledge Base ingest in the API process)
 chromadb>=0.4.0
 openai>=1.0.0
 numpy>=1.24.0
