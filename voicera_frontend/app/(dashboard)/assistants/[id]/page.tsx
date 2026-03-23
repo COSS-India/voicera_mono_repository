@@ -27,6 +27,7 @@ import {
   Mic,
   Settings,
   Languages,
+  Check,
 } from "lucide-react"
 import {
   Dialog,
@@ -36,7 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getCurrentUser, getAgent, updateAgent, getIntegrations, type User, type Agent, type CreateAgentRequest, type Integration } from "@/lib/api"
+import { getCurrentUser, getAgent, updateAgent, getIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type KnowledgeDocument } from "@/lib/api"
 
 // Import JSON data
 import sttData from "@/stt.json"
@@ -193,6 +194,8 @@ export default function AgentDetailPage() {
   const [hasChanges, setHasChanges] = useState(false)
   const [originalConfig, setOriginalConfig] = useState<any>(null)
   const [integratedProviders, setIntegratedProviders] = useState<Set<string>>(new Set())
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
+  const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(false)
 
   // Form state
   const [agentName, setAgentName] = useState("")
@@ -201,6 +204,9 @@ export default function AgentDetailPage() {
   const [language, setLanguage] = useState("")
   const [llmProvider, setLlmProvider] = useState("")
   const [llmModel, setLlmModel] = useState("")
+  const [knowledgeEnabled, setKnowledgeEnabled] = useState(false)
+  const [knowledgeDocumentIds, setKnowledgeDocumentIds] = useState<string[]>([])
+  const [knowledgeTopK, setKnowledgeTopK] = useState(3)
   const [sttProvider, setSttProvider] = useState("")
   const [sttModel, setSttModel] = useState("")
   const [ttsProvider, setTtsProvider] = useState("")
@@ -353,6 +359,18 @@ export default function AgentDetailPage() {
     const provider = llmProviders[llmProvider as keyof typeof llmProviders]
     return provider?.models || []
   }, [llmProvider])
+  const selectedKnowledgeDocs = useMemo(
+    () => knowledgeDocs.filter((d) => knowledgeDocumentIds.includes(d.document_id)),
+    [knowledgeDocs, knowledgeDocumentIds]
+  )
+
+  const toggleKnowledgeDocument = (documentId: string) => {
+    setKnowledgeDocumentIds((prev) =>
+      prev.includes(documentId)
+        ? prev.filter((id) => id !== documentId)
+        : [...prev, documentId]
+    )
+  }
 
   // Load agent data
   useEffect(() => {
@@ -400,6 +418,16 @@ export default function AgentDetailPage() {
         } catch (intError) {
           console.error("Failed to fetch integrations:", intError)
         }
+        try {
+          setIsKnowledgeLoading(true)
+          const docs = await getKnowledgeDocuments()
+          setKnowledgeDocs(docs.filter((d) => d.status === "ready"))
+        } catch (kbError) {
+          console.error("Failed to fetch knowledge docs:", kbError)
+          setKnowledgeDocs([])
+        } finally {
+          setIsKnowledgeLoading(false)
+        }
 
         if (userData.org_id) {
           const agentData = await getAgent(agentId, userData.org_id)
@@ -440,6 +468,13 @@ export default function AgentDetailPage() {
           const llmProviderName = agentData.agent_config?.llm_model?.name || ""
           setLlmProvider(getProviderIdFromName(llmProviderName))
           setLlmModel(agentData.agent_config?.llm_model?.model || "")
+          setKnowledgeEnabled(Boolean((agentData.agent_config as any)?.knowledge_base_enabled))
+          setKnowledgeDocumentIds(
+            Array.isArray((agentData.agent_config as any)?.knowledge_document_ids)
+              ? (agentData.agent_config as any).knowledge_document_ids
+              : []
+          )
+          setKnowledgeTopK(Number((agentData.agent_config as any)?.knowledge_top_k || 3))
 
           // Load language - use language name directly (no conversion needed)
           // Priority: agent_config.language > stt_model.language > tts_model.language
@@ -570,6 +605,10 @@ export default function AgentDetailPage() {
       language: languageName || "", // Include top-level language field
       system_prompt: systemPrompt || "",
       greeting_message: greetingMessage || "",
+      knowledge_base_enabled: llmProvider === "openai" ? knowledgeEnabled : false,
+      knowledge_document_ids:
+        llmProvider === "openai" && knowledgeEnabled ? knowledgeDocumentIds : [],
+      knowledge_top_k: knowledgeTopK,
       llm_model: {
         name: llmProvider || "",
         ...(llmProvider && llmProvider !== "kenpath" && llmModel && { model: llmModel }),
@@ -616,7 +655,7 @@ export default function AgentDetailPage() {
 
     const hasChanged = originalNormalized !== currentNormalized
     setHasChanges(hasChanged)
-  }, [systemPrompt, greetingMessage, language, llmProvider, llmModel, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent])
+  }, [systemPrompt, greetingMessage, language, llmProvider, llmModel, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -642,6 +681,10 @@ export default function AgentDetailPage() {
           language: languageName, // Update the top-level language field
           system_prompt: systemPrompt,
           greeting_message: greetingMessage,
+          knowledge_base_enabled: llmProvider === "openai" ? knowledgeEnabled : false,
+          knowledge_document_ids:
+            llmProvider === "openai" && knowledgeEnabled ? knowledgeDocumentIds : [],
+          knowledge_top_k: knowledgeTopK,
           llm_model: {
             name: getProviderOfficialName(llmProvider),
             ...(llmProvider !== "kenpath" && { model: llmModel }),
@@ -846,6 +889,10 @@ export default function AgentDetailPage() {
                       onValueChange={(v) => {
                         setLlmProvider(v);
                         setLlmModel("");
+                        if (v !== "openai") {
+                          setKnowledgeEnabled(false)
+                          setKnowledgeDocumentIds([])
+                        }
                       }}
                     >
                       <SelectTrigger className="border-slate-200 h-11 shadow-sm rounded-md focus:ring-slate-300 transition focus:border-slate-500 bg-white">
@@ -909,6 +956,77 @@ export default function AgentDetailPage() {
                       {availableLLMModels.length === 0 && (
                         <div className="text-xs text-slate-400 mt-2 pl-1">
                           No models available for this provider.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {llmProvider === "openai" && (
+                    <div className="border border-slate-200 rounded-lg p-4 space-y-3 bg-slate-50">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">Knowledge Base</p>
+                          <p className="text-xs text-slate-500">Use selected knowledge files during responses.</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={knowledgeEnabled}
+                            onChange={() => setKnowledgeEnabled((v) => !v)}
+                          />
+                          <div
+                            className="w-11 h-6 bg-slate-200 dark:bg-slate-800 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer-checked:bg-emerald-600 transition-colors"
+                          />
+                          <div
+                            className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"
+                          />
+                        </label>
+                      </div>
+                      {knowledgeEnabled && (
+                        <div className="space-y-2">
+                          <div className="text-xs text-slate-500">
+                            {selectedKnowledgeDocs.length} document(s) selected
+                          </div>
+                          {isKnowledgeLoading ? (
+                            <div className="flex items-center gap-2 text-sm text-slate-500">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Loading knowledge documents...
+                            </div>
+                          ) : knowledgeDocs.length === 0 ? (
+                            <p className="text-sm text-slate-500">No ready knowledge documents found.</p>
+                          ) : (
+                            <div className="max-h-40 overflow-auto rounded-md border border-slate-200 bg-white divide-y divide-slate-100">
+                              {knowledgeDocs.map((doc) => {
+                                const checked = knowledgeDocumentIds.includes(doc.document_id)
+                                return (
+                                  <button
+                                    key={doc.document_id}
+                                    type="button"
+                                    onClick={() => toggleKnowledgeDocument(doc.document_id)}
+                                    className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-3"
+                                  >
+                                    <span
+                                      aria-hidden
+                                      className={[
+                                        "h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                                        checked
+                                          ? "bg-emerald-600 border-emerald-600"
+                                          : "bg-white border-slate-300",
+                                      ].join(" ")}
+                                    >
+                                      {checked && (
+                                        <Check className="h-3 w-3 text-white" />
+                                      )}
+                                    </span>
+                                    <span className="text-sm text-slate-700 truncate">
+                                      {doc.original_filename}
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1207,7 +1325,7 @@ export default function AgentDetailPage() {
                                   <label className="text-xs font-semibold text-slate-500 mb-2 block">
                                     Voice ID
                                     <span className="ml-2 text-slate-400 text-xs tracking-normal">
-                                      (copy from provider's dashboard)
+                                      (copy from provider dashboard)
                                     </span>
                                   </label>
                                   <Input

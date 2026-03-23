@@ -338,6 +338,9 @@ export interface AgentConfig {
   greeting_message: string
   session_timeout_minutes: number
   language: string
+  knowledge_base_enabled?: boolean
+  knowledge_document_ids?: string[]
+  knowledge_top_k?: number
   llm_model: {
     name: string
     model?: string
