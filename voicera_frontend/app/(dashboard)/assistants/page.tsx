@@ -29,6 +29,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { TestCallSheet } from "@/components/assistants/test-call-sheet"
+import { TestBrowserDialog } from "@/components/assistants/test-browser-dialog"
 import { AgentCard } from "@/components/assistants/agent-card"
 import { CreateNewAgentCard } from "@/components/assistants/create-new-agent-card"
 import {
@@ -249,6 +250,7 @@ export default function AssistantsPage() {
   const [isLoadingAgents, setIsLoadingAgents] = useState(true)
   const [isCreatingAgent, setIsCreatingAgent] = useState(false)
   const [isTestCallSheetOpen, setIsTestCallSheetOpen] = useState(false)
+  const [isTestBrowserDialogOpen, setIsTestBrowserDialogOpen] = useState(false)
   const [selectedAgentForTest, setSelectedAgentForTest] = useState<Agent | null>(null)
   const [showDeleteSuccessToast, setShowDeleteSuccessToast] = useState(false)
   const [integratedProviders, setIntegratedProviders] = useState<Set<string>>(new Set())
@@ -540,6 +542,11 @@ export default function AssistantsPage() {
   const handleTestCall = (agent: Agent) => {
     setSelectedAgentForTest(agent)
     setIsTestCallSheetOpen(true)
+  }
+
+  const handleTestBrowser = (agent: Agent) => {
+    setSelectedAgentForTest(agent)
+    setIsTestBrowserDialogOpen(true)
   }
 
   const handleViewHistory = (agent: Agent) => {
@@ -939,6 +946,7 @@ export default function AssistantsPage() {
                 getAgentDescription={getAgentDescription}
                 onViewConfig={viewConfig}
                 onTestCall={handleTestCall}
+                onTestBrowser={handleTestBrowser}
                 onViewHistory={handleViewHistory}
                 onDelete={handleDelete}
               />
@@ -952,6 +960,13 @@ export default function AssistantsPage() {
         <TestCallSheet
           open={isTestCallSheetOpen}
           onOpenChange={setIsTestCallSheetOpen}
+          agent={selectedAgentForTest}
+          getAgentDisplayName={getAgentDisplayName}
+        />
+
+        <TestBrowserDialog
+          open={isTestBrowserDialogOpen}
+          onOpenChange={setIsTestBrowserDialogOpen}
           agent={selectedAgentForTest}
           getAgentDisplayName={getAgentDisplayName}
         />

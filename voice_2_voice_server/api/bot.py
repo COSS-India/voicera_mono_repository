@@ -21,7 +21,7 @@ from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.utils.text.base_text_aggregator import BaseTextAggregator, Aggregation, AggregationType
-from typing import Any, Optional
+from typing import Any, Optional, Callable, Awaitable
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
@@ -258,7 +258,8 @@ async def bot(
     stream_sid: str,
     call_sid: str,
     agent_type: str,
-    agent_config: dict
+    agent_config: dict,
+    transcript_callback: Optional[Callable[[str, str, Optional[str]], Awaitable[None]]] = None,
 ) -> None:
     """Main bot entry point - sets up transport and runs the pipeline."""
     sample_rate = _get_sample_rate()
@@ -356,6 +357,11 @@ async def bot(
             line = f"{timestamp}{message.role}: {message.content}"
             logger.info(f"Transcript: {line}")
             call_data["transcript_lines"].append(line)
+            if transcript_callback and message.content:
+                try:
+                    await transcript_callback(message.role, message.content, message.timestamp)
+                except Exception as callback_error:
+                    logger.debug(f"Transcript callback failed: {callback_error}")
     
     try:
         await run_bot(transport, agent_config, audiobuffer, transcript, handle_sigint=False, vad_analyzer=vad_analyzer, vistaar_session_id=call_sid)

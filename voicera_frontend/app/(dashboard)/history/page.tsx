@@ -782,7 +782,7 @@ function HistoryPageContent() {
         <div className="px-5 lg:px-8 py-4">
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-7 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-600">
+            <div className="grid grid-cols-8 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-600">
               <div className="flex items-center gap-2">
                 Call Type
                 {mounted && (
@@ -1061,6 +1061,9 @@ function HistoryPageContent() {
                   <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
                 )}
               </div>
+              <div className="flex items-center justify-center">
+                Conversation Data
+              </div>
             </div>
 
             {/* Table Body */}
@@ -1092,7 +1095,7 @@ function HistoryPageContent() {
                         handleMeetingClick(meeting)
                       }
                     }}
-                    className={`grid grid-cols-7 gap-3 px-5 py-4 border-b border-slate-100 items-center hover:bg-slate-50 ${
+                    className={`grid grid-cols-8 gap-3 px-5 py-4 border-b border-slate-100 items-center hover:bg-slate-50 ${
                       isBusy ? "cursor-default" : "cursor-pointer"
                     }`}
                   >
@@ -1164,6 +1167,25 @@ function HistoryPageContent() {
                     </div>
                     <div className="text-sm text-slate-900 flex items-center justify-center">
                       {meeting.call_busy ? "N/A" : formatDuration(meeting.duration, meeting.start_time_utc, meeting.end_time_utc)}
+                    </div>
+                    <div className="flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!isBusy) handleMeetingClick(meeting)
+                        }}
+                        disabled={isBusy}
+                        className={`inline-flex flex-col items-center justify-center rounded-lg border px-3 py-1.5 leading-tight ${
+                          isBusy
+                            ? "border-slate-200 text-slate-300 cursor-not-allowed"
+                            : "border-slate-200 text-slate-800 hover:bg-slate-50"
+                        }`}
+                        title={isBusy ? "No call log data" : "Open recording and transcript"}
+                      >
+                        <span className="text-xs font-bold tracking-wide">Recording</span>
+                        <span className="text-[10px] text-slate-500">transcription etc</span>
+                      </button>
                     </div>
                   </div>
                 )

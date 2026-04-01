@@ -15,6 +15,7 @@ import {
   Contact,
   Plug,
   BookOpen,
+  Activity,
 } from "lucide-react"
 
 import {
@@ -75,6 +76,11 @@ const mainNavItems = [
     title: "Analytics",
     url: "/analytics",
     icon: BarChart3,
+  },
+  {
+    title: "Telemetry",
+    url: "/telemetry",
+    icon: Activity,
   },
 ]
 
