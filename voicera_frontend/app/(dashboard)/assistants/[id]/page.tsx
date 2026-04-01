@@ -76,6 +76,7 @@ const getProviderOfficialName = (providerId: string): string => {
     bhashini: "Bhashini",
     cartesia: "Cartesia",
     openai: "OpenAI",
+    qwen: "Qwen",
     playht: "PlayHT",
     groq: "Groq",
     grok: "Grok",
@@ -102,6 +103,7 @@ const getProviderIdFromName = (providerName: string): string => {
     "Bhashini": "bhashini",
     "Cartesia": "cartesia",
     "OpenAI": "openai",
+    "Qwen": "qwen",
     "PlayHT": "playht",
     "Groq": "groq",
     "Grok": "grok",
@@ -134,6 +136,12 @@ const llmProviders = {
       "o1",
       "o1-mini",
       "o1-preview",
+    ],
+  },
+  qwen: {
+    name: "Qwen",
+    models: [
+      "Qwen/Qwen3-8B",
     ],
   },
   kenpath: {
@@ -900,8 +908,8 @@ export default function AgentDetailPage() {
                       </SelectTrigger>
                       <SelectContent className="z-[100] rounded-md shadow-lg">
                         {Object.entries(llmProviders).map(([id, provider]) => {
-                          // OpenAI and Kenpath are always available (built-in)
-                          const isBuiltIn = id === "openai" || id === "kenpath"
+                          // OpenAI, Qwen, and Kenpath are always available (built-in)
+                          const isBuiltIn = id === "openai" || id === "qwen" || id === "kenpath"
                           // Check if provider has integration (API key configured)
                           const isIntegrated = integratedProviders.has(id) || integratedProviders.has(provider.name.toLowerCase())
                           const isAvailable = isBuiltIn || isIntegrated
@@ -1574,4 +1582,3 @@ export default function AgentDetailPage() {
     </div>
   )
 }
-

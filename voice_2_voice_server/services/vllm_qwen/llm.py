@@ -17,7 +17,7 @@ from pipecat.services.openai.llm import OpenAILLMService
 # OpenAI-compatible base URL. Must include /v1 — the AsyncOpenAI client appends
 # /chat/completions under this. Local vLLM often uses another port (e.g. 8003);
 # set VLLM_BASE_URL in the environment to override without code changes.
-VLLM_BASE_URL = "http://localhost:8000/v1"
+VLLM_BASE_URL = "http://localhost:8003/v1"
 
 # vLLM does not validate keys; a placeholder satisfies the OpenAI client.
 VLLM_API_KEY = "EMPTY"
@@ -57,8 +57,19 @@ DEFAULT_VOICE_SYSTEM_PROMPT = ensure_no_think_suffix(
 VOICE_LLM_PARAMS = BaseOpenAILLMService.InputParams(
     # Non-thinking Qwen3 setups are commonly run around 0.7 for natural but stable speech.
     temperature=0.7,
+    # Qwen3 non-thinking defaults for conversational voice responses.
+    top_p=0.8,
+    frequency_penalty=0.0,
+    presence_penalty=0.0,
     # Keeps answers short enough for voice; avoids long monologues and reduces latency.
     max_tokens=200,
+    # vLLM-specific fields are passed through as extra body values.
+    extra={
+        "top_k": 20,
+        "repetition_penalty": 1.0,
+        # Enforce no-thinking mode at request level for telephony.
+        "chat_template_kwargs": {"enable_thinking": False},
+    },
 )
 
 

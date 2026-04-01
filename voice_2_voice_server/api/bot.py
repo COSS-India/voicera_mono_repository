@@ -37,6 +37,7 @@ from .services import (
 )
 # Import the new filter
 from services.audio.greeting_interruption_filter import GreetingInterruptionFilter
+from services.vllm_qwen import ensure_no_think_suffix
 from .call_recording_utils import submit_call_recording
 
 
@@ -189,6 +190,8 @@ async def run_bot(
         tts._text_aggregator = FastPunctuationAggregator()
 
         system_prompt = agent_config.get("system_prompt", None)
+        if llm_provider_name in ("qwen", "localqwen", "vllm"):
+            system_prompt = ensure_no_think_suffix(system_prompt or "")
         context = OpenAILLMContext([{"role": "system", "content": system_prompt}])
         
         # Use stored user aggregator params if available (for OpenAI services)

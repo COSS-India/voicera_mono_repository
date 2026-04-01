@@ -22,6 +22,7 @@ from pipecat.services.sarvam.tts import SarvamTTSService
 from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
+from pipecat.services.openai.base_llm import BaseOpenAILLMService
 
 # Local services
 from services.kenpath_llm.llm import KenpathLLM
@@ -30,6 +31,7 @@ from services.ai4bharat.stt import IndicConformerRESTSTTService
 from services.bhashini.stt import BhashiniSTTService
 from services.bhashini.tts import BhashiniTTSService
 from services.openai_kb_llm import OpenAIKnowledgeLLMService
+from services.vllm_qwen import create_voice_llm, VLLM_API_KEY, VLLM_BASE_URL
 from config import get_llm_model
 from config.stt_mappings import STT_LANGUAGE_MAP
 from config.tts_mappings import TTS_LANGUAGE_MAP
@@ -155,6 +157,57 @@ def create_llm_service(
             aggregation_timeout=args.get("aggregation_timeout", 0.05)
         )
         service = GrokLLMService(api_key=api_key, model=resolved_model)
+        service._user_aggregator_params = user_aggregator_params
+        return service
+    elif isinstance(provider_normalized, str) and provider_normalized.lower() in (
+        "qwen",
+        "localqwen",
+        "vllm",
+    ):
+        resolved_model = get_llm_model("qwen", model)
+        user_aggregator_params = LLMUserAggregatorParams(
+            aggregation_timeout=args.get("aggregation_timeout", 0.05)
+        )
+
+        extra_args = dict(args.get("extra") or {})
+        chat_template_kwargs = dict(extra_args.get("chat_template_kwargs") or {})
+        chat_template_kwargs["enable_thinking"] = False
+        extra_args["chat_template_kwargs"] = chat_template_kwargs
+        extra_args["top_k"] = int(args.get("top_k", extra_args.get("top_k", 20)))
+        extra_args["repetition_penalty"] = float(
+            args.get("repetition_penalty", extra_args.get("repetition_penalty", 1.0))
+        )
+        if "stop" in args:
+            extra_args["stop"] = args["stop"]
+        if "n" in args:
+            extra_args["n"] = args["n"]
+        if "logprobs" in args:
+            extra_args["logprobs"] = args["logprobs"]
+        if "top_logprobs" in args:
+            extra_args["top_logprobs"] = args["top_logprobs"]
+
+        params = BaseOpenAILLMService.InputParams(
+            temperature=float(args.get("temperature", 0.7)),
+            top_p=float(args.get("top_p", 0.8)),
+            max_tokens=int(args.get("max_tokens", 200)),
+            frequency_penalty=float(args.get("frequency_penalty", 0.0)),
+            presence_penalty=float(args.get("presence_penalty", 0.0)),
+            seed=args.get("seed"),
+            extra=extra_args,
+        )
+
+        service = create_voice_llm(
+            model=resolved_model,
+            api_key=args.get("api_key")
+            or os.getenv("VLLM_API_KEY")
+            or VLLM_API_KEY,
+            base_url=args.get("base_url")
+            or os.getenv("VLLM_BASE_URL")
+            or VLLM_BASE_URL,
+            params=params,
+            retry_timeout_secs=float(args.get("retry_timeout_secs", 20.0)),
+            retry_on_timeout=bool(args.get("retry_on_timeout", False)),
+        )
         service._user_aggregator_params = user_aggregator_params
         return service
     else:
