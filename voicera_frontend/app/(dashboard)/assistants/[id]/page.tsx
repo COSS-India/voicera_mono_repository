@@ -810,7 +810,6 @@ export default function AgentDetailPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Row - Progress Stepper */}
         <aside className="bg-white border-b border-slate-100 p-3 sm:p-4">
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">Setup Progress</h3>
           <div className="flex gap-2 overflow-x-auto pb-1 justify-center">
             {editWizardSteps.map((step) => {
               const Icon = step.icon
