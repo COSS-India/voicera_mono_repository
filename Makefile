@@ -46,3 +46,7 @@ start-dev:
 stop-dev:
 	$(MAKE) stop-backend-services
 	$(MAKE) stop-all-ports
+
+
+#podman compose up -d mongodb backend minio
+#podman compose stop mongodb backend minio

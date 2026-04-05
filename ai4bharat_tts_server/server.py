@@ -41,7 +41,7 @@ state = ModelState()
 
 
 async def load_model():
-    state.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    state.device = "cuda:1" if torch.cuda.is_available() else "cpu"
     state.torch_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 
     hf_token = os.getenv("HF_TOKEN")
