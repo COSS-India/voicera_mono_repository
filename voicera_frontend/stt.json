@@ -126,6 +126,66 @@
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
+      },
+      "Nepali": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Sanskrit": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Manipuri": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Bodo": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Dogri": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Konkani": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Kashmiri": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Maithili": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Santali": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
+      },
+      "Sindhi": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
+        }
       }
     },
     "model_details": {
