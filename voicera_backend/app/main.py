@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
+from app.services.batch_scheduler import start_batch_scheduler, stop_batch_scheduler
 from app.routers import users, agents, meetings, campaigns, audience, call_recordings, phone_numbers, vobiz, analytics, integrations, members, knowledge, rag, batches
 import logging
 
@@ -58,6 +59,7 @@ async def startup_event():
         # Initialize database collections and indexes
         from app.database_init import initialize_database
         initialize_database()
+        start_batch_scheduler()
         logger.info("Application started successfully")
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
@@ -67,6 +69,7 @@ async def startup_event():
 async def shutdown_event():
     """Close database connection on shutdown."""
     logger.info("Shutting down application...")
+    stop_batch_scheduler()
     close_mongo_connection()
     logger.info("Application shut down successfully")
 

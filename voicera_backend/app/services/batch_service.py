@@ -7,8 +7,9 @@ import csv
 import io
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -30,6 +31,12 @@ CONTACT_COLUMN = "contact_number"
 DEFAULT_BATCH_CONCURRENCY = 5
 MIN_BATCH_CONCURRENCY = 1
 MAX_BATCH_CONCURRENCY = 20
+SCHEDULE_MODE_RUN_NOW = "run_now"
+SCHEDULE_MODE_SCHEDULED = "scheduled"
+SCHEDULE_STATUS_NONE = "none"
+SCHEDULE_STATUS_SCHEDULED = "scheduled"
+SCHEDULE_STATUS_TRIGGERED = "triggered"
+SCHEDULE_STATUS_CANCELED = "canceled"
 
 
 class BatchNotFoundError(Exception):
@@ -42,6 +49,53 @@ class BatchRunStateError(Exception):
 
 def _now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _to_utc_iso(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_utc_iso(value: str) -> datetime:
+    normalized = str(value or "").strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _resolve_local_schedule_to_utc(*, scheduled_at_local: str, timezone_name: str) -> datetime:
+    local_value = str(scheduled_at_local or "").strip()
+    if not local_value:
+        raise ValueError("scheduled_at_local is required")
+
+    try:
+        parsed_local = datetime.fromisoformat(local_value)
+    except ValueError as e:
+        raise ValueError("Invalid scheduled_at_local datetime format") from e
+
+    if parsed_local.tzinfo is not None:
+        return parsed_local.astimezone(timezone.utc)
+
+    tz_name = str(timezone_name or "").strip()
+    if not tz_name:
+        raise ValueError("timezone is required")
+
+    try:
+        tzinfo = ZoneInfo(tz_name)
+    except Exception as e:
+        raise ValueError(
+            "Invalid timezone. Please send an ISO datetime with timezone offset."
+        ) from e
+
+    localized = parsed_local.replace(tzinfo=tzinfo)
+
+    return localized.astimezone(timezone.utc)
 
 
 def _normalize_contact_number(value: str) -> str:
@@ -223,6 +277,11 @@ def create_batch_from_csv(
         "attempted_calls": 0,
         "successful_calls": 0,
         "failed_calls": 0,
+        "schedule_mode": SCHEDULE_MODE_RUN_NOW,
+        "scheduled_at_utc": None,
+        "scheduled_timezone": None,
+        "scheduled_status": SCHEDULE_STATUS_NONE,
+        "scheduled_by": None,
         "source_file_id": str(file_id),
         "created_at": now,
         "updated_at": now,
@@ -275,6 +334,11 @@ def list_batches(org_id: str, agent_type: Optional[str] = None) -> List[Dict[str
             if _is_valid_concurrency(doc.get("concurrency"))
             else DEFAULT_BATCH_CONCURRENCY
         )
+        doc["schedule_mode"] = str(doc.get("schedule_mode") or SCHEDULE_MODE_RUN_NOW)
+        doc["scheduled_at_utc"] = doc.get("scheduled_at_utc")
+        doc["scheduled_timezone"] = doc.get("scheduled_timezone")
+        doc["scheduled_status"] = str(doc.get("scheduled_status") or SCHEDULE_STATUS_NONE)
+        doc["scheduled_by"] = doc.get("scheduled_by")
         out.append(doc)
     return out
 
@@ -317,10 +381,25 @@ def _get_batch_for_org(org_id: str, batch_id: str) -> Dict[str, Any]:
 
 def _ensure_batch_runnable(batch_doc: Dict[str, Any]) -> None:
     execution_status = batch_doc.get("execution_status", "not_started")
-    if execution_status in {"running", "completed"}:
+    if execution_status in {"running", "completed", "stopping"}:
         raise BatchRunStateError(
             f"Batch cannot be started when execution_status is '{execution_status}'"
         )
+
+
+def _ensure_batch_schedulable(batch_doc: Dict[str, Any]) -> None:
+    execution_status = str(batch_doc.get("execution_status") or "not_started")
+    if execution_status in {"running", "completed", "failed", "stopping"}:
+        raise BatchRunStateError(
+            f"Batch cannot be scheduled when execution_status is '{execution_status}'"
+        )
+
+
+def _ensure_batch_schedule_editable(batch_doc: Dict[str, Any]) -> None:
+    execution_status = str(batch_doc.get("execution_status") or "")
+    schedule_status = str(batch_doc.get("scheduled_status") or "")
+    if execution_status != "scheduled" or schedule_status != SCHEDULE_STATUS_SCHEDULED:
+        raise BatchRunStateError("Only pending scheduled batches can be modified")
 
 
 def _mark_batch_running(org_id: str, batch_id: str) -> None:
@@ -449,6 +528,7 @@ def run_batch(
     batch_id: str,
     agent_type: Optional[str] = None,
     concurrency: Optional[int] = None,
+    preserve_schedule: bool = False,
 ) -> Dict[str, Any]:
     batch_doc = _get_batch_for_org(org_id, batch_id)
     _ensure_batch_runnable(batch_doc)
@@ -492,16 +572,24 @@ def run_batch(
             else DEFAULT_BATCH_CONCURRENCY
         )
 
+    update_set: Dict[str, Any] = {
+        "agent_type": selected_agent_type,
+        "concurrency": selected_concurrency,
+        "updated_at": _now_iso(),
+        "error_message": None,
+    }
+    if preserve_schedule:
+        update_set["scheduled_status"] = SCHEDULE_STATUS_TRIGGERED
+    else:
+        update_set["schedule_mode"] = SCHEDULE_MODE_RUN_NOW
+        update_set["scheduled_at_utc"] = None
+        update_set["scheduled_timezone"] = None
+        update_set["scheduled_status"] = SCHEDULE_STATUS_NONE
+        update_set["scheduled_by"] = None
+
     get_database()[BATCH_COLLECTION].update_one(
         {"batch_id": batch_id, "org_id": org_id},
-        {
-            "$set": {
-                "agent_type": selected_agent_type,
-                "concurrency": selected_concurrency,
-                "updated_at": _now_iso(),
-                "error_message": None,
-            }
-        },
+        {"$set": update_set},
     )
     _mark_batch_running(org_id, batch_id)
     return {
@@ -513,6 +601,146 @@ def run_batch(
         "agent_type": selected_agent_type,
         "concurrency": selected_concurrency,
     }
+
+
+def schedule_batch(
+    *,
+    org_id: str,
+    batch_id: str,
+    scheduled_at_local: str,
+    timezone_name: str,
+    scheduled_by: Optional[str] = None,
+    agent_type: Optional[str] = None,
+    concurrency: Optional[int] = None,
+) -> Dict[str, Any]:
+    batch_doc = _get_batch_for_org(org_id, batch_id)
+    _ensure_batch_schedulable(batch_doc)
+    if int(batch_doc.get("valid_contacts", 0) or 0) == 0:
+        raise BatchRunStateError(
+            "This batch has no valid contacts. Please upload a CSV with valid contact numbers."
+        )
+
+    selected_agent_type = (agent_type or batch_doc.get("agent_type") or "").strip()
+    if not selected_agent_type:
+        raise BatchRunStateError("Agent selection is required to schedule this batch")
+    if not validate_agent_for_org(org_id, selected_agent_type):
+        raise BatchRunStateError("Invalid agent selected for this organization")
+    _get_agent_call_config(org_id, selected_agent_type)
+
+    if concurrency is not None:
+        if not _is_valid_concurrency(concurrency):
+            raise BatchRunStateError(
+                f"Concurrency must be between {MIN_BATCH_CONCURRENCY} and {MAX_BATCH_CONCURRENCY}"
+            )
+        selected_concurrency = concurrency
+    else:
+        existing_concurrency = batch_doc.get("concurrency")
+        selected_concurrency = (
+            int(existing_concurrency)
+            if _is_valid_concurrency(existing_concurrency)
+            else DEFAULT_BATCH_CONCURRENCY
+        )
+
+    scheduled_at_utc_dt = _resolve_local_schedule_to_utc(
+        scheduled_at_local=scheduled_at_local,
+        timezone_name=timezone_name,
+    )
+    if scheduled_at_utc_dt <= _now_utc():
+        raise BatchRunStateError("Scheduled time must be in the future")
+    scheduled_at_utc = _to_utc_iso(scheduled_at_utc_dt)
+
+    update_set: Dict[str, Any] = {
+        "agent_type": selected_agent_type,
+        "concurrency": selected_concurrency,
+        "status": "uploaded",
+        "execution_status": "scheduled",
+        "schedule_mode": SCHEDULE_MODE_SCHEDULED,
+        "scheduled_at_utc": scheduled_at_utc,
+        "scheduled_timezone": timezone_name.strip(),
+        "scheduled_status": SCHEDULE_STATUS_SCHEDULED,
+        "scheduled_by": (scheduled_by or "").strip() or None,
+        "error_message": None,
+        "updated_at": _now_iso(),
+    }
+    get_database()[BATCH_COLLECTION].update_one(
+        {"batch_id": batch_id, "org_id": org_id},
+        {"$set": update_set},
+    )
+    return {
+        "status": "success",
+        "message": "Batch scheduled successfully",
+        "scheduled_at_utc": scheduled_at_utc,
+        "concurrency": selected_concurrency,
+        "agent_type": selected_agent_type,
+    }
+
+
+def cancel_scheduled_batch(*, org_id: str, batch_id: str) -> Dict[str, Any]:
+    batch_doc = _get_batch_for_org(org_id, batch_id)
+    _ensure_batch_schedule_editable(batch_doc)
+
+    get_database()[BATCH_COLLECTION].update_one(
+        {"batch_id": batch_id, "org_id": org_id},
+        {
+            "$set": {
+                "execution_status": "not_started",
+                "status": "uploaded",
+                "schedule_mode": SCHEDULE_MODE_RUN_NOW,
+                "scheduled_at_utc": None,
+                "scheduled_timezone": None,
+                "scheduled_status": SCHEDULE_STATUS_CANCELED,
+                "updated_at": _now_iso(),
+            }
+        },
+    )
+    return {"status": "success", "message": "Scheduled batch canceled"}
+
+
+def reschedule_batch(
+    *,
+    org_id: str,
+    batch_id: str,
+    scheduled_at_local: str,
+    timezone_name: str,
+    scheduled_by: Optional[str] = None,
+    agent_type: Optional[str] = None,
+    concurrency: Optional[int] = None,
+) -> Dict[str, Any]:
+    batch_doc = _get_batch_for_org(org_id, batch_id)
+    _ensure_batch_schedule_editable(batch_doc)
+    return schedule_batch(
+        org_id=org_id,
+        batch_id=batch_id,
+        scheduled_at_local=scheduled_at_local,
+        timezone_name=timezone_name,
+        scheduled_by=scheduled_by,
+        agent_type=agent_type,
+        concurrency=concurrency,
+    )
+
+
+def claim_next_due_scheduled_batch() -> Optional[Dict[str, Any]]:
+    db = get_database()
+    now_iso = _to_utc_iso(_now_utc())
+    claimed = db[BATCH_COLLECTION].find_one_and_update(
+        {
+            "execution_status": "scheduled",
+            "scheduled_status": SCHEDULE_STATUS_SCHEDULED,
+            "scheduled_at_utc": {"$lte": now_iso},
+        },
+        {
+            "$set": {
+                "scheduled_status": SCHEDULE_STATUS_TRIGGERED,
+                "updated_at": _now_iso(),
+            }
+        },
+        sort=[("scheduled_at_utc", 1), ("updated_at", 1)],
+        return_document=ReturnDocument.AFTER,
+    )
+    if not claimed:
+        return None
+    claimed.pop("_id", None)
+    return claimed
 
 
 def stop_batch(org_id: str, batch_id: str) -> Dict[str, Any]:

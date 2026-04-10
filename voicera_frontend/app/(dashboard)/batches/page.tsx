@@ -9,6 +9,7 @@ import {
   type ChangeEvent,
 } from "react"
 import { format } from "date-fns"
+import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -35,11 +36,14 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import {
+  cancelBatchSchedule,
   deleteBatch,
   getAgents,
   getBatches,
   getCurrentUser,
+  rescheduleBatch,
   runBatch,
+  scheduleBatch,
   stopBatch,
   uploadBatchCsv,
   type Agent,
@@ -65,6 +69,36 @@ const formatCreatedAt = (dateValue?: string | null): string => {
   const parsedDate = new Date(dateValue)
   if (Number.isNaN(parsedDate.getTime())) return "—"
   return format(parsedDate, "dd/MM/yyyy, hh:mm a")
+}
+
+const getLocalTimezone = (): string => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+  } catch {
+    return "UTC"
+  }
+}
+
+const toScheduleInputValue = (dateValue?: string | null): string => {
+  if (!dateValue) return ""
+  const parsedDate = new Date(dateValue)
+  if (Number.isNaN(parsedDate.getTime())) return ""
+  const localTimestamp = parsedDate.getTime() - parsedDate.getTimezoneOffset() * 60 * 1000
+  return new Date(localTimestamp).toISOString().slice(0, 16)
+}
+
+const formatScheduledAt = (dateValue?: string | null): string => {
+  if (!dateValue) return "—"
+  const parsedDate = new Date(dateValue)
+  if (Number.isNaN(parsedDate.getTime())) return "—"
+  return format(parsedDate, "dd/MM/yyyy, hh:mm a")
+}
+
+const parseLocalScheduleDate = (value?: string): Date | undefined => {
+  if (!value) return undefined
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return undefined
+  return parsed
 }
 
 const formatStatusLabel = (value: string): string => {
@@ -165,6 +199,19 @@ const parseConcurrency = (value: string): number | null => {
   return parsedValue
 }
 
+const toIsoWithLocalOffset = (value: string): string | null => {
+  const parsedDate = new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) return null
+
+  const datePart = value.length === 16 ? `${value}:00` : value
+  const offsetMinutes = -parsedDate.getTimezoneOffset()
+  const sign = offsetMinutes >= 0 ? "+" : "-"
+  const absoluteOffset = Math.abs(offsetMinutes)
+  const offsetHours = String(Math.floor(absoluteOffset / 60)).padStart(2, "0")
+  const offsetMins = String(absoluteOffset % 60).padStart(2, "0")
+  return `${datePart}${sign}${offsetHours}:${offsetMins}`
+}
+
 export default function BatchesPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [batches, setBatches] = useState<Batch[]>([])
@@ -176,9 +223,16 @@ export default function BatchesPage() {
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null)
   const [selectedBatchAgentType, setSelectedBatchAgentType] = useState("")
   const [selectedBatchConcurrency, setSelectedBatchConcurrency] = useState(DEFAULT_CONCURRENCY)
+  const [selectedBatchScheduledAtLocal, setSelectedBatchScheduledAtLocal] = useState("")
   const [newBatchName, setNewBatchName] = useState("")
   const [newBatchAgentType, setNewBatchAgentType] = useState("")
   const [newBatchConcurrency, setNewBatchConcurrency] = useState(DEFAULT_CONCURRENCY)
+  const [newBatchScheduledAtLocal, setNewBatchScheduledAtLocal] = useState("")
+  const [userTimezone, setUserTimezone] = useState("UTC")
+  const [isSchedulePickerOpen, setIsSchedulePickerOpen] = useState(false)
+  const [schedulePickerTarget, setSchedulePickerTarget] = useState<"new" | "selected">("new")
+  const [schedulePickerDate, setSchedulePickerDate] = useState<Date | undefined>(undefined)
+  const [schedulePickerTime, setSchedulePickerTime] = useState("09:00")
   const [newBatchFile, setNewBatchFile] = useState<File | null>(null)
   const [newBatchPreviewRows, setNewBatchPreviewRows] = useState<PreviewContact[]>([])
   const [newBatchId, setNewBatchId] = useState<string | null>(null)
@@ -188,6 +242,8 @@ export default function BatchesPage() {
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null)
   const [runningBatchId, setRunningBatchId] = useState<string | null>(null)
   const [stoppingBatchId, setStoppingBatchId] = useState<string | null>(null)
+  const [schedulingBatchId, setSchedulingBatchId] = useState<string | null>(null)
+  const [cancelingScheduleBatchId, setCancelingScheduleBatchId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadBatches = useCallback(async () => {
@@ -225,6 +281,10 @@ export default function BatchesPage() {
   }, [])
 
   useEffect(() => {
+    setUserTimezone(getLocalTimezone())
+  }, [])
+
+  useEffect(() => {
     if (isLoadingAgents) return
     loadBatches()
   }, [isLoadingAgents, loadBatches])
@@ -251,6 +311,7 @@ export default function BatchesPage() {
     )
     if (latestBatch) {
       setSelectedBatch(latestBatch)
+      setSelectedBatchScheduledAtLocal(toScheduleInputValue(latestBatch.scheduled_at_utc))
     }
   }, [batches, selectedBatch])
 
@@ -269,6 +330,7 @@ export default function BatchesPage() {
       setNewBatchName("")
       setNewBatchAgentType(agentTypeOverride || agents[0]?.agent_type || "")
       setNewBatchConcurrency(DEFAULT_CONCURRENCY)
+      setNewBatchScheduledAtLocal("")
       setNewBatchFile(null)
       setNewBatchPreviewRows([])
       setNewBatchId(null)
@@ -346,6 +408,7 @@ export default function BatchesPage() {
       )
       setNewBatchId(created.batch_id)
       setNewBatchConcurrency(String(created.concurrency || 5))
+      setNewBatchScheduledAtLocal("")
       await loadBatches()
     } catch (error) {
       setNewBatchError(
@@ -421,11 +484,131 @@ export default function BatchesPage() {
     }
   }
 
+  const handleScheduleBatch = async (
+    batchId: string,
+    agentType: string,
+    concurrencyInput: string,
+    scheduledAtLocal: string,
+    useReschedule: boolean
+  ) => {
+    if (!agentType) {
+      alert("Please select an agent before scheduling this batch.")
+      return
+    }
+    const targetAgent = agents.find((agent) => agent.agent_type === agentType)
+    if (!targetAgent?.phone_number) {
+      alert("Please attach a number to the selected agent before scheduling batch calls.")
+      return
+    }
+    const parsedConcurrency = parseConcurrency(concurrencyInput)
+    if (!parsedConcurrency) {
+      alert(`Concurrency must be between ${MIN_CONCURRENCY} and ${MAX_CONCURRENCY}.`)
+      return
+    }
+    if (!scheduledAtLocal) {
+      alert("Please select a date and time for scheduling.")
+      return
+    }
+    const scheduledAtIsoWithOffset = toIsoWithLocalOffset(scheduledAtLocal)
+    if (!scheduledAtIsoWithOffset) {
+      alert("Invalid date/time value.")
+      return
+    }
+    const selectedTimestamp = new Date(scheduledAtLocal).getTime()
+    if (Number.isNaN(selectedTimestamp) || selectedTimestamp <= Date.now()) {
+      alert("Scheduled time must be in the future.")
+      return
+    }
+
+    setSchedulingBatchId(batchId)
+    try {
+      const payload = {
+        scheduled_at_local: scheduledAtIsoWithOffset,
+        timezone: userTimezone || "UTC",
+        agent_type: agentType,
+        concurrency: parsedConcurrency,
+      }
+      if (useReschedule) {
+        await rescheduleBatch(batchId, payload)
+      } else {
+        await scheduleBatch(batchId, payload)
+      }
+      await loadBatches()
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to schedule batch")
+    } finally {
+      setSchedulingBatchId(null)
+    }
+  }
+
+  const handleCancelSchedule = async (batchId: string) => {
+    setCancelingScheduleBatchId(batchId)
+    try {
+      await cancelBatchSchedule(batchId)
+      await loadBatches()
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to cancel schedule")
+    } finally {
+      setCancelingScheduleBatchId(null)
+    }
+  }
+
   const openBatchControls = (batch: Batch) => {
     setSelectedBatch(batch)
     setSelectedBatchAgentType(batch.agent_type || agents[0]?.agent_type || "")
     setSelectedBatchConcurrency(String(batch.concurrency || 5))
+    setSelectedBatchScheduledAtLocal(toScheduleInputValue(batch.scheduled_at_utc))
     setIsBatchControlsOpen(true)
+  }
+
+  const openSchedulePicker = (target: "new" | "selected") => {
+    const sourceValue =
+      target === "new" ? newBatchScheduledAtLocal : selectedBatchScheduledAtLocal
+    const parsedSourceDate = parseLocalScheduleDate(sourceValue)
+    if (parsedSourceDate) {
+      setSchedulePickerDate(parsedSourceDate)
+      setSchedulePickerTime(format(parsedSourceDate, "HH:mm"))
+    } else {
+      const fallbackDate = new Date()
+      fallbackDate.setMinutes(fallbackDate.getMinutes() + 5)
+      setSchedulePickerDate(fallbackDate)
+      setSchedulePickerTime(format(fallbackDate, "HH:mm"))
+    }
+    setSchedulePickerTarget(target)
+    setIsSchedulePickerOpen(true)
+  }
+
+  const applySchedulePicker = () => {
+    if (!schedulePickerDate) {
+      alert("Please select a date.")
+      return
+    }
+    if (!/^\d{2}:\d{2}$/.test(schedulePickerTime)) {
+      alert("Please select a valid time.")
+      return
+    }
+    const [hours, minutes] = schedulePickerTime.split(":").map((value) => Number.parseInt(value, 10))
+    if (
+      Number.isNaN(hours) ||
+      Number.isNaN(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      alert("Please select a valid time.")
+      return
+    }
+
+    const mergedDate = new Date(schedulePickerDate)
+    mergedDate.setHours(hours, minutes, 0, 0)
+    const localValue = format(mergedDate, "yyyy-MM-dd'T'HH:mm")
+    if (schedulePickerTarget === "new") {
+      setNewBatchScheduledAtLocal(localValue)
+    } else {
+      setSelectedBatchScheduledAtLocal(localValue)
+    }
+    setIsSchedulePickerOpen(false)
   }
 
   return (
@@ -516,7 +699,12 @@ export default function BatchesPage() {
                           {batch.valid_contacts} / {batch.total_contacts}
                         </TableCell>
                         <TableCell className="whitespace-normal break-words px-2 py-2">
-                          {formatStatusLabel(batch.execution_status)}
+                          <p>{formatStatusLabel(batch.execution_status)}</p>
+                          {batch.schedule_mode === "scheduled" && batch.scheduled_at_utc ? (
+                            <p className="mt-1 text-xs text-slate-500">
+                              Scheduled: {formatScheduledAt(batch.scheduled_at_utc)}
+                            </p>
+                          ) : null}
                         </TableCell>
                         <TableCell className="whitespace-normal break-words px-2 py-2">{formatStatusLabel(batch.status)}</TableCell>
                         <TableCell className="whitespace-normal break-words px-2 py-2">{formatCreatedAt(batch.created_at)}</TableCell>
@@ -582,6 +770,11 @@ export default function BatchesPage() {
                   {formatStatusLabel(newBatch.execution_status)}
                 </p>
                 <p className="text-slate-700 mt-1">
+                  <span className="font-medium">Schedule:</span>{" "}
+                  {formatStatusLabel(newBatch.scheduled_status || "none")}
+                  {newBatch.scheduled_at_utc ? ` · ${formatScheduledAt(newBatch.scheduled_at_utc)}` : ""}
+                </p>
+                <p className="text-slate-700 mt-1">
                   <span className="font-medium">Calls:</span>{" "}
                   {newBatch.successful_calls || 0} success /{" "}
                   {newBatch.failed_calls || 0} failed /{" "}
@@ -630,9 +823,59 @@ export default function BatchesPage() {
                     onChange={(event) => setNewBatchConcurrency(event.target.value)}
                   />
                 </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-900 mb-2">Run at (local)</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start font-normal"
+                    onClick={() => openSchedulePicker("new")}
+                  >
+                    {newBatchScheduledAtLocal
+                      ? formatScheduledAt(toIsoWithLocalOffset(newBatchScheduledAtLocal))
+                      : "Select date and time"}
+                  </Button>
+                  <p className="mt-1 text-xs text-slate-500">Timezone: {userTimezone}</p>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    handleScheduleBatch(
+                      newBatch.batch_id,
+                      newBatchAgentType,
+                      newBatchConcurrency,
+                      newBatchScheduledAtLocal,
+                      newBatch.execution_status === "scheduled"
+                    )
+                  }
+                  disabled={
+                    schedulingBatchId === newBatch.batch_id ||
+                    runningBatchId === newBatch.batch_id ||
+                    newBatch.execution_status === "running" ||
+                    newBatch.execution_status === "completed"
+                  }
+                >
+                  {schedulingBatchId === newBatch.batch_id
+                    ? "Scheduling..."
+                    : newBatch.execution_status === "scheduled"
+                    ? "Reschedule"
+                    : "Set Date & Time"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleCancelSchedule(newBatch.batch_id)}
+                  disabled={
+                    cancelingScheduleBatchId === newBatch.batch_id ||
+                    newBatch.execution_status !== "scheduled"
+                  }
+                >
+                  {cancelingScheduleBatchId === newBatch.batch_id ? "Canceling..." : "Cancel Schedule"}
+                </Button>
                 <Button
                   type="button"
                   onClick={() =>
@@ -898,6 +1141,11 @@ export default function BatchesPage() {
                   {formatStatusLabel(selectedBatch.status)}
                 </p>
                 <p className="text-slate-700 mt-1">
+                  <span className="font-medium">Schedule:</span>{" "}
+                  {formatStatusLabel(selectedBatch.scheduled_status || "none")}
+                  {selectedBatch.scheduled_at_utc ? ` · ${formatScheduledAt(selectedBatch.scheduled_at_utc)}` : ""}
+                </p>
+                <p className="text-slate-700 mt-1">
                   <span className="font-medium">Calls:</span>{" "}
                   {selectedBatch.successful_calls || 0} success /{" "}
                   {selectedBatch.failed_calls || 0} failed /{" "}
@@ -945,9 +1193,59 @@ export default function BatchesPage() {
                     onChange={(event) => setSelectedBatchConcurrency(event.target.value)}
                   />
                 </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-900 mb-2">Run at (local)</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start font-normal"
+                    onClick={() => openSchedulePicker("selected")}
+                  >
+                    {selectedBatchScheduledAtLocal
+                      ? formatScheduledAt(toIsoWithLocalOffset(selectedBatchScheduledAtLocal))
+                      : "Select date and time"}
+                  </Button>
+                  <p className="mt-1 text-xs text-slate-500">Timezone: {userTimezone}</p>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    handleScheduleBatch(
+                      selectedBatch.batch_id,
+                      selectedBatchAgentType,
+                      selectedBatchConcurrency,
+                      selectedBatchScheduledAtLocal,
+                      selectedBatch.execution_status === "scheduled"
+                    )
+                  }
+                  disabled={
+                    schedulingBatchId === selectedBatch.batch_id ||
+                    runningBatchId === selectedBatch.batch_id ||
+                    selectedBatch.execution_status === "running" ||
+                    selectedBatch.execution_status === "completed"
+                  }
+                >
+                  {schedulingBatchId === selectedBatch.batch_id
+                    ? "Scheduling..."
+                    : selectedBatch.execution_status === "scheduled"
+                    ? "Reschedule"
+                    : "Set Date & Time"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleCancelSchedule(selectedBatch.batch_id)}
+                  disabled={
+                    cancelingScheduleBatchId === selectedBatch.batch_id ||
+                    selectedBatch.execution_status !== "scheduled"
+                  }
+                >
+                  {cancelingScheduleBatchId === selectedBatch.batch_id ? "Canceling..." : "Cancel Schedule"}
+                </Button>
                 <Button
                   type="button"
                   onClick={() =>
@@ -993,6 +1291,49 @@ export default function BatchesPage() {
               </div>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isSchedulePickerOpen} onOpenChange={setIsSchedulePickerOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Select Date & Time</DialogTitle>
+            <DialogDescription>
+              Pick when you want this batch to start.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex justify-center">
+              <Calendar
+                mode="single"
+                selected={schedulePickerDate}
+                onSelect={setSchedulePickerDate}
+                disabled={{ before: new Date() }}
+                className="bg-transparent p-0"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-900 mb-2">Time</p>
+              <Input
+                type="time"
+                value={schedulePickerTime}
+                onChange={(event) => setSchedulePickerTime(event.target.value)}
+              />
+              <p className="mt-1 text-xs text-slate-500">Timezone: {userTimezone}</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsSchedulePickerOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={applySchedulePicker}>
+                Set
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

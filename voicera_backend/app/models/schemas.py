@@ -382,6 +382,11 @@ class BatchResponse(BaseModel):
     successful_calls: int = 0
     failed_calls: int = 0
     error_message: Optional[str] = None
+    schedule_mode: str = "run_now"  # run_now | scheduled
+    scheduled_at_utc: Optional[str] = None
+    scheduled_timezone: Optional[str] = None
+    scheduled_status: str = "none"  # none | scheduled | triggered | canceled
+    scheduled_by: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -398,6 +403,8 @@ class BatchUploadResponse(BaseModel):
     total_contacts: int
     valid_contacts: int
     invalid_contacts: int
+    schedule_mode: str = "run_now"
+    scheduled_status: str = "none"
     created_at: Optional[str] = None
 
 
@@ -408,5 +415,13 @@ class BatchDeleteResponse(BaseModel):
 
 class BatchRunRequest(BaseModel):
     """Optional runtime config when starting a batch."""
+    agent_type: Optional[str] = None
+    concurrency: Optional[int] = Field(default=None, ge=1, le=20)
+
+
+class BatchScheduleRequest(BaseModel):
+    """One-time scheduling payload for batch execution."""
+    scheduled_at_local: str
+    timezone: str
     agent_type: Optional[str] = None
     concurrency: Optional[int] = Field(default=None, ge=1, le=20)

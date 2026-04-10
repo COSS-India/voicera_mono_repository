@@ -847,6 +847,11 @@ export interface Batch {
   successful_calls?: number
   failed_calls?: number
   error_message?: string | null
+  schedule_mode?: "run_now" | "scheduled"
+  scheduled_at_utc?: string | null
+  scheduled_timezone?: string | null
+  scheduled_status?: "none" | "scheduled" | "triggered" | "canceled"
+  scheduled_by?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -872,6 +877,13 @@ export interface BatchDeleteResponse {
 export interface BatchActionResponse {
   status: string
   message: string
+}
+
+export interface BatchScheduleRequest {
+  scheduled_at_local: string
+  timezone: string
+  agent_type?: string
+  concurrency?: number
 }
 
 /**
@@ -1038,6 +1050,124 @@ export async function stopBatch(batchId: string): Promise<BatchActionResponse> {
       (error as { detail?: string }).detail ||
         (error as { error?: string }).error ||
         "Failed to stop batch"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Schedule one-time batch execution.
+ */
+export async function scheduleBatch(
+  batchId: string,
+  payload: BatchScheduleRequest
+): Promise<BatchActionResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetch(`/api/batches/${encodedBatchId}/schedule`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+        (error as { error?: string }).error ||
+        "Failed to schedule batch"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Cancel one-time scheduled batch execution before it triggers.
+ */
+export async function cancelBatchSchedule(batchId: string): Promise<BatchActionResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetch(`/api/batches/${encodedBatchId}/schedule/cancel`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+        (error as { error?: string }).error ||
+        "Failed to cancel schedule"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Reschedule one-time batch execution before it triggers.
+ */
+export async function rescheduleBatch(
+  batchId: string,
+  payload: BatchScheduleRequest
+): Promise<BatchActionResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetch(`/api/batches/${encodedBatchId}/schedule/reschedule`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+        (error as { error?: string }).error ||
+        "Failed to reschedule batch"
     )
   }
 

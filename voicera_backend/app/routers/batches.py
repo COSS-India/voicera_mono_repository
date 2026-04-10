@@ -10,7 +10,13 @@ import requests
 
 from app.auth import get_current_user, verify_api_key
 from app.config import settings
-from app.models.schemas import BatchDeleteResponse, BatchResponse, BatchRunRequest, BatchUploadResponse
+from app.models.schemas import (
+    BatchDeleteResponse,
+    BatchResponse,
+    BatchRunRequest,
+    BatchScheduleRequest,
+    BatchUploadResponse,
+)
 from app.services import batch_service
 
 router = APIRouter(prefix="/batches", tags=["batches"])
@@ -183,6 +189,84 @@ async def run_batch(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to start batch on voice server: {str(e)}",
         ) from e
+
+
+@router.post("/{batch_id}/schedule", status_code=status.HTTP_200_OK)
+async def schedule_batch(
+    batch_id: str,
+    schedule_request: BatchScheduleRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no organization",
+        )
+
+    try:
+        return batch_service.schedule_batch(
+            org_id=org_id,
+            batch_id=batch_id,
+            scheduled_at_local=schedule_request.scheduled_at_local,
+            timezone_name=schedule_request.timezone,
+            scheduled_by=current_user.get("email"),
+            agent_type=schedule_request.agent_type,
+            concurrency=schedule_request.concurrency,
+        )
+    except batch_service.BatchNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found") from None
+    except (batch_service.BatchRunStateError, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.post("/{batch_id}/schedule/cancel", status_code=status.HTTP_200_OK)
+async def cancel_batch_schedule(
+    batch_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no organization",
+        )
+
+    try:
+        return batch_service.cancel_scheduled_batch(org_id=org_id, batch_id=batch_id)
+    except batch_service.BatchNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found") from None
+    except batch_service.BatchRunStateError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.post("/{batch_id}/schedule/reschedule", status_code=status.HTTP_200_OK)
+async def reschedule_batch(
+    batch_id: str,
+    schedule_request: BatchScheduleRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no organization",
+        )
+
+    try:
+        return batch_service.reschedule_batch(
+            org_id=org_id,
+            batch_id=batch_id,
+            scheduled_at_local=schedule_request.scheduled_at_local,
+            timezone_name=schedule_request.timezone,
+            scheduled_by=current_user.get("email"),
+            agent_type=schedule_request.agent_type,
+            concurrency=schedule_request.concurrency,
+        )
+    except batch_service.BatchNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found") from None
+    except (batch_service.BatchRunStateError, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.post("/{batch_id}/stop", status_code=status.HTTP_200_OK)

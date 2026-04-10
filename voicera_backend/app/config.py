@@ -52,6 +52,7 @@ class Settings:
         or os.getenv("JOHNAIC_SERVER_URL")
         or "http://localhost:7860"
     )
+    BATCH_SCHEDULER_POLL_SECONDS: int = int(os.getenv("BATCH_SCHEDULER_POLL_SECONDS", "5"))
     
     @property
     def mongodb_uri(self) -> str:

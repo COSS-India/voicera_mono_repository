@@ -202,6 +202,7 @@ def initialize_database():
                 partialFilterExpression={"batch_name": {"$type": "string"}},
             )
             batches.create_index([("org_id", 1), ("agent_type", 1), ("created_at", -1)], name="org_agent_created_at")
+            batches.create_index([("execution_status", 1), ("scheduled_at_utc", 1)], name="execution_scheduled_at_index")
             logger.info("✓ Created Batches with indexes")
         else:
             logger.debug("Batches collection already exists. Ensuring indexes...")
@@ -216,6 +217,7 @@ def initialize_database():
                     partialFilterExpression={"batch_name": {"$type": "string"}},
                 )
                 batches.create_index([("org_id", 1), ("agent_type", 1), ("created_at", -1)], name="org_agent_created_at")
+                batches.create_index([("execution_status", 1), ("scheduled_at_utc", 1)], name="execution_scheduled_at_index")
             except Exception as e:
                 if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
                     logger.warning(f"Index creation warning: {e}")
