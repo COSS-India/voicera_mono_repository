@@ -4,6 +4,8 @@ import os
 import socket
 import json
 import traceback
+import io
+import wave
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -15,9 +17,11 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
+from pipecat.frames.frames import TTSAudioRawFrame, ErrorFrame
 
 from .bot import bot, ubona_bot
 from .telemetry import router as telemetry_router
+from .services import create_tts_service, ServiceCreationError
 from .backend_utils import (
     create_meeting_in_backend,
     update_meeting_end_time,
@@ -73,6 +77,14 @@ class OutboundCallRequest(BaseModel):
     caller_id: Optional[str] = None
 
 
+class RenderTTSRequest(BaseModel):
+    text: str
+    tts_config: dict
+    language: Optional[str] = None
+    org_id: Optional[str] = None
+    sample_rate: Optional[int] = None
+
+
 # === Helper Functions ===
 
 def _get_env_or_raise(key: str) -> str:
@@ -81,6 +93,14 @@ def _get_env_or_raise(key: str) -> str:
     if not value:
         raise ValueError(f"Missing required environment variable: {key}")
     return value
+
+
+def _verify_internal_api_key(request: Request) -> bool:
+    expected = os.environ.get("INTERNAL_API_KEY", "").strip()
+    if not expected:
+        return True
+    provided = request.headers.get("X-API-Key", "").strip()
+    return bool(provided and provided == expected)
 
 
 async def make_outbound_call_vobiz(
@@ -235,6 +255,64 @@ async def make_outbound_call(request: OutboundCallRequest):
     except Exception as e:
         logger.error(f"❌ Outbound call failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/internal/render-tts-wav")
+async def render_tts_wav(request: Request, payload: RenderTTSRequest):
+    """Render text to WAV using configured TTS provider. Internal endpoint."""
+    if not _verify_internal_api_key(request):
+        raise HTTPException(status_code=401, detail="Invalid internal API key")
+
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    tts_config = dict(payload.tts_config or {})
+    language = payload.language
+    if language and not tts_config.get("language"):
+        tts_config["language"] = language
+
+    out_sample_rate = int(payload.sample_rate or 16000)
+    org_id = payload.org_id
+
+    try:
+        tts = create_tts_service(tts_config, out_sample_rate, org_id=org_id)
+    except ServiceCreationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create TTS service: {e}") from e
+
+    audio_chunks: list[bytes] = []
+    audio_rate = out_sample_rate
+    channels = 1
+
+    try:
+        async for frame in tts.run_tts(text):
+            if isinstance(frame, TTSAudioRawFrame):
+                if frame.audio:
+                    audio_chunks.append(frame.audio)
+                if getattr(frame, "sample_rate", None):
+                    audio_rate = int(frame.sample_rate)
+                if getattr(frame, "num_channels", None):
+                    channels = int(frame.num_channels)
+            elif isinstance(frame, ErrorFrame):
+                raise HTTPException(status_code=400, detail=f"TTS render error: {frame.error}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS render failed: {e}") from e
+
+    if not audio_chunks:
+        raise HTTPException(status_code=400, detail="No audio generated for provided text")
+
+    wav_bytes = io.BytesIO()
+    with wave.open(wav_bytes, "wb") as wf:
+        wf.setnchannels(max(1, channels))
+        wf.setsampwidth(2)  # PCM16
+        wf.setframerate(max(8000, audio_rate))
+        wf.writeframes(b"".join(audio_chunks))
+
+    return Response(content=wav_bytes.getvalue(), media_type="audio/wav")
 
 
 async def log_meeting(agent_id: str, form_data_dict: dict):

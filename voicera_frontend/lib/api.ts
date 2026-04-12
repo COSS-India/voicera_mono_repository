@@ -338,6 +338,16 @@ export interface AgentConfig {
   greeting_message: string
   session_timeout_minutes: number
   language: string
+  interaction_mode?: "conversational" | "non_conversational"
+  non_conversational_mode?: "text_tts" | "audio_file"
+  non_conversational_text?: string
+  non_conversational_audio_url?: string
+  non_conversational_audio_meta?: {
+    duration_ms?: number
+    sample_rate?: number
+    mime_type?: string
+    num_channels?: number
+  }
   knowledge_base_enabled?: boolean
   knowledge_document_ids?: string[]
   knowledge_top_k?: number
@@ -377,6 +387,99 @@ export interface CreateAgentRequest {
   telephony_provider?: string
   vobiz_app_id?: string
   vobiz_answer_url?: string
+}
+
+export interface NonConversationalAudioUploadResponse {
+  audio_url: string
+  audio_meta?: {
+    duration_ms?: number
+    sample_rate?: number
+    mime_type?: string
+    num_channels?: number
+  }
+  asset_id?: string
+}
+
+export async function uploadNonConversationalAudio(
+  file: File,
+  orgId: string,
+  agentId: string
+): Promise<NonConversationalAudioUploadResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const formData = new FormData()
+  formData.append("file", file)
+  formData.append("org_id", orgId)
+  formData.append("agent_id", agentId)
+
+  const response = await fetch("/api/non-conversational/upload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to upload non-conversational audio"
+    )
+  }
+
+  return response.json()
+}
+
+export async function renderNonConversationalTTSWav(params: {
+  text: string
+  tts_config: Record<string, any>
+  language?: string
+  org_id?: string
+  sample_rate?: number
+}): Promise<Blob> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const response = await fetch("/api/non-conversational/render", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(
+      (err as { detail?: string }).detail ||
+      (err as { error?: string }).error ||
+      "Failed to render non-conversational TTS audio"
+    )
+  }
+
+  return response.blob()
 }
 
 export interface Campaign {

@@ -4,6 +4,10 @@ import os
 import json
 import time
 import traceback
+import asyncio
+import base64
+import io
+import wave
 from datetime import datetime
 
 from loguru import logger
@@ -22,6 +26,7 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.utils.text.base_text_aggregator import BaseTextAggregator, Aggregation, AggregationType
 from typing import Any, Optional, Callable, Awaitable
+import numpy as np
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
@@ -128,6 +133,98 @@ def patch_immediate_first_chunk(transport):
             logger.debug(f"🔄 Reset first_chunk_sent flag for new TTS response")
         await _orig_process(frame, direction)
     output.process_frame = _reset_on_tts
+
+
+def _is_non_conversational(agent_config: dict) -> bool:
+    return (agent_config.get("interaction_mode") or "conversational") == "non_conversational"
+
+
+def _decode_wav_to_pcm16_mono(wav_bytes: bytes) -> tuple[np.ndarray, int]:
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+        channels = wf.getnchannels()
+        sample_rate = wf.getframerate()
+        sample_width = wf.getsampwidth()
+        frames = wf.getnframes()
+        raw = wf.readframes(frames)
+
+    if sample_width != 2:
+        raise ValueError("Only 16-bit PCM WAV is supported")
+
+    audio = np.frombuffer(raw, dtype=np.int16)
+    if channels > 1:
+        audio = audio.reshape(-1, channels).mean(axis=1).astype(np.int16)
+    return audio, int(sample_rate)
+
+
+def _resample_pcm16_mono(audio: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
+    if src_rate == dst_rate:
+        return audio
+    if audio.size == 0:
+        return audio
+    duration = audio.shape[0] / float(src_rate)
+    dst_len = max(1, int(round(duration * dst_rate)))
+    src_idx = np.linspace(0, audio.shape[0] - 1, num=audio.shape[0], dtype=np.float64)
+    dst_idx = np.linspace(0, audio.shape[0] - 1, num=dst_len, dtype=np.float64)
+    out = np.interp(dst_idx, src_idx, audio.astype(np.float32))
+    return np.clip(out, -32768, 32767).astype(np.int16)
+
+
+async def _stream_non_conversational_audio(
+    websocket_client,
+    agent_config: dict,
+    sample_rate: int,
+    call_data: dict,
+    transcript_callback: Optional[Callable[[str, str, Optional[str]], Awaitable[None]]] = None,
+) -> None:
+    audio_url = (agent_config.get("non_conversational_audio_url") or "").strip()
+    if not audio_url:
+        raise ValueError("non_conversational_audio_url is required for non-conversational mode")
+
+    parsed = MinIOStorage.parse_minio_url(audio_url)
+    if not parsed:
+        raise ValueError(f"Invalid non-conversational audio URL: {audio_url}")
+
+    bucket_name, object_name = parsed
+    storage = MinIOStorage.from_env()
+    response = await storage.get_object(bucket_name, object_name)
+    try:
+        wav_bytes = response.read()
+    finally:
+        response.close()
+        response.release_conn()
+
+    pcm, src_rate = _decode_wav_to_pcm16_mono(wav_bytes)
+    pcm = _resample_pcm16_mono(pcm, src_rate, sample_rate)
+    if pcm.size == 0:
+        raise ValueError("Audio asset contains no playable samples")
+
+    chunk_samples = max(1, int(sample_rate * 0.02))  # 20ms chunks
+    call_data["audio_sample_rate"] = sample_rate
+    call_data["audio_num_channels"] = 1
+    for i in range(0, pcm.shape[0], chunk_samples):
+        chunk = pcm[i:i + chunk_samples]
+        call_data["audio_chunks"].append(chunk.tobytes())
+        payload = base64.b64encode(chunk.tobytes()).decode("utf-8")
+        await websocket_client.send_text(json.dumps({
+            "event": "playAudio",
+            "media": {
+                "contentType": "audio/x-l16",
+                "sampleRate": sample_rate,
+                "payload": payload,
+            },
+        }))
+        await asyncio.sleep(0.018)
+
+    # Keep recordings/transcripts lightweight for one-way playback mode.
+    text = (agent_config.get("non_conversational_text") or "").strip()
+    if text:
+        timestamp = datetime.utcnow().isoformat()
+        line = f"[{timestamp}] assistant: {text}"
+        call_data["transcript_lines"].append(line)
+        if transcript_callback:
+            await transcript_callback("assistant", text, timestamp)
+
+    await asyncio.sleep(0.2)
 
 
 async def run_bot(
@@ -364,7 +461,20 @@ async def bot(
                     logger.debug(f"Transcript callback failed: {callback_error}")
     
     try:
-        await run_bot(transport, agent_config, audiobuffer, transcript, handle_sigint=False, vad_analyzer=vad_analyzer, vistaar_session_id=call_sid)
+        if _is_non_conversational(agent_config):
+            await _stream_non_conversational_audio(
+                websocket_client=websocket_client,
+                agent_config=agent_config,
+                sample_rate=sample_rate,
+                call_data=call_data,
+                transcript_callback=transcript_callback,
+            )
+            try:
+                await websocket_client.close()
+            except Exception:
+                pass
+        else:
+            await run_bot(transport, agent_config, audiobuffer, transcript, handle_sigint=False, vad_analyzer=vad_analyzer, vistaar_session_id=call_sid)
     finally:
         logger.info(f"Saving call data for {call_sid}...")
         if call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:

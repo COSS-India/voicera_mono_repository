@@ -1,4 +1,4 @@
-checkpoints
+checkpoints/
 __pycache__
 files/
 .venv

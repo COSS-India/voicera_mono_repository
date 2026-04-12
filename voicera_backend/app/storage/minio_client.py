@@ -2,6 +2,7 @@
 MinIO storage client for accessing recordings and transcripts.
 """
 import asyncio
+import io
 import os
 from minio import Minio
 from minio.error import S3Error
@@ -57,6 +58,32 @@ class MinIOStorage:
             if e.code == "NoSuchKey":
                 return False
             raise
+
+    def ensure_bucket(self, bucket_name: str) -> None:
+        """Create bucket if it does not already exist."""
+        if not self.client.bucket_exists(bucket_name):
+            self.client.make_bucket(bucket_name)
+
+    async def put_object_bytes(
+        self,
+        bucket_name: str,
+        object_name: str,
+        data: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> None:
+        """
+        Upload bytes to MinIO (async wrapper).
+        """
+        await asyncio.to_thread(self.ensure_bucket, bucket_name)
+        buf = io.BytesIO(data)
+        await asyncio.to_thread(
+            self.client.put_object,
+            bucket_name,
+            object_name,
+            buf,
+            len(data),
+            content_type=content_type,
+        )
     
     def parse_minio_url(self, url: str) -> tuple[str, str] | None:
         """

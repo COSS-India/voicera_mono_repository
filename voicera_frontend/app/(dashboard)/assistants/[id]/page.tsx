@@ -27,6 +27,7 @@ import {
   Settings,
   Languages,
   Check,
+  Upload,
 } from "lucide-react"
 import {
   Dialog,
@@ -36,7 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getCurrentUser, getAgent, updateAgent, getIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type KnowledgeDocument } from "@/lib/api"
+import { getCurrentUser, getAgent, updateAgent, getIntegrations, getKnowledgeDocuments, uploadNonConversationalAudio, renderNonConversationalTTSWav, type User, type Agent, type CreateAgentRequest, type Integration, type KnowledgeDocument } from "@/lib/api"
 
 // Import JSON data
 import sttData from "@/stt.json"
@@ -227,6 +228,12 @@ export default function AgentDetailPage() {
   const [ttsVoice, setTtsVoice] = useState("")
   const [ttsDescription, setTtsDescription] = useState("")
   const [speed, setSpeed] = useState(1.0)
+  const [interactionMode, setInteractionMode] = useState<"conversational" | "non_conversational">("conversational")
+  const [nonConversationalMode, setNonConversationalMode] = useState<"text_tts" | "audio_file">("text_tts")
+  const [nonConversationalText, setNonConversationalText] = useState("")
+  const [nonConversationalAudioUrl, setNonConversationalAudioUrl] = useState("")
+  const [nonConversationalAudioMeta, setNonConversationalAudioMeta] = useState<Record<string, any> | undefined>(undefined)
+  const [isUploadingNonConversationalAudio, setIsUploadingNonConversationalAudio] = useState(false)
 
   // Collapsible states
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(true)
@@ -518,6 +525,16 @@ export default function AgentDetailPage() {
             setTtsDescription("")
           }
           setSpeed(agentData.agent_config?.tts_model?.speed || 1.0)
+          const cfg: any = agentData.agent_config || {}
+          const loadedInteractionMode =
+            cfg.interaction_mode === "non_conversational" ? "non_conversational" : "conversational"
+          setInteractionMode(loadedInteractionMode)
+          setNonConversationalMode(
+            cfg.non_conversational_mode === "audio_file" ? "audio_file" : "text_tts"
+          )
+          setNonConversationalText(cfg.non_conversational_text || "")
+          setNonConversationalAudioUrl(cfg.non_conversational_audio_url || "")
+          setNonConversationalAudioMeta(cfg.non_conversational_audio_meta)
 
           if (agentData.agent_config && typeof agentData.agent_config === 'object') {
             try {
@@ -575,6 +592,21 @@ export default function AgentDetailPage() {
     }
   }, [language, sttProvider, ttsProvider, ttsModel, supportedSTTModels, supportedTTSModels, availableTTSVoices, isLoading])
 
+  const handleNonConversationalAudioUpload = async (file: File) => {
+    if (!user?.org_id || !agent) return
+    const uploadAgentId = agent.agent_id || agent.agent_type.replace(/\s+/g, "_").toLowerCase()
+    setIsUploadingNonConversationalAudio(true)
+    try {
+      const uploaded = await uploadNonConversationalAudio(file, user.org_id, uploadAgentId)
+      setNonConversationalAudioUrl(uploaded.audio_url)
+      setNonConversationalAudioMeta(uploaded.audio_meta)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to upload audio")
+    } finally {
+      setIsUploadingNonConversationalAudio(false)
+    }
+  }
+
   // Detect changes
   useEffect(() => {
     if (!originalConfig || !agent) {
@@ -616,6 +648,21 @@ export default function AgentDetailPage() {
         ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
         ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
       },
+      ...((interactionMode === "non_conversational" || Object.prototype.hasOwnProperty.call(originalConfig || {}, "interaction_mode")) && {
+        interaction_mode: interactionMode,
+      }),
+      ...(interactionMode === "non_conversational" && {
+        non_conversational_mode: nonConversationalMode,
+        ...(nonConversationalMode === "text_tts" && {
+          non_conversational_text: nonConversationalText,
+        }),
+        ...(nonConversationalAudioUrl && {
+          non_conversational_audio_url: nonConversationalAudioUrl,
+        }),
+        ...(nonConversationalAudioMeta && {
+          non_conversational_audio_meta: nonConversationalAudioMeta,
+        }),
+      }),
     }
 
     // Normalize configs by removing undefined/null/empty values and sorting keys
@@ -640,7 +687,7 @@ export default function AgentDetailPage() {
 
     const hasChanged = originalNormalized !== currentNormalized
     setHasChanges(hasChanged)
-  }, [systemPrompt, greetingMessage, language, llmProvider, llmModel, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent])
+  }, [systemPrompt, greetingMessage, language, llmProvider, llmModel, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, interactionMode, nonConversationalMode, nonConversationalText, nonConversationalAudioUrl, nonConversationalAudioMeta, originalConfig, agent])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -655,6 +702,48 @@ export default function AgentDetailPage() {
       const languageName = language || ""
       // Generate agent_id from agent_type (required field)
       const agentId = agent.agent_id || agent.agent_type.replace(/\s+/g, '_').toLowerCase()
+      const ttsPreviewConfig: any = {
+        name: getProviderOfficialName(ttsProvider),
+        ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && {
+          args: {
+            ...(ttsModel && { model: ttsModel }),
+            ...(ttsVoice && { voice_id: ttsVoice }),
+          },
+        }),
+        ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsProvider !== "elevenlabs" && ttsModel && { model: ttsModel }),
+        speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
+        speed: speed,
+        ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && ttsDescription && { description: ttsDescription }),
+        ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
+        ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
+        ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
+      }
+
+      let resolvedNonConversationalAudioUrl = nonConversationalAudioUrl
+      let resolvedNonConversationalAudioMeta = nonConversationalAudioMeta
+      if (interactionMode === "non_conversational") {
+        if (nonConversationalMode === "text_tts") {
+          const text = (nonConversationalText || "").trim()
+          if (!text) {
+            throw new Error("Non-conversational text is required")
+          }
+          const renderedWav = await renderNonConversationalTTSWav({
+            text,
+            tts_config: ttsPreviewConfig,
+            language: languageName,
+            org_id: user.org_id,
+            sample_rate: 16000,
+          })
+          const wavFile = new File([renderedWav], `${agentId}-non-conversational.wav`, { type: "audio/wav" })
+          const uploaded = await uploadNonConversationalAudio(wavFile, user.org_id, agentId)
+          resolvedNonConversationalAudioUrl = uploaded.audio_url
+          resolvedNonConversationalAudioMeta = uploaded.audio_meta
+          setNonConversationalAudioUrl(uploaded.audio_url)
+          setNonConversationalAudioMeta(uploaded.audio_meta)
+        } else if (!resolvedNonConversationalAudioUrl) {
+          throw new Error("Upload audio file for non-conversational mode")
+        }
+      }
 
       const updatedConfig: CreateAgentRequest = {
         org_id: user.org_id,
@@ -666,6 +755,19 @@ export default function AgentDetailPage() {
           language: languageName, // Update the top-level language field
           system_prompt: systemPrompt,
           greeting_message: greetingMessage,
+          interaction_mode: interactionMode,
+          ...(interactionMode === "non_conversational" && {
+            non_conversational_mode: nonConversationalMode,
+            ...(nonConversationalMode === "text_tts" && {
+              non_conversational_text: nonConversationalText,
+            }),
+            ...(resolvedNonConversationalAudioUrl && {
+              non_conversational_audio_url: resolvedNonConversationalAudioUrl,
+            }),
+            ...(resolvedNonConversationalAudioMeta && {
+              non_conversational_audio_meta: resolvedNonConversationalAudioMeta,
+            }),
+          }),
           knowledge_base_enabled: llmProvider === "openai" ? knowledgeEnabled : false,
           knowledge_document_ids:
             llmProvider === "openai" && knowledgeEnabled ? knowledgeDocumentIds : [],
@@ -681,21 +783,7 @@ export default function AgentDetailPage() {
             ...(agent.agent_config?.stt_model?.keywords && { keywords: agent.agent_config.stt_model.keywords }),
           },
           tts_model: {
-            name: getProviderOfficialName(ttsProvider),
-            // language: languageName,
-            ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && {
-              args: {
-                ...(ttsModel && { model: ttsModel }),
-                ...(ttsVoice && { voice_id: ttsVoice }),
-              },
-            }),
-            ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsProvider !== "elevenlabs" && ttsModel && { model: ttsModel }),
-            speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
-            speed: speed,
-            ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && ttsDescription && { description: ttsDescription }),
-            ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
-            ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
-            ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
+            ...ttsPreviewConfig,
           },
         },
       }
@@ -1132,6 +1220,7 @@ export default function AgentDetailPage() {
                 </div>
               </div>
 
+              {interactionMode === "conversational" && (
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-5 flex items-center gap-2">
                   <Mic className="h-5 w-5 text-slate-400" />
@@ -1185,7 +1274,9 @@ export default function AgentDetailPage() {
                   </div>
                 </div>
               </div>
+              )}
 
+              {(interactionMode === "conversational" || nonConversationalMode === "text_tts") && (
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-5 flex items-center gap-2">
                   <Volume2 className="h-5 w-5 text-slate-400" />
@@ -1301,6 +1392,7 @@ export default function AgentDetailPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           </div>
 
@@ -1338,6 +1430,104 @@ export default function AgentDetailPage() {
                     placeholder="Enter the system prompt for your assistant..."
                   />
                 </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-2 block">
+                    Interaction Mode
+                  </label>
+                  <Select
+                    value={interactionMode}
+                    onValueChange={(v) => {
+                      const mode = v as "conversational" | "non_conversational"
+                      setInteractionMode(mode)
+                      if (mode === "conversational") {
+                        setNonConversationalMode("text_tts")
+                        setNonConversationalText("")
+                        setNonConversationalAudioUrl("")
+                        setNonConversationalAudioMeta(undefined)
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="border-slate-200 rounded-md h-11 bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="conversational">Conversational</SelectItem>
+                      <SelectItem value="non_conversational">Non-conversational</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {interactionMode === "non_conversational" && (
+                  <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 mb-2 block">
+                        Non-conversational Input
+                      </label>
+                      <Select
+                        value={nonConversationalMode}
+                        onValueChange={(v) => {
+                          const mode = v as "text_tts" | "audio_file"
+                          setNonConversationalMode(mode)
+                          setNonConversationalAudioUrl("")
+                          setNonConversationalAudioMeta(undefined)
+                          if (mode === "audio_file") {
+                            setNonConversationalText("")
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="border-slate-200 rounded-md h-11 bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="text_tts">Text to Speech</SelectItem>
+                          <SelectItem value="audio_file">Upload Audio File</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {nonConversationalMode === "text_tts" ? (
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">
+                          Text to speak on call pickup
+                        </label>
+                        <Textarea
+                          value={nonConversationalText}
+                          onChange={(e) => setNonConversationalText(e.target.value)}
+                          className="min-h-[100px] border-slate-200 bg-white"
+                          placeholder="Enter announcement text..."
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700 block">
+                          Upload WAV or MP3
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <Input
+                            type="file"
+                            accept=".wav,.mp3,audio/wav,audio/mpeg"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) void handleNonConversationalAudioUpload(file)
+                            }}
+                            disabled={isUploadingNonConversationalAudio}
+                            className="h-11 bg-white"
+                          />
+                          {isUploadingNonConversationalAudio && (
+                            <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+                          )}
+                        </div>
+                        {nonConversationalAudioUrl && (
+                          <p className="text-xs text-emerald-700 flex items-center gap-1">
+                            <Upload className="h-3.5 w-3.5" />
+                            Audio uploaded
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
 

@@ -208,5 +208,16 @@ class MinIOStorage:
             bucket_name,
             object_name
         )
+
+    @staticmethod
+    def parse_minio_url(url: str) -> tuple[str, str] | None:
+        """Parse minio://bucket/object URL."""
+        if not url or not url.startswith("minio://"):
+            return None
+        path = url.replace("minio://", "", 1)
+        parts = path.split("/", 1)
+        if len(parts) != 2:
+            return None
+        return parts[0], parts[1]
     
     

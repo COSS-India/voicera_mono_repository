@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { getCurrentUser, getAgents, createAgent, createVobizApplication, deleteVobizApplication, deleteAgent, unlinkVobizNumber, fetchApiRoute, getIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type KnowledgeDocument } from "@/lib/api"
+import { getCurrentUser, getAgents, createAgent, createVobizApplication, deleteVobizApplication, deleteAgent, unlinkVobizNumber, fetchApiRoute, getIntegrations, getKnowledgeDocuments, uploadNonConversationalAudio, renderNonConversationalTTSWav, type User, type Agent, type CreateAgentRequest, type Integration, type KnowledgeDocument } from "@/lib/api"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,6 +48,7 @@ import {
   Loader2,
   Check,
   X,
+  Upload,
 } from "lucide-react"
 
 // Import JSON data
@@ -178,8 +179,8 @@ const getAgentDescription = (agent: Agent): string => {
 // Types
 interface AgentConfig {
   id: string
-  name?: string
-  greetingMessage?: string
+  name: string
+  greetingMessage: string
   systemPrompt: string
   llmProvider: string
   llmModel: string
@@ -201,6 +202,16 @@ interface AgentConfig {
   similarityBoost: number
   stability: number
   telephonyProvider: string
+  interactionMode: "conversational" | "non_conversational"
+  nonConversationalMode: "text_tts" | "audio_file"
+  nonConversationalText: string
+  nonConversationalAudioUrl: string
+  nonConversationalAudioMeta?: {
+    duration_ms?: number
+    sample_rate?: number
+    mime_type?: string
+    num_channels?: number
+  }
 }
 
 const defaultConfig: AgentConfig = {
@@ -228,13 +239,31 @@ const defaultConfig: AgentConfig = {
   similarityBoost: 75,
   stability: 50,
   telephonyProvider: "Vobiz",
+  interactionMode: "conversational",
+  nonConversationalMode: "text_tts",
+  nonConversationalText: "",
+  nonConversationalAudioUrl: "",
+  nonConversationalAudioMeta: undefined,
 }
 
 // Wizard steps configuration
-const wizardSteps = [
+const conversationalWizardSteps = [
   { id: 1, title: "Agent", subtitle: "Name & Prompt", icon: FileText },
   { id: 2, title: "LLM", subtitle: "Model Config", icon: Settings },
   { id: 3, title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
+  { id: 4, title: "Telephony", subtitle: "Select Provider", icon: Phone },
+  { id: 5, title: "Review", subtitle: "Confirm", icon: CheckCircle2 },
+]
+
+const nonConversationalWizardSteps = [
+  { id: 1, title: "Agent", subtitle: "Name & Mode", icon: FileText },
+  { id: 4, title: "Telephony", subtitle: "Select Provider", icon: Phone },
+  { id: 5, title: "Review", subtitle: "Confirm", icon: CheckCircle2 },
+]
+
+const nonConversationalTextWizardSteps = [
+  { id: 1, title: "Agent", subtitle: "Name & Mode", icon: FileText },
+  { id: 3, title: "Audio", subtitle: "TTS Config", icon: Volume2 },
   { id: 4, title: "Telephony", subtitle: "Select Provider", icon: Phone },
   { id: 5, title: "Review", subtitle: "Confirm", icon: CheckCircle2 },
 ]
@@ -256,6 +285,15 @@ export default function AssistantsPage() {
   const [integratedProviders, setIntegratedProviders] = useState<Set<string>>(new Set())
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
   const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(false)
+  const [isUploadingNonConversationalAudio, setIsUploadingNonConversationalAudio] = useState(false)
+  const activeWizardSteps = useMemo(
+    () => {
+      if (config.interactionMode !== "non_conversational") return conversationalWizardSteps
+      if (config.nonConversationalMode === "text_tts") return nonConversationalTextWizardSteps
+      return nonConversationalWizardSteps
+    },
+    [config.interactionMode, config.nonConversationalMode]
+  )
 
   // Fetch user data, agents, and integrations on mount
   useEffect(() => {
@@ -538,6 +576,12 @@ export default function AssistantsPage() {
     setConfig({ ...defaultConfig, telephonyProvider: "Vobiz" })
   }
 
+  useEffect(() => {
+    if (!activeWizardSteps.some((s) => s.id === createStep)) {
+      setCreateStep(activeWizardSteps[0].id)
+    }
+  }, [activeWizardSteps, createStep])
+
 
   const handleTestCall = (agent: Agent) => {
     setSelectedAgentForTest(agent)
@@ -674,6 +718,21 @@ export default function AssistantsPage() {
           updated.knowledgeDocumentIds = []
         }
       }
+      if (key === "interactionMode") {
+        if (value === "conversational") {
+          updated.nonConversationalMode = "text_tts"
+          updated.nonConversationalText = ""
+          updated.nonConversationalAudioUrl = ""
+          updated.nonConversationalAudioMeta = undefined
+        }
+      }
+      if (key === "nonConversationalMode") {
+        updated.nonConversationalAudioUrl = ""
+        updated.nonConversationalAudioMeta = undefined
+        if (value === "audio_file") {
+          updated.nonConversationalText = ""
+        }
+      }
       return updated
     })
   }
@@ -695,6 +754,30 @@ export default function AssistantsPage() {
           : [...prev.knowledgeDocumentIds, documentId],
       }
     })
+  }
+
+  const handleNonConversationalAudioUpload = async (file: File) => {
+    if (!user?.org_id) {
+      alert("Unable to upload audio: missing organization")
+      return
+    }
+
+    const provisionalAgentId =
+      config.name.trim().replace(/\s+/g, "_").toLowerCase() || `agent_${Date.now()}`
+
+    setIsUploadingNonConversationalAudio(true)
+    try {
+      const uploaded = await uploadNonConversationalAudio(file, user.org_id, provisionalAgentId)
+      setConfig((prev) => ({
+        ...prev,
+        nonConversationalAudioUrl: uploaded.audio_url,
+        nonConversationalAudioMeta: uploaded.audio_meta,
+      }))
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to upload audio")
+    } finally {
+      setIsUploadingNonConversationalAudio(false)
+    }
   }
 
   // Handle save agent
@@ -757,6 +840,30 @@ export default function AssistantsPage() {
         ttsModel.loudness = config.similarityBoost
       }
 
+      let nonConversationalAudioUrl = config.nonConversationalAudioUrl
+      let nonConversationalAudioMeta = config.nonConversationalAudioMeta
+      if (config.interactionMode === "non_conversational") {
+        if (config.nonConversationalMode === "text_tts") {
+          const text = (config.nonConversationalText || "").trim()
+          if (!text) {
+            throw new Error("Non-conversational text is required")
+          }
+          const renderedWav = await renderNonConversationalTTSWav({
+            text,
+            tts_config: ttsModel,
+            language: languageName,
+            org_id: user.org_id,
+            sample_rate: 16000,
+          })
+          const wavFile = new File([renderedWav], `${agentId}-non-conversational.wav`, { type: "audio/wav" })
+          const uploaded = await uploadNonConversationalAudio(wavFile, user.org_id, agentId)
+          nonConversationalAudioUrl = uploaded.audio_url
+          nonConversationalAudioMeta = uploaded.audio_meta
+        } else if (!nonConversationalAudioUrl) {
+          throw new Error("Upload audio file for non-conversational mode")
+        }
+      }
+
       // If Vobiz provider, create Vobiz application first
       let vobizAppId: string | undefined
       let vobizAnswerUrl: string | undefined
@@ -785,6 +892,19 @@ export default function AssistantsPage() {
           greeting_message: config.greetingMessage,
           session_timeout_minutes: 10,
           language: languageName,
+          interaction_mode: config.interactionMode,
+          ...(config.interactionMode === "non_conversational" && {
+            non_conversational_mode: config.nonConversationalMode,
+            ...(config.nonConversationalMode === "text_tts" && {
+              non_conversational_text: config.nonConversationalText,
+            }),
+            ...(nonConversationalAudioUrl && {
+              non_conversational_audio_url: nonConversationalAudioUrl,
+            }),
+            ...(nonConversationalAudioMeta && {
+              non_conversational_audio_meta: nonConversationalAudioMeta,
+            }),
+          }),
           knowledge_base_enabled: config.llmProvider === "openai" ? config.knowledgeEnabled : false,
           knowledge_document_ids:
             config.llmProvider === "openai" && config.knowledgeEnabled
@@ -827,26 +947,44 @@ export default function AssistantsPage() {
 
   // Navigate to next step
   const handleNextStep = () => {
-    if (createStep < 5) {
-      setCreateStep(createStep + 1)
+    const idx = activeWizardSteps.findIndex((s) => s.id === createStep)
+    if (idx >= 0 && idx < activeWizardSteps.length - 1) {
+      setCreateStep(activeWizardSteps[idx + 1].id)
     }
   }
 
   // Calculate progress percentage
-  const progressPercent = (createStep / 5) * 100
+  const currentStepIndex = Math.max(
+    0,
+    activeWizardSteps.findIndex((s) => s.id === createStep)
+  )
+  const progressPercent = ((currentStepIndex + 1) / activeWizardSteps.length) * 100
 
   // Check if a specific step is completed
   const isStepCompleted = (stepId: number) => {
     switch (stepId) {
       case 1:
-        return config.name.length > 0 && config.systemPrompt.length > 0 
+        if (!config.name.length) return false
+        if (config.interactionMode === "conversational") {
+          return !!config.systemPrompt.length
+        }
+        if (config.nonConversationalMode === "text_tts") {
+          return (config.nonConversationalText || "").trim().length > 0
+        }
+        return !!config.nonConversationalAudioUrl
       case 2:
         if (config.llmProvider === "kenpath") {
           return !!config.llmProvider
         }
         return config.llmProvider && config.llmModel
       case 3:
-        return config.language && config.sttProvider && config.sttModel && config.ttsProvider && config.ttsModel && config.ttsVoice && config.ttsVoice.length > 0
+        if (config.interactionMode === "non_conversational") {
+          if (config.nonConversationalMode === "audio_file") {
+            return !!config.language
+          }
+          return !!(config.language && config.ttsProvider && config.ttsModel && config.ttsVoice && config.ttsVoice.length > 0)
+        }
+        return !!(config.language && config.sttProvider && config.sttModel && config.ttsProvider && config.ttsModel && config.ttsVoice && config.ttsVoice.length > 0)
       case 4:
         return !!config.telephonyProvider
       case 5:
@@ -863,18 +1001,21 @@ export default function AssistantsPage() {
 
   // Check if a step is accessible
   const canAccessStep = (stepId: number) => {
-    if (stepId === createStep) return true
-    if (stepId < createStep) return true
-    for (let i = 1; i < stepId; i++) {
-      if (!isStepCompleted(i)) return false
+    const targetIndex = activeWizardSteps.findIndex((s) => s.id === stepId)
+    const activeIndex = activeWizardSteps.findIndex((s) => s.id === createStep)
+    if (targetIndex === -1 || activeIndex === -1) return false
+    if (targetIndex <= activeIndex) return true
+    for (let i = 0; i < targetIndex; i++) {
+      if (!isStepCompleted(activeWizardSteps[i].id)) return false
     }
     return true
   }
 
   // Get next step label
   const getNextStepLabel = () => {
-    if (createStep === 5) return "Create Agent"
-    const nextStep = wizardSteps.find(s => s.id === createStep + 1)
+    const idx = activeWizardSteps.findIndex((s) => s.id === createStep)
+    if (idx === -1 || idx === activeWizardSteps.length - 1) return "Create Agent"
+    const nextStep = activeWizardSteps[idx + 1]
     return nextStep ? `Continue to ${nextStep.title}` : "Continue"
   }
 
@@ -1018,7 +1159,7 @@ export default function AssistantsPage() {
         <aside className="bg-white border-b border-slate-100 p-3 sm:p-4">
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">Setup Progress</h3>
           <div className="flex gap-2 overflow-x-auto pb-1 justify-center">
-            {wizardSteps.map((step) => {
+            {activeWizardSteps.map((step) => {
               const Icon = step.icon
               const isActive = createStep === step.id
               const isCompleted = isStepCompleted(step.id) && createStep > step.id
@@ -1088,32 +1229,106 @@ export default function AssistantsPage() {
                     </p>
                   </div>
 
-                  {/* Agent Welcome Message */}
                   <div className="space-y-3">
-                    <label className="text-base font-bold text-slate-900">Agent Welcome Message</label>
-                    <Input
-                      value={config.greetingMessage}
-                      onChange={(e) => updateConfig("greetingMessage", e.target.value)}
-                      placeholder="Hello from EkStep"
-                      className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                    />
-                    <p className="text-sm text-slate-500">
-                      This will be the initial message from the agent. You can use variables here using {"{variable_name}"}
-                    </p>
+                    <label className="text-base font-bold text-slate-900">Interaction Mode</label>
+                    <Select value={config.interactionMode} onValueChange={(v) => updateConfig("interactionMode", v as AgentConfig["interactionMode"])}>
+                      <SelectTrigger className="h-12 rounded-lg border-slate-200 bg-white text-base">
+                        <SelectValue placeholder="Select interaction mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="conversational">Conversational</SelectItem>
+                        <SelectItem value="non_conversational">Non-conversational</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  {/* Agent Prompt */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-base font-bold text-slate-900">Agent Prompt</label>
+                  {config.interactionMode === "conversational" && (
+                    <>
+                      {/* Agent Welcome Message */}
+                      <div className="space-y-3">
+                        <label className="text-base font-bold text-slate-900">Agent Welcome Message</label>
+                        <Input
+                          value={config.greetingMessage}
+                          onChange={(e) => updateConfig("greetingMessage", e.target.value)}
+                          placeholder="Hello from EkStep"
+                          className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                        />
+                        <p className="text-sm text-slate-500">
+                          This will be the initial message from the agent. You can use variables here using {"{variable_name}"}
+                        </p>
+                      </div>
+
+                      {/* Agent Prompt */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-base font-bold text-slate-900">Agent Prompt</label>
+                        </div>
+                        <Textarea
+                          value={config.systemPrompt}
+                          onChange={(e) => updateConfig("systemPrompt", e.target.value)}
+                          placeholder="You are a helpful assistant that..."
+                          className="min-h-[200px] rounded-lg border-slate-200 bg-white resize-none text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {config.interactionMode === "non_conversational" && (
+                    <div className="space-y-4 rounded-lg border border-slate-200 p-4 bg-slate-50">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-800">Non-conversational Input</label>
+                        <Select value={config.nonConversationalMode} onValueChange={(v) => updateConfig("nonConversationalMode", v as AgentConfig["nonConversationalMode"])}>
+                          <SelectTrigger className="h-11 rounded-lg border-slate-200 bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="text_tts">Text to Speech</SelectItem>
+                            <SelectItem value="audio_file">Upload Audio File</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {config.nonConversationalMode === "text_tts" ? (
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">Text to speak on call pickup</label>
+                          <Textarea
+                            value={config.nonConversationalText}
+                            onChange={(e) => updateConfig("nonConversationalText", e.target.value)}
+                            placeholder="Enter announcement text..."
+                            className="min-h-[110px] rounded-lg border-slate-200 bg-white"
+                          />
+                          <p className="text-xs text-slate-600">
+                            Head to the TTS page to choose voice and model.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <label className="text-sm font-semibold text-slate-700">Upload WAV or MP3</label>
+                          <div className="flex items-center gap-3">
+                            <Input
+                              type="file"
+                              accept=".wav,.mp3,audio/wav,audio/mpeg"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) {
+                                  void handleNonConversationalAudioUpload(file)
+                                }
+                              }}
+                              className="h-11 bg-white"
+                              disabled={isUploadingNonConversationalAudio}
+                            />
+                            {isUploadingNonConversationalAudio && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
+                          </div>
+                          {config.nonConversationalAudioUrl && (
+                            <p className="text-xs text-emerald-700 flex items-center gap-1">
+                              <Upload className="h-3.5 w-3.5" />
+                              Audio uploaded
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <Textarea
-                      value={config.systemPrompt}
-                      onChange={(e) => updateConfig("systemPrompt", e.target.value)}
-                      placeholder="You are a helpful assistant that..."
-                      className="min-h-[200px] rounded-lg border-slate-200 bg-white resize-none text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                    />
-                  </div>
+                  )}
                 </div>
 
                 <Button 
@@ -1128,7 +1343,7 @@ export default function AssistantsPage() {
             )}
 
             {/* Step 2: LLM Settings */}
-            {createStep === 2 && (
+            {createStep === 2 && config.interactionMode === "conversational" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-6">
                   <div className="space-y-4">
@@ -1323,7 +1538,7 @@ export default function AssistantsPage() {
             )}
 
             {/* Step 3: Audio Settings */}
-            {createStep === 3 && (
+            {createStep === 3 && (config.interactionMode === "conversational" || config.nonConversationalMode === "text_tts") && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-8">
                   {/* Language Selection */}
@@ -1370,7 +1585,7 @@ export default function AssistantsPage() {
                   </div>
 
                   {/* STT Settings */}
-                  {config.language && (
+                  {config.language && config.interactionMode === "conversational" && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select transcriber</label>
                       <div className="grid grid-cols-2 gap-4">
@@ -1452,7 +1667,7 @@ export default function AssistantsPage() {
                   )}
 
                   {/* TTS Settings */}
-                  {config.language && (
+                  {config.language && (config.interactionMode === "conversational" || config.nonConversationalMode === "text_tts") && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select synthesizer</label>
                       <div className="grid grid-cols-3 gap-4">
@@ -1583,7 +1798,7 @@ export default function AssistantsPage() {
                   )}
 
                   {/* Voice Settings */}
-                  {config.language && config.ttsProvider && (
+                  {config.language && config.ttsProvider && (config.interactionMode === "conversational" || config.nonConversationalMode === "text_tts") && (
                     <div className="space-y-5 pt-6 border-t border-slate-100">
                       <div className="flex items-center gap-2">
                         <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center">
@@ -1765,6 +1980,14 @@ export default function AssistantsPage() {
                       <p className="text-sm text-slate-600 mb-1">
                         <span className="font-semibold">Welcome:</span> {config.greetingMessage || "—"}
                       </p>
+                      <p className="text-sm text-slate-600 mb-1">
+                        <span className="font-semibold">Mode:</span> {config.interactionMode === "non_conversational" ? `Non-conversational (${config.nonConversationalMode === "text_tts" ? "Text" : "Audio File"})` : "Conversational"}
+                      </p>
+                      {config.interactionMode === "non_conversational" && config.nonConversationalMode === "audio_file" && (
+                        <p className="text-sm text-slate-600 mb-1">
+                          <span className="font-semibold">Audio:</span> {config.nonConversationalAudioUrl ? "Uploaded" : "Not uploaded"}
+                        </p>
+                      )}
                       <p className="text-sm text-slate-600 line-clamp-2">
                         <span className="font-semibold">Prompt:</span> {config.systemPrompt || "—"}
                       </p>
