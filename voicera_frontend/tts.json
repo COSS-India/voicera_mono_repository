@@ -537,6 +537,33 @@
           }
         }
       },
+      "Bhili": {
+        "models": {
+          "deepgram": {
+            "available": false,
+            "voices": []
+          },
+          "gcp": {
+            "available": false,
+            "voices": []
+          },
+          "cartesia": {
+            "available": false,
+            "voices": []
+          },
+          "sarvam": {
+            "available": false,
+            "voices": []
+          },
+          "ai4bharat": {
+            "available": true,
+            "model": "indic-parler-tts",
+            "voices": ["Sanjay", "Sunita", "Nikhil", "Radha", "Varun", "Isha"],
+            "recommended_voices": ["Sanjay", "Sunita"],
+            "note": "Using Marathi voice set for Bhili"
+          }
+        }
+      },
       "Sanskrit": {
         "models": {
           "deepgram": {
@@ -1030,7 +1057,7 @@
       },
       "ai4bharat": {
         "indic-parler-tts": {
-          "description": "Multilingual Indic TTS with 69 voices across 21 languages",
+          "description": "Multilingual Indic TTS with 69 voices across 22 languages",
           "streaming": false,
           "recommended": true,
           "features": {
@@ -1072,6 +1099,7 @@
         "Assamese": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Urdu": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
         "Nepali": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
+        "Bhili": ["ai4bharat:indic-parler-tts"],
         "Sanskrit": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Manipuri": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Bodo": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],

@@ -64,6 +64,11 @@
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
+      "Bhili": {
+        "models": {
+          "ai4bharat": ["indic-conformer-stt"]
+        }
+      },
       "Gujarati": {
         "models": {
           "deepgram": [],
@@ -283,6 +288,7 @@
         "Tamil": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
         "Telugu": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
         "Marathi": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
+        "Bhili": ["ai4bharat:indic-conformer-stt"],
         "Gujarati": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
         "Kannada": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
         "Malayalam": ["sarvam:saarika:v2.5", "gcp:chirp_3"],

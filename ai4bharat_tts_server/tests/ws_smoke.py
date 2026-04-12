@@ -11,7 +11,7 @@ import websockets
 from scipy.io import wavfile
 
 URI = "ws://127.0.0.1:8002"
-PAYLOAD = {"prompt": "भारत की राजधानी दिल्ली है और भारत के पड़ोसी देश पाकिस्तान और नेपाल हैं।", "description": "vidhya's voice is monotone."}
+PAYLOAD = {"prompt": "भारत नी राजधानी दिल्ली छे अने भारत ना शेजार ना देश पाकिस्तान अने नेपाळ छे", "description": "Radha's voice is monotone."}
 
 OUT_DIR = Path(__file__).resolve().parent / "files"
 

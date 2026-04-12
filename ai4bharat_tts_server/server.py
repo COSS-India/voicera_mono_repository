@@ -21,6 +21,7 @@ import uuid
 import numpy as np
 import torch
 import websockets
+from dotenv import load_dotenv
 
 from inference.runner import ParlerTTSModelRunner, TTSRequest
 
@@ -169,14 +170,17 @@ async def main_async(
 
 
 def main() -> None:
+    load_dotenv(os.path.join(here, ".env"))
+    checkpoint_path = os.environ.get("CHECKPOINT_PATH", "").strip()
+    if not checkpoint_path:
+        raise SystemExit(
+            "CHECKPOINT_PATH must be set in .env (same directory as server.py). "
+            "No default or CLI override is used."
+        )
+
     parser = argparse.ArgumentParser(description="Parler TTS WebSocket server (continuous batching)")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8002)
-    parser.add_argument(
-        "--checkpoint",
-        default=os.path.join(here, "checkpoints"),
-        help="Model checkpoint directory",
-    )
     parser.add_argument(
         "--decode-every",
         type=int,
@@ -191,7 +195,7 @@ def main() -> None:
     if args.decode_every < 1:
         parser.error("--decode-every must be >= 1")
     asyncio.run(
-        main_async(args.host, args.port, args.checkpoint, args.decode_every),
+        main_async(args.host, args.port, checkpoint_path, args.decode_every),
     )
 
 

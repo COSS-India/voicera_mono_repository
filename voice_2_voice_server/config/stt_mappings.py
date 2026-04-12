@@ -74,6 +74,7 @@ STT_LANGUAGE_MAP = {
         "Malayalam": "ml",
         "Manipuri": "mni",
         "Marathi": "mr",
+        "Bhili": "mr",
         "Punjabi": "pa",
         "Sanskrit": "sa",
         "Santali": "sat",
