@@ -9,3 +9,4 @@ __pycache__/*
 # Model files (large binaries)
 models/IndicConformer.nemo
 IndicConformer.nemo
+bhili-asr/
