@@ -31,7 +31,8 @@ except ImportError:
 
 
 class IndicConformerRESTSTTService(STTService):
-    
+    """REST client for ai4bharat_stt_server. language_id \"bhb\" (Bhili) uses POST /transcribe/bhili."""
+
     def __init__(
         self,
         *,
@@ -50,8 +51,13 @@ class IndicConformerRESTSTTService(STTService):
         if not server_url:
             raise ValueError("INDIC_STT_SERVER_URL environment variable not set")
         
-        self._server_url = server_url.rstrip('/') + "/transcribe"
+        base = server_url.rstrip("/")
         self._language_id = language_id
+        # bhb = Bhili → NeMo route on the STT server; anything else → Indic Conformer /transcribe
+        self._bhili_endpoint = language_id == "bhb"
+        self._transcribe_url = (
+            f"{base}/transcribe/bhili" if self._bhili_endpoint else f"{base}/transcribe"
+        )
         self._sample_rate = sample_rate
         self._input_sample_rate = input_sample_rate
         
@@ -68,7 +74,9 @@ class IndicConformerRESTSTTService(STTService):
         
         self._resampler = create_stream_resampler()
         
-        logger.info(f"IndicConformerRESTSTTService initialized - Server: {self._server_url}")
+        logger.info(
+            f"IndicConformerRESTSTTService initialized - transcribe URL: {self._transcribe_url}"
+        )
 
     async def _transcribe_buffer(self) -> str:
         if not self._audio_buffer or len(self._audio_buffer) < 3200:
@@ -76,10 +84,11 @@ class IndicConformerRESTSTTService(STTService):
         
         try:
             audio_b64 = base64.b64encode(self._audio_buffer).decode('utf-8')
+            lid = self._language_id
             
             async with self._session.post(
-                self._server_url,
-                json={"audio_b64": audio_b64, "language_id": self._language_id},
+                self._transcribe_url,
+                json={"audio_b64": audio_b64, "language_id": lid},
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status == 200:
@@ -209,12 +218,18 @@ class IndicConformerRESTSTTService(STTService):
             yield ErrorFrame(f"STT processing failed: {str(e)}")
 
     async def set_language(self, language_id: str) -> None:
-        self._language_id = language_id
-        logger.info(f"Language changed to: {language_id}")
+        if self._bhili_endpoint:
+            self._language_id = "bhb"
+            logger.info("Bhili STT endpoint: language_id remains bhb")
+        else:
+            self._language_id = language_id
+            logger.info(f"Language changed to: {language_id}")
 
     def get_model_info(self) -> Dict[str, Any]:
         return {
-            "server_url": self._server_url,
+            "server_url": self._transcribe_url,
+            "transcribe_url": self._transcribe_url,
+            "bhili_endpoint": self._bhili_endpoint,
             "language_id": self._language_id,
             "sample_rate": self._sample_rate,
             "input_sample_rate": self._input_sample_rate,

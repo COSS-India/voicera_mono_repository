@@ -76,7 +76,7 @@ TTS_LANGUAGE_MAP = {
     "AI4Bharat": {
         "Hindi": "hi",
         "Bengali": "bn",
-        "Bhili": "bhb",
+        "bhb": "bhb",
         "Tamil": "ta",
         "Telugu": "te",
         "Gujarati": "gu",

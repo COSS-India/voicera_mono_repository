@@ -40,6 +40,7 @@ import { getCurrentUser, getAgent, updateAgent, getIntegrations, getKnowledgeDoc
 
 // Import JSON data
 import sttData from "@/stt.json"
+import { displayLanguageName } from "@/lib/languageLabels"
 import ttsData from "@/tts.json"
 import descriptionsData from "@/descriptions.json"
 import {
@@ -241,7 +242,9 @@ export default function AgentDetailPage() {
     const sttLangs = Object.keys(sttData.stt.languages)
     const ttsLangs = Object.keys(ttsData.tts.languages)
     const merged = new Set([...sttLangs, ...ttsLangs])
-    return Array.from(merged).sort()
+    return Array.from(merged)
+      .sort()
+      .map((code) => ({ code, label: displayLanguageName(code) }))
   }, [])
 
   // Derive all STT providers from JSON (across all languages)
@@ -1056,7 +1059,9 @@ export default function AgentDetailPage() {
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <Languages className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                            <span className="truncate">{language || "Select language..."}</span>
+                            <span className="truncate">
+                              {language ? displayLanguageName(language) : "Select language..."}
+                            </span>
                           </div>
                         </Button>
                       </PopoverTrigger>
@@ -1068,12 +1073,12 @@ export default function AgentDetailPage() {
                             <CommandGroup heading="Languages">
                               {allLanguages.map((lang) => (
                                 <CommandItem
-                                  key={lang}
-                                  value={lang}
+                                  key={lang.code}
+                                  value={`${lang.code} ${lang.label}`}
                                   onSelect={() => {
-                                    setLanguage(lang)
-                                    if (lang && lang !== "English (United States)" && lang !== "English (India)") {
-                                      const sttLangData = sttData.stt.languages[lang as keyof typeof sttData.stt.languages]
+                                    setLanguage(lang.code)
+                                    if (lang.code && lang.code !== "English (United States)" && lang.code !== "English (India)") {
+                                      const sttLangData = sttData.stt.languages[lang.code as keyof typeof sttData.stt.languages]
                                       if (sttLangData?.models?.ai4bharat && Array.isArray(sttLangData.models.ai4bharat) && sttLangData.models.ai4bharat.length > 0) {
                                         setSttProvider("ai4bharat")
                                         setSttModel(sttLangData.models.ai4bharat[0])
@@ -1082,7 +1087,7 @@ export default function AgentDetailPage() {
                                         setSttModel("")
                                       }
 
-                                      const ttsLangData = ttsData.tts.languages[lang as keyof typeof ttsData.tts.languages]
+                                      const ttsLangData = ttsData.tts.languages[lang.code as keyof typeof ttsData.tts.languages]
                                       const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as { available?: boolean; model?: string; voices?: string[] } | undefined
                                       if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
                                         setTtsProvider("ai4bharat")
@@ -1116,7 +1121,7 @@ export default function AgentDetailPage() {
                                   }}
                                   className="py-2.5"
                                 >
-                                  <span className="font-medium">{lang}</span>
+                                  <span className="font-medium">{lang.label}</span>
                                 </CommandItem>
                               ))}
                             </CommandGroup>

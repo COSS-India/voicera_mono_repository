@@ -537,7 +537,7 @@
           }
         }
       },
-      "Bhili": {
+      "bhb": {
         "models": {
           "deepgram": {
             "available": false,
@@ -560,7 +560,7 @@
             "model": "indic-parler-tts",
             "voices": ["Sanjay", "Sunita", "Nikhil", "Radha", "Varun", "Isha"],
             "recommended_voices": ["Sanjay", "Sunita"],
-            "note": "Using Marathi voice set for Bhili"
+            "note": "Using Marathi voice set for Bhili (bhb)"
           }
         }
       },
@@ -1099,7 +1099,7 @@
         "Assamese": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Urdu": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
         "Nepali": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Bhili": ["ai4bharat:indic-parler-tts"],
+        "bhb": ["ai4bharat:indic-parler-tts"],
         "Sanskrit": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Manipuri": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Bodo": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],

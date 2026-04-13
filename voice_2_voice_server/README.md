@@ -159,7 +159,7 @@ Agent configs are JSON files in `agent_configs/`. Example:
 | Deepgram | `deepgram` | nova-3, nova-2, flux-general-en |
 | Google | `google` | chirp_3, chirp_2, telephony |
 | OpenAI | `openai` | whisper-1 |
-| AI4Bharat | `indic-conformer-stt` | Indic languages |
+| AI4Bharat | `indic-conformer-stt` | Indic languages; agent language **`bhb`** (Bhili) calls `POST /transcribe/bhili` on `INDIC_STT_SERVER_URL` (other languages use `/transcribe`) |
 
 ### TTS (Text-to-Speech)
 | Provider | Name | Models |
@@ -216,7 +216,7 @@ Agent configs are JSON files in `agent_configs/`. Example:
 | `CARTESIA_API_KEY` | * | - | Cartesia API key |
 | `GOOGLE_STT_CREDENTIALS_PATH` | * | credentials/google_stt.json | Google STT credentials |
 | `GOOGLE_TTS_CREDENTIALS_PATH` | * | credentials/google_tts.json | Google TTS credentials |
-| `INDIC_STT_SERVER_URL` | * | - | AI4Bharat STT server WebSocket URL |
+| `INDIC_STT_SERVER_URL` | * | - | AI4Bharat STT HTTP server base URL (no path); `/transcribe` or `/transcribe/bhili` is appended (`bhb` language uses the latter) |
 | `INDIC_TTS_SERVER_URL` | * | - | AI4Bharat TTS server URL |
 
 \* Required based on configured providers

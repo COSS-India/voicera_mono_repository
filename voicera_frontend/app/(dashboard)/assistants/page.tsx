@@ -52,6 +52,7 @@ import {
 
 // Import JSON data
 import sttData from "@/stt.json"
+import { displayLanguageName } from "@/lib/languageLabels"
 import ttsData from "@/tts.json"
 import descriptionsData from "@/descriptions.json"
 
@@ -356,7 +357,9 @@ export default function AssistantsPage() {
     const sttLangs = Object.keys(sttData.stt.languages)
     const ttsLangs = Object.keys(ttsData.tts.languages)
     const merged = new Set([...sttLangs, ...ttsLangs])
-    return Array.from(merged).sort().map(name => ({ code: name, name }))
+    return Array.from(merged)
+      .sort()
+      .map((code) => ({ code, name: displayLanguageName(code) }))
   }, [])
 
   // Derive all STT providers from JSON (across all languages)
@@ -1339,7 +1342,9 @@ export default function AssistantsPage() {
                         >
                           <div className="flex items-center gap-2">
                             <Languages className="h-4 w-4 text-blue-500" />
-                            {config.language || "Select language..."}
+                            {config.language
+                              ? displayLanguageName(config.language)
+                              : "Select language..."}
                           </div>
                         </Button>
                       </PopoverTrigger>
@@ -1352,9 +1357,9 @@ export default function AssistantsPage() {
                               {allLanguages.map((lang) => (
                                 <CommandItem
                                   key={lang.code}
-                                  value={lang.name}
+                                  value={`${lang.code} ${lang.name}`}
                                   onSelect={() => {
-                                    updateConfig("language", lang.name)
+                                    updateConfig("language", lang.code)
                                     setLanguageOpen(false)
                                   }}
                                   className="py-2.5"
@@ -1805,7 +1810,7 @@ export default function AssistantsPage() {
                     <div>
                       <p className="text-sm font-bold text-slate-900 mb-2">Audio Configuration</p>
                       <p className="text-sm font-medium text-slate-700">
-                        {config.language || "—"}
+                        {config.language ? displayLanguageName(config.language) : "—"}
                       </p>
                       <p className="text-sm text-slate-500 mt-1">
                         <span className="font-medium">STT:</span> {getProviderOfficialName(config.sttProvider) || "—"} / {config.sttModel || "—"}
