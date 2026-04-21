@@ -89,24 +89,50 @@ class BhashiniTTSService(TTSService):
         super().__init__(sample_rate=sample_rate, **kwargs)
 
         # --- Connection config from .env ---
-        self._triton_url = _require_env("BHASHINI_TRITON_URL")
-        self._api_key = _require_env("BHASHINI_TRITON_API_KEY")
-        self._function_id = _require_env("BHASHINI_TRITON_FUNCTION_ID")
+        logger.info("TTS [INIT] Step 1/3 — Reading required environment variables")
+        try:
+            self._triton_url = _require_env("BHASHINI_TRITON_URL")
+            logger.info("TTS [INIT] ✅ BHASHINI_TRITON_URL = {}", self._triton_url)
+        except ValueError as e:
+            logger.error("TTS [INIT] ❌ {}", e)
+            raise
+
+        try:
+            self._api_key = _require_env("BHASHINI_TRITON_API_KEY")
+            logger.info("TTS [INIT] ✅ BHASHINI_TRITON_API_KEY is set (length={})", len(self._api_key))
+        except ValueError as e:
+            logger.error("TTS [INIT] ❌ {}", e)
+            raise
+
+        try:
+            self._function_id = _require_env("BHASHINI_TRITON_FUNCTION_ID")
+            logger.info("TTS [INIT] ✅ BHASHINI_TRITON_FUNCTION_ID = {}", self._function_id)
+        except ValueError as e:
+            logger.error("TTS [INIT] ❌ {}", e)
+            raise
+
         self._function_version_id = _optional_env("BHASHINI_TRITON_FUNCTION_VERSION_ID")
         self._model_name = _optional_env("BHASHINI_TRITON_MODEL_NAME", "indicparler_tts")
         self._use_tls = _optional_env("BHASHINI_TRITON_USE_PLAINTEXT", "false").lower() != "true"
         self._timeout_s = float(_optional_env("BHASHINI_TRITON_TIMEOUT_S", "120"))
+
+        logger.info(
+            "TTS [INIT] Step 2/3 — Optional config | model={} tls={} timeout={}s function_version_id='{}'",
+            self._model_name, self._use_tls, self._timeout_s,
+            self._function_version_id or "(not set)",
+        )
 
         # --- Voice config ---
         self._speaker = speaker
         self._description = description
 
         logger.info(
-            "BhashiniTTSService initialised | url={} model={} tls={} timeout={}s",
-            self._triton_url,
-            self._model_name,
-            self._use_tls,
-            self._timeout_s,
+            "TTS [INIT] Step 3/3 — Voice config | speaker='{}' sample_rate={}Hz description='{}'",
+            self._speaker, sample_rate, self._description[:60] + "..." if len(self._description) > 60 else self._description,
+        )
+        logger.info(
+            "TTS [INIT] ✅ BhashiniTTSService fully initialised | url={} model={} tls={} timeout={}s",
+            self._triton_url, self._model_name, self._use_tls, self._timeout_s,
         )
 
     # ------------------------------------------------------------------
@@ -123,11 +149,7 @@ class BhashiniTTSService(TTSService):
         return headers
 
     def _full_description(self) -> str:
-        """Build the description string passed to the model.
-
-        indicparler_tts conditions voice style on the description field.
-        Prepend speaker name when configured, matching the load-test convention.
-        """
+        """Build the description string passed to the model."""
         if self._speaker:
             return f"{self._speaker}. {self._description}"
         return self._description
@@ -137,42 +159,72 @@ class BhashiniTTSService(TTSService):
     # ------------------------------------------------------------------
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
+        logger.info("TTS [RUN] ▶ run_tts called | text_len={} text='{}'",
+                    len(text), text[:80] + "..." if len(text) > 80 else text)
+
         if not text.strip():
+            logger.warning("TTS [RUN] Empty text received — skipping TTS call")
             return
 
         loop = asyncio.get_event_loop()
         result_queue: asyncio.Queue = asyncio.Queue()
 
-        # Triton gRPC callbacks run on a background thread; push results onto
-        # an asyncio queue so the async generator can yield them safely.
         def _on_result(result, error):
             loop.call_soon_threadsafe(result_queue.put_nowait, (result, error))
 
         client: grpcclient.InferenceServerClient | None = None
         try:
+            # Step 1: Create gRPC client
+            logger.info(
+                "TTS [RUN] Step 1/5 — Creating Triton gRPC client | url={} tls={}",
+                self._triton_url, self._use_tls,
+            )
             client = grpcclient.InferenceServerClient(
                 url=self._triton_url,
                 ssl=self._use_tls,
                 verbose=False,
             )
-            client.start_stream(callback=_on_result, headers=self._build_headers())
+            logger.info("TTS [RUN] ✅ Step 1/5 — gRPC client created")
 
-            inputs = _make_triton_inputs(text, self._full_description())
+            # Step 2: Start streaming with auth headers
+            headers = self._build_headers()
+            logger.info(
+                "TTS [RUN] Step 2/5 — Starting gRPC stream | headers keys={}",
+                list(headers.keys()),
+            )
+            client.start_stream(callback=_on_result, headers=headers)
+            logger.info("TTS [RUN] ✅ Step 2/5 — gRPC stream started")
+
+            # Step 3: Build inputs and send inference request
+            full_desc = self._full_description()
+            logger.info(
+                "TTS [RUN] Step 3/5 — Sending inference request | model={} description='{}'",
+                self._model_name,
+                full_desc[:80] + "..." if len(full_desc) > 80 else full_desc,
+            )
+            inputs = _make_triton_inputs(text, full_desc)
             request_id = f"bhashini-tts-{id(text)}"
             client.async_stream_infer(
                 model_name=self._model_name,
                 inputs=inputs,
                 request_id=request_id,
             )
+            logger.info("TTS [RUN] ✅ Step 3/5 — Inference request sent | request_id={}", request_id)
 
             yield TTSStartedFrame()
 
+            # Step 4: Stream audio chunks from result queue
+            logger.info("TTS [RUN] Step 4/5 — Waiting for audio chunks (timeout={}s)", self._timeout_s)
             chunk_count = 0
             deadline = loop.time() + self._timeout_s
 
             while True:
                 remaining = deadline - loop.time()
                 if remaining <= 0:
+                    logger.error(
+                        "TTS [RUN] ❌ Step 4/5 FAILED — Overall timeout of {}s exceeded after {} chunks",
+                        self._timeout_s, chunk_count,
+                    )
                     yield ErrorFrame("Bhashini TTS request timed out")
                     return
 
@@ -181,45 +233,90 @@ class BhashiniTTSService(TTSService):
                         result_queue.get(), timeout=min(remaining, 10.0)
                     )
                 except asyncio.TimeoutError:
+                    logger.error(
+                        "TTS [RUN] ❌ Step 4/5 FAILED — Timed out waiting for next chunk after {}s "
+                        "(received {} chunks so far). Possible causes:\n"
+                        "  → 1. BHASHINI_TRITON_API_KEY is invalid or expired\n"
+                        "  → 2. BHASHINI_TRITON_FUNCTION_ID is wrong\n"
+                        "  → 3. Network issue reaching {}\n"
+                        "  → 4. Model '{}' is not deployed at that endpoint",
+                        self._timeout_s, chunk_count, self._triton_url, self._model_name,
+                    )
                     yield ErrorFrame("Bhashini TTS request timed out")
                     return
 
                 if error is not None:
-                    logger.error("Bhashini Triton gRPC error: {}", error)
+                    logger.error(
+                        "TTS [RUN] ❌ Step 4/5 FAILED — Triton gRPC returned error after {} chunks: {}\n"
+                        "  → Check BHASHINI_TRITON_API_KEY, BHASHINI_TRITON_FUNCTION_ID, and endpoint URL",
+                        chunk_count, error,
+                    )
                     yield ErrorFrame(f"Triton gRPC error: {error}")
                     return
 
-                status = _decode(result.as_numpy("STATUS")[0])
-                is_final = bool(result.as_numpy("IS_FINAL")[0])
-                audio_chunk: np.ndarray = result.as_numpy("AUDIO_CHUNK")
+                # Parse response fields
+                try:
+                    status = _decode(result.as_numpy("STATUS")[0])
+                    is_final = bool(result.as_numpy("IS_FINAL")[0])
+                    audio_chunk: np.ndarray = result.as_numpy("AUDIO_CHUNK")
+                except Exception as parse_err:
+                    logger.error(
+                        "TTS [RUN] ❌ Step 4/5 — Failed to parse Triton response fields: {}", parse_err
+                    )
+                    yield ErrorFrame(f"Triton response parse error: {parse_err}")
+                    return
+
+                logger.debug(
+                    "TTS [RUN] Chunk received | status='{}' is_final={} audio_size={}",
+                    status, is_final,
+                    audio_chunk.size if audio_chunk is not None else "None",
+                )
 
                 if status == "audio" and audio_chunk is not None and audio_chunk.size > 0:
-                    # AUDIO_CHUNK arrives as int16 PCM from indicparler_tts
                     pcm_bytes = audio_chunk.astype(np.int16).tobytes()
                     chunk_count += 1
-                    logger.debug(
-                        "Bhashini TTS chunk {} | {} bytes", chunk_count, len(pcm_bytes)
+                    logger.info(
+                        "TTS [RUN] 🔊 Audio chunk #{} | {} bytes | sample_rate={}Hz",
+                        chunk_count, len(pcm_bytes), self.sample_rate,
                     )
                     yield TTSAudioRawFrame(
                         audio=pcm_bytes,
                         sample_rate=self.sample_rate,
                         num_channels=1,
                     )
+                elif status != "audio":
+                    logger.debug("TTS [RUN] Non-audio status frame: '{}'", status)
 
                 if is_final:
-                    logger.info(
-                        "Bhashini TTS complete | chunks={} text_len={}", chunk_count, len(text)
-                    )
+                    if chunk_count == 0:
+                        logger.warning(
+                            "TTS [RUN] ⚠️ is_final=True but zero audio chunks received — "
+                            "model may have rejected the input or returned an empty response"
+                        )
+                    else:
+                        logger.info(
+                            "TTS [RUN] ✅ Step 4/5 — Stream complete | total_chunks={} text_len={}",
+                            chunk_count, len(text),
+                        )
                     break
 
+            # Step 5: Done
+            logger.info("TTS [RUN] Step 5/5 — Yielding TTSStoppedFrame")
             yield TTSStoppedFrame()
+            logger.info("TTS [RUN] ✅ run_tts finished successfully")
 
         except Exception as e:
-            logger.error("Bhashini TTS unexpected error: {}", e)
+            logger.error(
+                "TTS [RUN] ❌ Unexpected exception in run_tts: {} — {}\n"
+                "  → If this is a ValueError about env vars, check BHASHINI_TRITON_URL / "
+                "BHASHINI_TRITON_API_KEY / BHASHINI_TRITON_FUNCTION_ID in your .env",
+                type(e).__name__, e,
+            )
             yield ErrorFrame(f"Bhashini TTS error: {e}")
         finally:
             if client is not None:
                 try:
                     client.stop_stream()
-                except Exception:
-                    pass
+                    logger.debug("TTS [RUN] gRPC stream stopped in finally block")
+                except Exception as stop_err:
+                    logger.warning("TTS [RUN] Error stopping gRPC stream: {}", stop_err)
