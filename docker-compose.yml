@@ -19,7 +19,7 @@ services:
           - mongodb
     command: mongod --bind_ip_all
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -65,7 +65,7 @@ services:
       - voicera_network
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: [ "CMD", "mc", "ready", "local" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -108,9 +108,6 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_SECURE=false
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - SARVAM_LLM_API_KEY=${SARVAM_LLM_API_KEY}
-      - SARVAM_LLM_ENDPOINT=${SARVAM_LLM_ENDPOINT:-https://e75f29cc-857c-4a05-ac2c-70f4291e0bef.invocation.api.nvcf.nvidia.com/v1/chat/completions}
     networks:
       - voicera_network
     depends_on:
@@ -122,7 +119,7 @@ services:
     container_name: voicera_nginx
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:

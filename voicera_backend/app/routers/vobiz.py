@@ -8,9 +8,7 @@ from app.models.schemas import (
 )
 from app.services import vobiz, agent_service
 from app.auth import get_current_user
-from app.config import settings
 from typing import Dict, Any
-import httpx
 
 router = APIRouter(prefix="/vobiz", tags=["vobiz"])
 
@@ -27,8 +25,9 @@ async def create_vobiz_application_endpoint(
     """
     try:
         result = await vobiz.create_vobiz_application(
+            current_user["org_id"],
             request.agent_type,
-            request.answer_url
+            request.answer_url,
         )
         
         if result["status"] == "fail":
@@ -51,41 +50,15 @@ async def get_vobiz_numbers(
 ):
     """
     Get phone numbers from Vobiz API (protected endpoint).
-    Returns a list of e164 phone numbers.
+    Returns a list of e164 phone numbers. Uses org Vobiz credentials from Integrations.
     """
-    # Validate that Vobiz credentials are configured
-    if not settings.VOBIZ_ACCOUNT_ID or not settings.VOBIZ_AUTH_ID or not settings.VOBIZ_AUTH_TOKEN:
+    result = await vobiz.get_vobiz_numbers(current_user["org_id"])
+    if result["status"] == "fail":
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Vobiz API credentials are not configured"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("message", "Failed to fetch Vobiz numbers"),
         )
-    
-    # Construct the Vobiz API URL - use VOBIZ_ACCOUNT_ID in the path
-    url = f"{settings.VOBIZ_API_BASE_URL}/account/{settings.VOBIZ_AUTH_ID}/numbers"
-    
-    # Prepare headers
-    headers = {
-        "X-Auth-ID": settings.VOBIZ_AUTH_ID,
-        "X-Auth-Token": settings.VOBIZ_AUTH_TOKEN
-    }
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers, timeout=30.0)
-            response.raise_for_status()
-            data = response.json()
-            e164_numbers = [item.get("e164") for item in data.get("items", []) if item.get("e164")]
-            return {"status": "success", "numbers": e164_numbers}
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(
-            status_code=e.response.status_code,
-            detail=f"Vobiz API error: {e.response.text}"
-        )
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to connect to Vobiz API: {str(e)}"
-        )
+    return {"status": "success", "numbers": result.get("numbers", [])}
 
 
 @router.delete("/application/{application_id}", response_model=Dict[str, Any])
@@ -97,7 +70,10 @@ async def delete_vobiz_application_endpoint(
     Delete a Vobiz application (protected endpoint).
     """
     try:
-        result = await vobiz.delete_vobiz_application(application_id)
+        result = await vobiz.delete_vobiz_application(
+            current_user["org_id"],
+            application_id,
+        )
         
         if result["status"] == "fail":
             raise HTTPException(
@@ -125,8 +101,9 @@ async def link_number_to_application_endpoint(
     """
     try:
         result = await vobiz.link_number_to_application(
+            current_user["org_id"],
             request.phone_number,
-            request.application_id
+            request.application_id,
         )
         
         if result["status"] == "fail":
@@ -154,7 +131,10 @@ async def unlink_number_from_application_endpoint(
     Unlink a phone number from a Vobiz application (protected endpoint).
     """
     try:
-        result = await vobiz.unlink_number_from_application(request.phone_number)
+        result = await vobiz.unlink_number_from_application(
+            current_user["org_id"],
+            request.phone_number,
+        )
         
         if result["status"] == "fail":
             raise HTTPException(

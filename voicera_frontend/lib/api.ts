@@ -117,12 +117,12 @@ export async function fetchApiRoute(
  */
 export async function getCurrentUser(): Promise<User> {
   const response = await fetchWithAuth(`/api/v1/users/me`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || "Failed to fetch user")
   }
-  
+
   return response.json()
 }
 
@@ -136,7 +136,7 @@ export async function getAgents(orgId: string): Promise<Agent[]> {
   if (!response.ok) {
     throw new Error(data.detail || data.error || "Failed to fetch agents")
   }
-  
+
   return data
 }
 
@@ -148,12 +148,12 @@ export async function createAgent(agentData: CreateAgentRequest): Promise<Agent>
     method: "POST",
     body: JSON.stringify(agentData),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to create agent")
   }
-  
+
   return response.json()
 }
 
@@ -162,12 +162,12 @@ export async function createAgent(agentData: CreateAgentRequest): Promise<Agent>
  */
 export async function getAgent(agentId: string, orgId: string): Promise<Agent> {
   const response = await fetchApiRoute(`/api/agents/${agentId}?org_id=${encodeURIComponent(orgId)}`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch agent")
   }
-  
+
   return response.json()
 }
 
@@ -179,12 +179,12 @@ export async function updateAgent(agentId: string, agentData: CreateAgentRequest
     method: "PUT",
     body: JSON.stringify(agentData),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to update agent")
   }
-  
+
   return response.json()
 }
 
@@ -195,12 +195,12 @@ export async function deleteAgent(agentId: string): Promise<{ status: string; me
   const response = await fetchApiRoute(`/api/agents/${agentId}`, {
     method: "DELETE",
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to delete agent")
   }
-  
+
   return response.json()
 }
 
@@ -209,12 +209,12 @@ export async function deleteAgent(agentId: string): Promise<{ status: string; me
  */
 export async function getCampaigns(orgId: string): Promise<Campaign[]> {
   const response = await fetchApiRoute(`/api/get-campaigns?org_id=${encodeURIComponent(orgId)}`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch campaigns")
   }
-  
+
   return response.json()
 }
 
@@ -226,12 +226,12 @@ export async function createCampaign(campaignData: CreateCampaignRequest): Promi
     method: "POST",
     body: JSON.stringify(campaignData),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to create campaign")
   }
-  
+
   return response.json()
 }
 
@@ -240,12 +240,12 @@ export async function createCampaign(campaignData: CreateCampaignRequest): Promi
  */
 export async function getCampaign(campaignName: string): Promise<Campaign> {
   const response = await fetchApiRoute(`/api/campaigns/${encodeURIComponent(campaignName)}`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch campaign")
   }
-  
+
   return response.json()
 }
 
@@ -253,16 +253,16 @@ export async function getCampaign(campaignName: string): Promise<Campaign> {
  * Get all audiences, optionally filtered by phone number
  */
 export async function getAudiences(phoneNumber?: string): Promise<Audience[]> {
-  const url = phoneNumber 
+  const url = phoneNumber
     ? `/api/audiences?phone_number=${encodeURIComponent(phoneNumber)}`
     : `/api/audiences`
   const response = await fetchApiRoute(url)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch audiences")
   }
-  
+
   return response.json()
 }
 
@@ -274,12 +274,12 @@ export async function createAudience(audienceData: CreateAudienceRequest): Promi
     method: "POST",
     body: JSON.stringify(audienceData),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to create audience")
   }
-  
+
   return response.json()
 }
 
@@ -288,12 +288,12 @@ export async function createAudience(audienceData: CreateAudienceRequest): Promi
  */
 export async function getAudience(audienceName: string): Promise<Audience> {
   const response = await fetchApiRoute(`/api/audiences/${encodeURIComponent(audienceName)}`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch audience")
   }
-  
+
   return response.json()
 }
 
@@ -338,6 +338,9 @@ export interface AgentConfig {
   greeting_message: string
   session_timeout_minutes: number
   language: string
+  knowledge_base_enabled?: boolean
+  knowledge_document_ids?: string[]
+  knowledge_top_k?: number
   llm_model: {
     name: string
     model?: string
@@ -408,16 +411,16 @@ export interface CreateAudienceRequest {
  * Get all meetings for an organization
  */
 export async function getMeetings(agentType?: string): Promise<Meeting[]> {
-  const url = agentType 
+  const url = agentType
     ? `/api/meetings?agent_type=${encodeURIComponent(agentType)}`
     : `/api/meetings`
   const response = await fetchApiRoute(url)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch meetings")
   }
-  
+
   return response.json()
 }
 
@@ -426,12 +429,12 @@ export async function getMeetings(agentType?: string): Promise<Meeting[]> {
  */
 export async function getMeeting(meetingId: string): Promise<Meeting> {
   const response = await fetchApiRoute(`/api/meetings/${encodeURIComponent(meetingId)}`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch meeting")
   }
-  
+
   return response.json()
 }
 
@@ -442,18 +445,18 @@ export async function getMeetingDetails(meetingId: string): Promise<MeetingDetai
   // For now, use the same endpoint as getMeeting
   // If backend has a separate details endpoint, update this
   const response = await fetchApiRoute(`/api/meetings/${encodeURIComponent(meetingId)}`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch meeting details")
   }
-  
+
   const data = await response.json()
-  
+
   // Extract custom variables from agent_config if they exist
   // Custom variables are typically stored as a nested object in agent_config
   const customVars = data.agent_config?.custom_variables || data.agent_config?.variables || data.custom_variables || {}
-  
+
   return {
     ...data,
     custom_variables: Object.keys(customVars).length > 0 ? customVars : undefined,
@@ -472,12 +475,12 @@ export async function createVobizApplication(agentType: string, answerUrl: strin
       answer_url: answerUrl,
     }),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to create Vobiz application")
   }
-  
+
   return response.json()
 }
 
@@ -488,12 +491,12 @@ export async function deleteVobizApplication(applicationId: string): Promise<{ s
   const response = await fetchApiRoute(`/api/vobiz/application/${applicationId}`, {
     method: "DELETE",
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to delete Vobiz application")
   }
-  
+
   return response.json()
 }
 
@@ -504,12 +507,12 @@ export async function getVobizNumbers(): Promise<{ status: string; numbers: stri
   const response = await fetchApiRoute("/api/vobiz/numbers", {
     method: "GET",
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch Vobiz numbers")
   }
-  
+
   return response.json()
 }
 
@@ -524,12 +527,12 @@ export async function linkVobizNumber(phoneNumber: string, applicationId: string
       application_id: applicationId,
     }),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to link phone number")
   }
-  
+
   return response.json()
 }
 
@@ -543,12 +546,12 @@ export async function unlinkVobizNumber(phoneNumber: string): Promise<{ status: 
       phone_number: phoneNumber,
     }),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to unlink phone number")
   }
-  
+
   return response.json()
 }
 
@@ -566,17 +569,17 @@ export async function getAnalytics(params?: {
   if (params?.phone_number) queryParams.append("phone_number", params.phone_number)
   if (params?.start_date) queryParams.append("start_date", params.start_date)
   if (params?.end_date) queryParams.append("end_date", params.end_date)
-  
+
   const queryString = queryParams.toString()
   const url = `/api/analytics${queryString ? `?${queryString}` : ""}`
-  
+
   const response = await fetchApiRoute(url)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch analytics")
   }
-  
+
   return response.json()
 }
 
@@ -663,12 +666,12 @@ export interface CreateIntegrationRequest {
  */
 export async function getIntegrations(): Promise<Integration[]> {
   const response = await fetchApiRoute("/api/integrations")
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch integrations")
   }
-  
+
   return response.json()
 }
 
@@ -677,12 +680,12 @@ export async function getIntegrations(): Promise<Integration[]> {
  */
 export async function getIntegration(model: string): Promise<Integration> {
   const response = await fetchApiRoute(`/api/integrations/${encodeURIComponent(model)}`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch integration")
   }
-  
+
   return response.json()
 }
 
@@ -694,12 +697,12 @@ export async function createIntegration(integrationData: CreateIntegrationReques
     method: "POST",
     body: JSON.stringify(integrationData),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to create integration")
   }
-  
+
   return response.json()
 }
 
@@ -710,12 +713,464 @@ export async function deleteIntegration(model: string): Promise<{ status: string
   const response = await fetchApiRoute(`/api/integrations/${encodeURIComponent(model)}`, {
     method: "DELETE",
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to delete integration")
   }
-  
+
+  return response.json()
+}
+
+// Knowledge base (org-scoped PDF ingest)
+export interface KnowledgeDocument {
+  document_id: string
+  org_id: string
+  original_filename: string
+  status: "processing" | "ready" | "failed"
+  chunk_count?: number | null
+  embedding_model?: string | null
+  error_message?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface KnowledgeUploadResponse {
+  document_id: string
+  org_id: string
+  original_filename: string
+  status: string
+}
+
+export interface KnowledgeDeleteResponse {
+  deleted: boolean
+}
+
+/**
+ * List knowledge PDFs for the current organization (JWT).
+ */
+export async function getKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
+  const response = await fetchApiRoute("/api/knowledge-base")
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to fetch knowledge documents"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Upload a PDF for background ingest (multipart). Do not set Content-Type manually.
+ */
+export async function uploadKnowledgePdf(
+  file: File,
+  orgId: string
+): Promise<KnowledgeUploadResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const formData = new FormData()
+  formData.append("file", file)
+  formData.append("org_id", orgId)
+
+  const response = await fetch("/api/knowledge-base", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to upload knowledge PDF"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Delete a knowledge document and its indexed chunks (JWT org from token).
+ */
+export async function deleteKnowledgeDocument(
+  documentId: string
+): Promise<KnowledgeDeleteResponse> {
+  const encodedId = encodeURIComponent(documentId)
+  const response = await fetchApiRoute(`/api/knowledge-base/${encodedId}`, {
+    method: "DELETE",
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to delete knowledge document"
+    )
+  }
+
+  return response.json()
+}
+
+// Batches (immutable CSV uploads + parsed contacts)
+export interface Batch {
+  batch_id: string
+  org_id: string
+  batch_name: string
+  agent_type: string
+  concurrency: number
+  original_filename: string
+  status: string
+  execution_status: string
+  total_contacts: number
+  valid_contacts: number
+  invalid_contacts: number
+  attempted_calls?: number
+  successful_calls?: number
+  failed_calls?: number
+  error_message?: string | null
+  schedule_mode?: "run_now" | "scheduled"
+  scheduled_at_utc?: string | null
+  scheduled_timezone?: string | null
+  scheduled_status?: "none" | "scheduled" | "triggered" | "canceled"
+  scheduled_by?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface BatchUploadResponse {
+  batch_id: string
+  org_id: string
+  batch_name: string
+  agent_type: string
+  concurrency: number
+  original_filename: string
+  status: string
+  total_contacts: number
+  valid_contacts: number
+  invalid_contacts: number
+  created_at?: string | null
+}
+
+export interface BatchDeleteResponse {
+  deleted: boolean
+}
+
+export interface BatchActionResponse {
+  status: string
+  message: string
+}
+
+export interface BatchScheduleRequest {
+  scheduled_at_local: string
+  timezone: string
+  agent_type?: string
+  concurrency?: number
+}
+
+/**
+ * List batches for the current organization.
+ */
+export async function getBatches(agentType?: string): Promise<Batch[]> {
+  const query = agentType
+    ? `?agent_type=${encodeURIComponent(agentType)}`
+    : ""
+  const response = await fetchApiRoute(`/api/batches${query}`)
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to fetch batches"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Upload a batch CSV and parse contacts server-side.
+ */
+export async function uploadBatchCsv(
+  file: File,
+  orgId: string,
+  agentType: string,
+  batchName: string
+): Promise<BatchUploadResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const formData = new FormData()
+  formData.append("file", file)
+  formData.append("org_id", orgId)
+  formData.append("agent_type", agentType)
+  formData.append("batch_name", batchName)
+
+  const response = await fetch("/api/batches", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to upload batch CSV"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Delete a batch and its parsed contacts.
+ */
+export async function deleteBatch(batchId: string): Promise<BatchDeleteResponse> {
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetchApiRoute(`/api/batches/${encodedBatchId}`, {
+    method: "DELETE",
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to delete batch"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Start batch execution.
+ */
+export async function runBatch(
+  batchId: string,
+  agentType?: string,
+  concurrency?: number
+): Promise<BatchActionResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetch(`/api/batches/${encodedBatchId}/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      agent_type: agentType,
+      concurrency,
+    }),
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to run batch"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Stop batch execution.
+ */
+export async function stopBatch(batchId: string): Promise<BatchActionResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetch(`/api/batches/${encodedBatchId}/stop`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to stop batch"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Schedule one-time batch execution.
+ */
+export async function scheduleBatch(
+  batchId: string,
+  payload: BatchScheduleRequest
+): Promise<BatchActionResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetch(`/api/batches/${encodedBatchId}/schedule`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to schedule batch"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Cancel one-time scheduled batch execution before it triggers.
+ */
+export async function cancelBatchSchedule(batchId: string): Promise<BatchActionResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetch(`/api/batches/${encodedBatchId}/schedule/cancel`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to cancel schedule"
+    )
+  }
+
+  return response.json()
+}
+
+/**
+ * Reschedule one-time batch execution before it triggers.
+ */
+export async function rescheduleBatch(
+  batchId: string,
+  payload: BatchScheduleRequest
+): Promise<BatchActionResponse> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error("No authentication token found")
+  }
+
+  const encodedBatchId = encodeURIComponent(batchId)
+  const response = await fetch(`/api/batches/${encodedBatchId}/schedule/reschedule`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ||
+      (error as { error?: string }).error ||
+      "Failed to reschedule batch"
+    )
+  }
+
   return response.json()
 }
 
@@ -742,12 +1197,12 @@ export interface JoinOrganizationRequest {
  */
 export async function getOrgMembers(orgId: string): Promise<Member[]> {
   const response = await fetchWithAuth(`/api/v1/members/${encodeURIComponent(orgId)}`)
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to fetch members")
   }
-  
+
   const data = await response.json()
   return data.members || []
 }
@@ -763,12 +1218,12 @@ export async function joinOrganization(data: JoinOrganizationRequest): Promise<{
     },
     body: JSON.stringify(data),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to join organization")
   }
-  
+
   return response.json()
 }
 
@@ -783,12 +1238,12 @@ export async function deleteMember(email: string, orgId: string): Promise<{ stat
       org_id: orgId,
     }),
   })
-  
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to delete member")
   }
-  
+
   return response.json()
 }
 
@@ -804,15 +1259,15 @@ export async function checkUserExists(email: string): Promise<User | null> {
         "Content-Type": "application/json",
       },
     })
-    
+
     if (response.status === 404) {
       return null
     }
-    
+
     if (!response.ok) {
       return null
     }
-    
+
     return response.json()
   } catch {
     return null

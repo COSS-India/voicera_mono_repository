@@ -72,7 +72,7 @@ export default function SignupPage() {
             >
               <img src="/ekstep.svg" alt="Ekstep" className="h-14 w-16" />
             </motion.div>
-            
+
             <div className="max-w-lg">
               <motion.h1
                 className="text-5xl font-bold text-white mb-6 leading-tight"
@@ -90,7 +90,7 @@ export default function SignupPage() {
               >
                 India's open Voice AI infrastructure for population-scale impact
               </motion.p>
-              
+
               <motion.div
                 className="space-y-6"
                 initial="hidden"
@@ -120,7 +120,7 @@ export default function SignupPage() {
                     <p className="text-white/70">Multilingual, inclusive, voice-first</p>
                   </div>
                 </motion.div>
-                
+
                 <motion.div
                   className="flex items-start gap-3"
                   variants={{
@@ -136,7 +136,7 @@ export default function SignupPage() {
                     <p className="text-white/70">Modular, DPI-aligned voice stack</p>
                   </div>
                 </motion.div>
-                
+
                 <motion.div
                   className="flex items-start gap-3"
                   variants={{
@@ -155,7 +155,7 @@ export default function SignupPage() {
               </motion.div>
             </div>
           </div>
-          
+
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
@@ -280,15 +280,14 @@ export default function SignupPage() {
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
-              
+
               {/* Password requirements */}
               <div className="flex flex-wrap gap-3 mt-3">
                 {passwordRequirements.map((req, i) => (
                   <div
                     key={i}
-                    className={`flex items-center gap-1.5 text-xs ${
-                      req.met ? "text-emerald-600" : "text-slate-500"
-                    }`}
+                    className={`flex items-center gap-1.5 text-xs ${req.met ? "text-emerald-600" : "text-slate-500"
+                      }`}
                   >
                     <Check className={`h-3.5 w-3.5 ${req.met ? "opacity-100" : "opacity-40"}`} />
                     {req.text}

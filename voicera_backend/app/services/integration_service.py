@@ -98,6 +98,33 @@ def get_integration(org_id: str, model: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def get_openai_api_key_for_org(org_id: str) -> Optional[str]:
+    """
+    Return the OpenAI API key for an org from Integrations.
+
+    The dashboard stores provider display names (e.g. 'OpenAI'), not lowercase ids
+    like 'openai', so we try several keys and a case-insensitive fallback scan.
+    """
+    for model in ("OpenAI", "openai"):
+        doc = get_integration(org_id, model)
+        if doc and doc.get("api_key"):
+            key = str(doc["api_key"]).strip()
+            if key:
+                return key
+    try:
+        db = get_database()
+        integration_table = db["Integrations"]
+        for doc in integration_table.find({"org_id": org_id}):
+            raw = (doc.get("model") or "").strip().lower().replace(" ", "")
+            if raw == "openai" and doc.get("api_key"):
+                key = str(doc["api_key"]).strip()
+                if key:
+                    return key
+    except Exception as e:
+        logger.error("Error scanning integrations for OpenAI key: %s", e)
+    return None
+
+
 def get_integrations_by_org(org_id: str) -> List[Dict[str, Any]]:
     """
     Fetch all integrations for a given organization.

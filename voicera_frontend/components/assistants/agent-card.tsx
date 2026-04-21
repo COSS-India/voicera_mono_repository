@@ -17,16 +17,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { 
-  MoreVertical, 
-  Phone, 
-  Trash2, 
+import {
+  MoreVertical,
+  Trash2,
   Settings,
   PhoneCall,
+  Monitor,
   Clock,
-  ArrowRight,
-  BarChart3,
-  History,
   Unplug
 } from "lucide-react"
 import type { Agent } from "@/lib/api"
@@ -38,6 +35,7 @@ interface AgentCardProps {
   getAgentDescription: (agent: Agent) => string
   onViewConfig: (agent: Agent) => void
   onTestCall: (agent: Agent) => void
+  onTestBrowser: (agent: Agent) => void
   onViewHistory: (agent: Agent) => void
   onDelete?: (agent: Agent) => void
   callCount?: number
@@ -49,6 +47,7 @@ export function AgentCard({
   getAgentDescription,
   onViewConfig,
   onTestCall,
+  onTestBrowser,
   onViewHistory,
   onDelete,
   callCount = 0,
@@ -57,7 +56,6 @@ export function AgentCard({
   const [isDeleting, setIsDeleting] = useState(false)
 
   const isConnected = Boolean(agent?.phone_number)
-  const phoneNumber = agent?.phone_number
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -69,7 +67,7 @@ export function AgentCard({
       console.error("onDelete callback is not provided")
       return
     }
-    
+
     try {
       setIsDeleting(true)
       setShowDeleteDialog(false)
@@ -96,42 +94,47 @@ export function AgentCard({
   }
 
   return (
-    <div 
+    <div
       onClick={handleCardClick}
       className="shadow-md group relative bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-lg hover:border-slate-300 transition-all duration-300 cursor-pointer"
     >
       {/* Top Bar: Icon + Menu */}
       <div className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between">
-      <span
-        className={`
-          inline-flex items-center gap-1 px-2 py-0.5 rounded-full
-          text-xs font-semibold
-          ${agent && (agent as any).phone_number
-            ? "bg-green-50 text-green-700 border border-green-200"
-            : "bg-red-50 text-red-500 border border-red-200"}
-          hover:underline cursor-pointer
-        `}
-        onClick={e => {
-          e.stopPropagation()
-          window.location.assign("/numbers")
-        }}
-        title="Manage numbers"
-        tabIndex={0}
-        role="link"
-        onKeyDown={e => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault()
-            e.stopPropagation()
-            window.location.assign("/numbers")
-          }
-        }}
-      >
-        <Unplug className={`h-3 w-3 mr-1 ${agent && (agent as any).phone_number ? "text-green-600" : "text-red-400"}`} />
-        {(agent && (agent as any).phone_number)
-          ? (agent as any).phone_number
-          : "Not linked"}
-      </span>
-        
+        <div className="flex items-center gap-2">
+          <button
+            className={cn(
+              "inline-flex h-7 min-w-[108px] items-center justify-center gap-1 rounded-full px-2.5 text-xs font-semibold cursor-pointer",
+              agent && (agent as any).phone_number
+                ? "bg-green-50 text-green-700 border border-green-200"
+                : "bg-red-50 text-red-500 border border-red-200"
+            )}
+            onClick={e => {
+              e.stopPropagation()
+              window.location.assign("/numbers")
+            }}
+            title="Manage numbers"
+            type="button"
+          >
+            <Unplug className={`h-3 w-3 ${agent && (agent as any).phone_number ? "text-green-600" : "text-red-400"}`} />
+            {(agent && (agent as any).phone_number)
+              ? (agent as any).phone_number
+              : "Not linked"}
+          </button>
+
+          <button
+            type="button"
+            className="inline-flex h-7 min-w-[108px] items-center justify-center gap-1 rounded-full px-2.5 text-xs font-semibold border border-slate-200 bg-white/90 text-slate-700 hover:bg-slate-50 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation()
+              onViewHistory(agent)
+            }}
+            title="View call history"
+          >
+            <Clock className="h-3 w-3" />
+            History
+          </button>
+        </div>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -152,7 +155,7 @@ export function AgentCard({
               <Settings className="h-4 w-4 mr-2 text-slate-500" />
               Configure
             </DropdownMenuItem>
-            
+
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleDeleteClick}
@@ -193,7 +196,7 @@ export function AgentCard({
               <stop offset="100%" stopColor="rgba(71, 85, 105, 0.5)" />
             </linearGradient>
           </defs>
-          
+
           {/* Background subtle waves - wider amplitude for depth (Law of Prägnanz - clear grouping) */}
           {[...Array(4)].map((_, i) => (
             <path
@@ -218,7 +221,7 @@ export function AgentCard({
               />
             </path>
           ))}
-          
+
           {/* Primary prominent waves - main visual focus (Focal Point principle) */}
           {[...Array(6)].map((_, i) => (
             <path
@@ -288,7 +291,7 @@ export function AgentCard({
 
         {/* Status Row */}
         <div className="flex items-center justify-between mb-5">
-          
+
           {callCount > 0 && (
             <span className="text-sm font-medium text-slate-700 px-2.5 py-1 bg-slate-100 rounded-full">
               {callCount.toLocaleString()} Calls
@@ -308,27 +311,28 @@ export function AgentCard({
             variant="outline"
             disabled={!isConnected}
             className={cn(
-              "flex-1 h-11 rounded-xl text-sm font-medium transition-all cursor-pointer",
-              isConnected 
-                ? "border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300" 
+              "flex-1 basis-0 min-w-0 h-11 rounded-xl text-sm font-medium transition-all cursor-pointer",
+              isConnected
+                ? "border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
                 : "border-slate-200 text-slate-400 cursor-not-allowed"
             )}
             title={!isConnected ? "Please attach a phone number to this agent first" : "Make a test call"}
           >
             <PhoneCall className="h-4 w-4 mr-2" />
-            Test Agent
+            Test Call
           </Button>
-          
+
           <Button
             onClick={(e) => {
               e.stopPropagation()
-              onViewHistory(agent)
+              onTestBrowser(agent)
             }}
             variant="outline"
-            className="flex-1 h-11 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 text-sm font-medium transition-all"
+            className="flex-1 basis-0 min-w-0 h-11 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 text-sm font-medium transition-all"
+            title="Test this agent directly in your browser"
           >
-            <Clock className="h-4 w-4 mr-2" />
-            History
+            <Monitor className="h-4 w-4 mr-2" />
+            Test on Browser
           </Button>
         </div>
       </div>
@@ -339,7 +343,7 @@ export function AgentCard({
           <DialogHeader>
             <DialogTitle>Delete Agent</DialogTitle>
             <DialogDescription className="pt-2">
-              Are you sure you want to delete <span className="font-medium text-slate-700">"{getAgentDisplayName(agent)}"</span>? 
+              Are you sure you want to delete <span className="font-medium text-slate-700">&quot;{getAgentDisplayName(agent)}&quot;</span>?
               This will remove all configurations and cannot be undone.
             </DialogDescription>
           </DialogHeader>

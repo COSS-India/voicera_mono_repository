@@ -43,7 +43,7 @@ export default function LoginPage() {
       localStorage.setItem("access_token", data.access_token)
       localStorage.setItem("org_id", data.org_id)
       localStorage.setItem("email", formData.email)
-      
+
       // Redirect to assistants dashboard
       router.push("/assistants")
     } catch (err) {
@@ -70,7 +70,7 @@ export default function LoginPage() {
             >
               <img src="/ekstep.svg" alt="Ekstep" className="h-14 w-16" />
             </motion.div>
-            
+
             <div className="max-w-lg">
               <motion.h1
                 className="text-5xl font-bold text-white mb-6 leading-tight"
@@ -88,7 +88,7 @@ export default function LoginPage() {
               >
                 India's open Voice AI infrastructure for population-scale impact
               </motion.p>
-              
+
               <motion.div
                 className="space-y-6"
                 initial="hidden"
@@ -118,7 +118,7 @@ export default function LoginPage() {
                     <p className="text-white/70">Multilingual, inclusive, voice-first</p>
                   </div>
                 </motion.div>
-                
+
                 <motion.div
                   className="flex items-start gap-3"
                   variants={{
@@ -134,7 +134,7 @@ export default function LoginPage() {
                     <p className="text-white/70">Modular, DPI-aligned voice stack</p>
                   </div>
                 </motion.div>
-                
+
                 <motion.div
                   className="flex items-start gap-3"
                   variants={{
@@ -153,7 +153,7 @@ export default function LoginPage() {
               </motion.div>
             </div>
           </div>
-          
+
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}

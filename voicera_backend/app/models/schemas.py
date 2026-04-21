@@ -316,3 +316,112 @@ class MemberDelete(BaseModel):
     email: EmailStr
     org_id: str
 
+# Knowledge base (org-scoped PDF ingest)
+class KnowledgeDocumentResponse(BaseModel):
+    """A knowledge PDF document and ingest status."""
+    document_id: str
+    org_id: str
+    original_filename: str
+    status: str  # processing | ready | failed
+    chunk_count: Optional[int] = None
+    embedding_model: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class KnowledgeUploadResponse(BaseModel):
+    """Response after scheduling PDF ingest."""
+    document_id: str
+    org_id: str
+    original_filename: str
+    status: str
+
+
+class KnowledgeDeleteResponse(BaseModel):
+    """Response after deleting a knowledge document."""
+    deleted: bool
+
+
+class KnowledgeRetrieveRequest(BaseModel):
+    """Request payload for retrieving knowledge chunks for a query."""
+    org_id: str
+    question: str
+    top_k: int = 3
+    document_ids: Optional[List[str]] = None
+
+
+class KnowledgeRetrievedChunk(BaseModel):
+    """One retrieved chunk from Chroma."""
+    chunk_id: Optional[str] = None
+    document_id: Optional[str] = None
+    source_filename: Optional[str] = None
+    text: str
+    distance: Optional[float] = None
+
+
+class KnowledgeRetrieveResponse(BaseModel):
+    """Response payload for knowledge retrieval."""
+    chunks: List[KnowledgeRetrievedChunk]
+
+
+# Batch CSV Models
+class BatchResponse(BaseModel):
+    """Batch metadata returned to dashboard."""
+    batch_id: str
+    org_id: str
+    batch_name: str
+    agent_type: str
+    concurrency: int = 5
+    original_filename: str
+    status: str  # uploaded | ready_for_processing | processing | completed | failed
+    execution_status: str  # not_started | queued | running | paused | completed | failed
+    total_contacts: int
+    valid_contacts: int
+    invalid_contacts: int
+    attempted_calls: int = 0
+    successful_calls: int = 0
+    failed_calls: int = 0
+    error_message: Optional[str] = None
+    schedule_mode: str = "run_now"  # run_now | scheduled
+    scheduled_at_utc: Optional[str] = None
+    scheduled_timezone: Optional[str] = None
+    scheduled_status: str = "none"  # none | scheduled | triggered | canceled
+    scheduled_by: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class BatchUploadResponse(BaseModel):
+    """Response after uploading and parsing a batch CSV."""
+    batch_id: str
+    org_id: str
+    batch_name: str
+    agent_type: str
+    concurrency: int = 5
+    original_filename: str
+    status: str
+    total_contacts: int
+    valid_contacts: int
+    invalid_contacts: int
+    schedule_mode: str = "run_now"
+    scheduled_status: str = "none"
+    created_at: Optional[str] = None
+
+
+class BatchDeleteResponse(BaseModel):
+    """Response after deleting a batch and its stored contacts/file."""
+    deleted: bool
+
+
+class BatchRunRequest(BaseModel):
+    """Optional runtime config when starting a batch."""
+    agent_type: Optional[str] = None
+    concurrency: Optional[int] = Field(default=None, ge=1, le=20)
+
+
+class BatchScheduleRequest(BaseModel):
+    """One-time scheduling payload for batch execution."""
+    scheduled_at_local: str
+    timezone: str
+    agent_type: Optional[str] = None
+    concurrency: Optional[int] = Field(default=None, ge=1, le=20)

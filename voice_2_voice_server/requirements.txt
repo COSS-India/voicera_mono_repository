@@ -5,7 +5,7 @@ uvicorn==0.40.0
 pydantic==2.12.0
 
 # Pipecat AI with all required service extras
-pipecat-ai[silero,websocket,google,cartesia,openai,deepgram,sarvam]==0.0.98
+pipecat-ai[silero,websocket,google,cartesia,openai,deepgram,sarvam,elevenlabs,anthropic,grok]==0.0.98
 
 # ML/Audio Processing
 numpy>=1.26.4,<2.0.0
@@ -13,7 +13,6 @@ Pillow>=11.1.0,<12
 
 # Protocol/Serialization
 protobuf~=5.29.5
-grpcio>=1.66.0
 
 # HTTP/Async
 aiohttp==3.13.2
@@ -35,6 +34,9 @@ google-cloud-texttospeech==2.33.0
 google-cloud-speech==2.35.0
 cartesia==2.0.17
 sarvamai==0.1.21
+
+# Triton gRPC client (for Bhashini indicparler_tts)
+tritonclient[grpc]>=2.46.0
 
 # WebSocket for AI4Bharat custom services
 websockets==15.0.1

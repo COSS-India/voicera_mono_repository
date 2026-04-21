@@ -1,14 +1,32 @@
 """
 Vobiz service for handling Vobiz API operations.
+
+Credentials (X-Auth-ID / X-Auth-Token) are loaded per organization from the Integrations
+collection (models VobizAuthId and VobizAuthToken). API base URL remains from settings.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 from app.config import settings
+from app.services import integration_service as _integration_service
 import httpx
 import logging
 
 logger = logging.getLogger(__name__)
 
-async def create_vobiz_application(agent_type: str, answer_url: str) -> Dict[str, Any]:
+
+def _get_vobiz_auth_for_org(org_id: str) -> Optional[Tuple[str, str]]:
+    """Return (auth_id, auth_token) from integrations, or None if either is missing."""
+    id_doc = _integration_service.get_integration(org_id, "VobizAuthId")
+    tok_doc = _integration_service.get_integration(org_id, "VobizAuthToken")
+    if not id_doc or not tok_doc:
+        return None
+    auth_id = (id_doc.get("api_key") or "").strip()
+    auth_token = (tok_doc.get("api_key") or "").strip()
+    if not auth_id or not auth_token:
+        return None
+    return auth_id, auth_token
+
+
+async def create_vobiz_application(org_id: str, agent_type: str, answer_url: str) -> Dict[str, Any]:
     """
     Create a Vobiz application via API.
     
@@ -20,20 +38,21 @@ async def create_vobiz_application(agent_type: str, answer_url: str) -> Dict[str
         Dict with status, message, and app_id if successful
     """
     try:
-        # Validate that Vobiz credentials are configured
-        if not settings.VOBIZ_AUTH_ID or not settings.VOBIZ_AUTH_TOKEN:
+        creds = _get_vobiz_auth_for_org(org_id)
+        if not creds:
             return {
                 "status": "fail",
-                "message": "Vobiz API credentials are not configured"
+                "message": "Vobiz Auth ID and Auth Token must be configured in Integrations (Telephony) for this organization.",
             }
-        
+        auth_id, auth_token = creds
+
         # Construct the Vobiz API URL
-        url = f"{settings.VOBIZ_API_BASE_URL}/Account/{settings.VOBIZ_AUTH_ID}/Application/"
-        
+        url = f"{settings.VOBIZ_API_BASE_URL}/Account/{auth_id}/Application/"
+
         # Prepare headers
         headers = {
-            "X-Auth-ID": settings.VOBIZ_AUTH_ID,
-            "X-Auth-Token": settings.VOBIZ_AUTH_TOKEN,
+            "X-Auth-ID": auth_id,
+            "X-Auth-Token": auth_token,
             "Content-Type": "application/json"
         }
         
@@ -82,7 +101,7 @@ async def create_vobiz_application(agent_type: str, answer_url: str) -> Dict[str
             "message": error_message
         }
 
-async def delete_vobiz_application(application_id: str) -> Dict[str, Any]:
+async def delete_vobiz_application(org_id: str, application_id: str) -> Dict[str, Any]:
     """
     Delete a Vobiz application via API.
     
@@ -93,20 +112,21 @@ async def delete_vobiz_application(application_id: str) -> Dict[str, Any]:
         Dict with status and message
     """
     try:
-        # Validate that Vobiz credentials are configured
-        if not settings.VOBIZ_AUTH_ID or not settings.VOBIZ_AUTH_TOKEN:
+        creds = _get_vobiz_auth_for_org(org_id)
+        if not creds:
             return {
                 "status": "fail",
-                "message": "Vobiz API credentials are not configured"
+                "message": "Vobiz Auth ID and Auth Token must be configured in Integrations (Telephony) for this organization.",
             }
-        
+        auth_id, auth_token = creds
+
         # Construct the Vobiz API URL
-        url = f"{settings.VOBIZ_API_BASE_URL}/Account/{settings.VOBIZ_AUTH_ID}/Application/{application_id}/"
-        
+        url = f"{settings.VOBIZ_API_BASE_URL}/Account/{auth_id}/Application/{application_id}/"
+
         # Prepare headers
         headers = {
-            "X-Auth-ID": settings.VOBIZ_AUTH_ID,
-            "X-Auth-Token": settings.VOBIZ_AUTH_TOKEN
+            "X-Auth-ID": auth_id,
+            "X-Auth-Token": auth_token
         }
         
         # Make the API request
@@ -142,7 +162,7 @@ async def delete_vobiz_application(application_id: str) -> Dict[str, Any]:
             "message": error_message
         }
 
-async def link_number_to_application(phone_number: str, application_id: str) -> Dict[str, Any]:
+async def link_number_to_application(org_id: str, phone_number: str, application_id: str) -> Dict[str, Any]:
     """
     Link a phone number to a Vobiz application via API.
     
@@ -154,20 +174,21 @@ async def link_number_to_application(phone_number: str, application_id: str) -> 
         Dict with status and message
     """
     try:
-        # Validate that Vobiz credentials are configured
-        if not settings.VOBIZ_AUTH_ID or not settings.VOBIZ_AUTH_TOKEN:
+        creds = _get_vobiz_auth_for_org(org_id)
+        if not creds:
             return {
                 "status": "fail",
-                "message": "Vobiz API credentials are not configured"
+                "message": "Vobiz Auth ID and Auth Token must be configured in Integrations (Telephony) for this organization.",
             }
-        
+        auth_id, auth_token = creds
+
         # Construct the Vobiz API URL
-        url = f"{settings.VOBIZ_API_BASE_URL}/account/{settings.VOBIZ_AUTH_ID}/numbers/{phone_number}/application"
-        
+        url = f"{settings.VOBIZ_API_BASE_URL}/account/{auth_id}/numbers/{phone_number}/application"
+
         # Prepare headers
         headers = {
-            "X-Auth-ID": settings.VOBIZ_AUTH_ID,
-            "X-Auth-Token": settings.VOBIZ_AUTH_TOKEN,
+            "X-Auth-ID": auth_id,
+            "X-Auth-Token": auth_token,
             "Content-Type": "application/json"
         }
         
@@ -209,7 +230,7 @@ async def link_number_to_application(phone_number: str, application_id: str) -> 
             "message": error_message
         }
 
-async def unlink_number_from_application(phone_number: str) -> Dict[str, Any]:
+async def unlink_number_from_application(org_id: str, phone_number: str) -> Dict[str, Any]:
     """
     Unlink a phone number from a Vobiz application via API.
     
@@ -220,20 +241,21 @@ async def unlink_number_from_application(phone_number: str) -> Dict[str, Any]:
         Dict with status and message
     """
     try:
-        # Validate that Vobiz credentials are configured
-        if not settings.VOBIZ_AUTH_ID or not settings.VOBIZ_AUTH_TOKEN:
+        creds = _get_vobiz_auth_for_org(org_id)
+        if not creds:
             return {
                 "status": "fail",
-                "message": "Vobiz API credentials are not configured"
+                "message": "Vobiz Auth ID and Auth Token must be configured in Integrations (Telephony) for this organization.",
             }
-        
+        auth_id, auth_token = creds
+
         # Construct the Vobiz API URL
-        url = f"{settings.VOBIZ_API_BASE_URL}/account/{settings.VOBIZ_AUTH_ID}/numbers/{phone_number}/application"
-        
+        url = f"{settings.VOBIZ_API_BASE_URL}/account/{auth_id}/numbers/{phone_number}/application"
+
         # Prepare headers
         headers = {
-            "X-Auth-ID": settings.VOBIZ_AUTH_ID,
-            "X-Auth-Token": settings.VOBIZ_AUTH_TOKEN
+            "X-Auth-ID": auth_id,
+            "X-Auth-Token": auth_token
         }
         
         # Make the API request
@@ -267,4 +289,48 @@ async def unlink_number_from_application(phone_number: str) -> Dict[str, Any]:
         return {
             "status": "fail",
             "message": error_message
+        }
+
+
+async def get_vobiz_numbers(org_id: str) -> Dict[str, Any]:
+    """
+    List phone numbers from the Vobiz API for this organization.
+    """
+    creds = _get_vobiz_auth_for_org(org_id)
+    if not creds:
+        return {
+            "status": "fail",
+            "message": "Vobiz Auth ID and Auth Token must be configured in Integrations (Telephony) for this organization.",
+            "numbers": [],
+        }
+    auth_id, auth_token = creds
+    url = f"{settings.VOBIZ_API_BASE_URL}/account/{auth_id}/numbers"
+    headers = {
+        "X-Auth-ID": auth_id,
+        "X-Auth-Token": auth_token,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            e164_numbers = [
+                item.get("e164")
+                for item in data.get("items", [])
+                if item.get("e164")
+            ]
+            return {"status": "success", "numbers": e164_numbers}
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Vobiz numbers API error: {e.response.text}")
+        return {
+            "status": "fail",
+            "message": f"Vobiz API error: {e.response.text}",
+            "numbers": [],
+        }
+    except httpx.RequestError as e:
+        logger.error(f"Vobiz numbers request failed: {e}")
+        return {
+            "status": "fail",
+            "message": f"Failed to connect to Vobiz API: {str(e)}",
+            "numbers": [],
         }

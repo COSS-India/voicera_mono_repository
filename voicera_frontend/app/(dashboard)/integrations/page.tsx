@@ -35,8 +35,13 @@ import {
   Plus,
   Trash2,
   Loader2,
+  Phone,
 } from "lucide-react"
 import { getOrgId, getIntegrations, createIntegration, deleteIntegration, Integration } from "@/lib/api"
+
+/** Backend integration model names for Vobiz (stored in MongoDB Integrations collection). */
+const VOBIZ_AUTH_ID_MODEL = "VobizAuthId"
+const VOBIZ_AUTH_TOKEN_MODEL = "VobizAuthToken"
 
 // Provider type definitions
 type ProviderCapability = "stt" | "tts" | "llm"
@@ -59,8 +64,8 @@ const providers: Provider[] = [
   {
     id: "sarvam",
     name: "Sarvam",
-    capabilities: ["stt", "tts", "llm"],
-    description: "Indian language speech recognition and synthesis",
+    capabilities: ["stt", "tts"],
+    description: "Speech recognition and synthesis for English (India) and Indian languages",
   },
   {
     id: "bhashini",
@@ -73,6 +78,12 @@ const providers: Provider[] = [
     name: "Cartesia",
     capabilities: ["tts"],
     description: "Low-latency voice synthesis with emotion control",
+  },
+  {
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    capabilities: ["stt", "tts"],
+    description: "Speech recognition and high-quality voice synthesis in 90+ languages",
   },
   {
     id: "openai",
@@ -98,9 +109,26 @@ const providers: Provider[] = [
     capabilities: ["llm"],
     description: "Ultra-fast LLM inference",
   },
-  
-  
-  
+  {
+    id: "grok",
+    name: "Grok",
+    capabilities: ["llm"],
+    description: "x.AI Grok models with OpenAI-compatible API",
+  },
+]
+
+interface TelephonyProvider {
+  id: string
+  name: string
+  description: string
+}
+
+const telephonyProviders: TelephonyProvider[] = [
+  {
+    id: "vobiz",
+    name: "Vobiz",
+    description: "Telephony API for voice calls (Auth ID and Auth Token from your Vobiz account)",
+  },
 ]
 
 // Capability configuration
@@ -134,21 +162,29 @@ const capabilityConfig: Record<
 export default function IntegrationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"all" | ProviderCapability>("all")
-  
+
   // Connected providers state (fetched from backend)
   const [connectedProviders, setConnectedProviders] = useState<Record<string, boolean>>({})
-  
+
   // API keys state
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({})
-  
+
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
   const [modalApiKey, setModalApiKey] = useState("")
   const [isModalKeyVisible, setIsModalKeyVisible] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  
+
+  // Telephony (Vobiz) — two integration rows in backend
+  const [vobizModalOpen, setVobizModalOpen] = useState(false)
+  const [vobizAuthId, setVobizAuthId] = useState("")
+  const [vobizAuthToken, setVobizAuthToken] = useState("")
+  const [modalVobizAuthId, setModalVobizAuthId] = useState("")
+  const [modalVobizAuthToken, setModalVobizAuthToken] = useState("")
+  const [vobizTokenVisible, setVobizTokenVisible] = useState(false)
+
   // Loading state
   const [isLoading, setIsLoading] = useState(true)
 
@@ -161,22 +197,29 @@ export default function IntegrationsPage() {
     try {
       setIsLoading(true)
       const integrations = await getIntegrations()
-      
+
       // Convert integrations array to connected providers map and api keys map
       const connected: Record<string, boolean> = {}
       const keys: Record<string, string> = {}
-      
+      setVobizAuthId("")
+      setVobizAuthToken("")
+
       integrations.forEach((integration: Integration) => {
-        // Find the provider by matching the model name (case-insensitive)
-        const provider = providers.find(
-          (p) => p.name.toLowerCase() === integration.model.toLowerCase()
-        )
-        if (provider) {
-          connected[provider.id] = true
-          keys[provider.id] = integration.api_key
+        if (integration.model === VOBIZ_AUTH_ID_MODEL) {
+          setVobizAuthId(integration.api_key)
+        } else if (integration.model === VOBIZ_AUTH_TOKEN_MODEL) {
+          setVobizAuthToken(integration.api_key)
+        } else {
+          const provider = providers.find(
+            (p) => p.name.toLowerCase() === integration.model.toLowerCase()
+          )
+          if (provider) {
+            connected[provider.id] = true
+            keys[provider.id] = integration.api_key
+          }
         }
       })
-      
+
       setConnectedProviders(connected)
       setApiKeys(keys)
     } catch (error) {
@@ -211,8 +254,9 @@ export default function IntegrationsPage() {
     })
   }, [searchQuery, activeTab, connectedProviders])
 
-  // Open connect modal
+  // Open connect modal (clear search so browser autocomplete doesn't fill it with login email)
   const openConnectModal = (provider: Provider) => {
+    setSearchQuery("")
     setSelectedProvider(provider)
     setModalApiKey("")
     setIsModalKeyVisible(false)
@@ -287,6 +331,57 @@ export default function IntegrationsPage() {
   }
 
   const isEditing = selectedProvider && connectedProviders[selectedProvider.id]
+
+  const vobizConnected = Boolean(vobizAuthId && vobizAuthToken)
+
+  const openVobizModal = () => {
+    setSearchQuery("")
+    setModalVobizAuthId(vobizAuthId || "")
+    setModalVobizAuthToken(vobizAuthToken || "")
+    setVobizTokenVisible(false)
+    setVobizModalOpen(true)
+  }
+
+  const handleVobizSave = async () => {
+    if (!modalVobizAuthId.trim() || !modalVobizAuthToken.trim()) return
+    setIsSaving(true)
+    try {
+      const orgId = getOrgId()
+      if (!orgId) throw new Error("Organization ID not found")
+      await createIntegration({
+        org_id: orgId,
+        model: VOBIZ_AUTH_ID_MODEL,
+        api_key: modalVobizAuthId.trim(),
+      })
+      await createIntegration({
+        org_id: orgId,
+        model: VOBIZ_AUTH_TOKEN_MODEL,
+        api_key: modalVobizAuthToken.trim(),
+      })
+      setVobizAuthId(modalVobizAuthId.trim())
+      setVobizAuthToken(modalVobizAuthToken.trim())
+      setVobizModalOpen(false)
+    } catch (error) {
+      console.error("Error saving Vobiz integration:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleVobizDisconnect = async () => {
+    setIsSaving(true)
+    try {
+      await deleteIntegration(VOBIZ_AUTH_ID_MODEL)
+      await deleteIntegration(VOBIZ_AUTH_TOKEN_MODEL)
+      setVobizAuthId("")
+      setVobizAuthToken("")
+      setVobizModalOpen(false)
+    } catch (error) {
+      console.error("Error disconnecting Vobiz:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   return (
     <div className="flex flex-1 flex-col h-full overflow-hidden">
@@ -377,131 +472,191 @@ export default function IntegrationsPage() {
           </section>
         )}
 
+        {/* Telephony — Vobiz (Auth ID + Auth Token in Integrations) */}
+        {!isLoading && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                Telephony
+              </h2>
+            </div>
+            <Card>
+              <CardContent className="p-0">
+                <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10">
+                      <Phone className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Vobiz</span>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          Telephony
+                        </Badge>
+                        {vobizConnected && (
+                          <div className="flex items-center justify-center h-5 w-5 rounded-full bg-green-500/10">
+                            <Check className="h-3 w-3 text-green-600" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate max-w-[420px]">
+                        {telephonyProviders[0].description}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openVobizModal}
+                    className="gap-1.5 shrink-0"
+                  >
+                    {vobizConnected ? (
+                      <>
+                        <Settings2 className="h-3.5 w-3.5" />
+                        Manage
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        Connect
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
         {!isLoading && <Separator />}
 
         {/* Available Header and Filters - Fixed */}
         {!isLoading && (
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-              Available
-            </h2>
-          </div>
-
-          {/* Search and Filter */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            {/* Search */}
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search providers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9"
-              />
+          <section className="space-y-4">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                Available
+              </h2>
             </div>
 
-            {/* Filter Tabs */}
-            <Tabs
-              value={activeTab}
-              onValueChange={(v) => setActiveTab(v as typeof activeTab)}
-            >
-              <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="llm" className="gap-1.5">
-                  <Brain className="h-3.5 w-3.5" />
-                  LLM
-                </TabsTrigger>
-                <TabsTrigger value="stt" className="gap-1.5">
-                  <Mic className="h-3.5 w-3.5" />
-                  STT
-                </TabsTrigger>
-                <TabsTrigger value="tts" className="gap-1.5">
-                  <Volume2 className="h-3.5 w-3.5" />
-                  TTS
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-        </section>
+            {/* Search and Filter */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Search */}
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  name="provider-search"
+                  placeholder="Search providers..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-9"
+                  autoComplete="off"
+                  aria-label="Search providers"
+                />
+              </div>
+
+              {/* Filter Tabs */}
+              <Tabs
+                value={activeTab}
+                onValueChange={(v) => setActiveTab(v as typeof activeTab)}
+              >
+                <TabsList>
+                  <TabsTrigger value="all">All</TabsTrigger>
+                  <TabsTrigger value="llm" className="gap-1.5">
+                    <Brain className="h-3.5 w-3.5" />
+                    LLM
+                  </TabsTrigger>
+                  <TabsTrigger value="stt" className="gap-1.5">
+                    <Mic className="h-3.5 w-3.5" />
+                    STT
+                  </TabsTrigger>
+                  <TabsTrigger value="tts" className="gap-1.5">
+                    <Volume2 className="h-3.5 w-3.5" />
+                    TTS
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          </section>
         )}
       </div>
 
       {/* Scrollable Provider Grid */}
       {!isLoading && (
-      <ScrollArea className="flex-1 px-6 pb-6">
-        <div className="pt-4">
-          {availableProviders.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {availableProviders.map((provider) => (
-                <Card
-                  key={provider.id}
-                  className="group hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => openConnectModal(provider)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{provider.name}</span>
+        <ScrollArea className="flex-1 px-6 pb-6">
+          <div className="pt-4">
+            {availableProviders.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {availableProviders.map((provider) => (
+                  <Card
+                    key={provider.id}
+                    className="group hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => openConnectModal(provider)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{provider.name}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-1">
+                            {provider.description}
+                          </p>
+                          <div className="flex gap-1 pt-1">
+                            {provider.capabilities.map((cap) => (
+                              <Badge
+                                key={cap}
+                                variant="outline"
+                                className={`${capabilityConfig[cap].badgeClass} text-[10px] px-1.5 py-0`}
+                              >
+                                {capabilityConfig[cap].label}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-1">
-                          {provider.description}
-                        </p>
-                        <div className="flex gap-1 pt-1">
-                          {provider.capabilities.map((cap) => (
-                            <Badge
-                              key={cap}
-                              variant="outline"
-                              className={`${capabilityConfig[cap].badgeClass} text-[10px] px-1.5 py-0`}
-                            >
-                              {capabilityConfig[cap].label}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
 
-                      {/* Connect button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openConnectModal(provider)
-                        }}
-                      >
-                        <Plus className="h-3.5 w-3.5 mr-1" />
-                        Connect
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed">
-              <div className="rounded-full bg-muted p-3 mb-3">
-                <Search className="h-5 w-5 text-muted-foreground" />
+                        {/* Connect button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openConnectModal(provider)
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Connect
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
-              <p className="text-sm text-muted-foreground mb-2">
-                {searchQuery
-                  ? `No providers match "${searchQuery}"`
-                  : "All providers are connected"}
-              </p>
-              {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSearchQuery("")}
-                >
-                  Clear search
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed">
+                <div className="rounded-full bg-muted p-3 mb-3">
+                  <Search className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  {searchQuery
+                    ? `No providers match "${searchQuery}"`
+                    : "All providers are connected"}
+                </p>
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    Clear search
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       )}
 
       {/* Connect/Manage Modal */}
@@ -515,8 +670,8 @@ export default function IntegrationsPage() {
               {isEditing
                 ? "Update your API key or disconnect this integration."
                 : `Enter your ${selectedProvider?.name} API key to enable ${selectedProvider?.capabilities
-                    .map((c) => capabilityConfig[c].fullLabel)
-                    .join(", ")}.`}
+                  .map((c) => capabilityConfig[c].fullLabel)
+                  .join(", ")}.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -546,6 +701,7 @@ export default function IntegrationsPage() {
                   value={modalApiKey}
                   onChange={(e) => setModalApiKey(e.target.value)}
                   className="pr-10"
+                  autoComplete="off"
                 />
                 <Button
                   type="button"
@@ -593,6 +749,98 @@ export default function IntegrationsPage() {
                 <>
                   <Save className="h-4 w-4 mr-1.5" />
                   {isEditing ? "Update" : "Connect"}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Vobiz Telephony — Auth ID + Auth Token */}
+      <Dialog open={vobizModalOpen} onOpenChange={setVobizModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5" />
+              {vobizConnected ? "Manage" : "Connect"} Vobiz
+            </DialogTitle>
+            <DialogDescription>
+              Enter your Vobiz Auth ID and Auth Token from the Vobiz dashboard. These are stored per
+              organization and used for telephony APIs (not from server environment variables).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="vobiz-auth-id">Vobiz Auth ID</Label>
+              <Input
+                id="vobiz-auth-id"
+                type="text"
+                placeholder="e.g. MA_xxxxxxxx"
+                value={modalVobizAuthId}
+                onChange={(e) => setModalVobizAuthId(e.target.value)}
+                autoComplete="off"
+                name="vobiz-auth-id"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vobiz-auth-token">Vobiz Auth Token</Label>
+              <div className="relative">
+                <Input
+                  id="vobiz-auth-token"
+                  type={vobizTokenVisible ? "text" : "password"}
+                  placeholder="Your auth token"
+                  value={modalVobizAuthToken}
+                  onChange={(e) => setModalVobizAuthToken(e.target.value)}
+                  className="pr-10"
+                  autoComplete="off"
+                  name="vobiz-auth-token"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full w-10 hover:bg-transparent"
+                  onClick={() => setVobizTokenVisible(!vobizTokenVisible)}
+                  tabIndex={-1}
+                >
+                  {vobizTokenVisible ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {vobizConnected && (
+              <Button
+                variant="outline"
+                onClick={handleVobizDisconnect}
+                disabled={isSaving}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 sm:mr-auto"
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Disconnect
+              </Button>
+            )}
+            <Button
+              onClick={handleVobizSave}
+              disabled={
+                !modalVobizAuthId.trim() || !modalVobizAuthToken.trim() || isSaving
+              }
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-1.5" />
+                  {vobizConnected ? "Update" : "Connect"}
                 </>
               )}
             </Button>

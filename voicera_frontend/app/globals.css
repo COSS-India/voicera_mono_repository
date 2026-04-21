@@ -123,7 +123,72 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@keyframes route-skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes nav-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(calc(100vw / 0.42));
+  }
+}
+
+@keyframes nav-progress-exit {
+  0% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+@layer utilities {
+  .route-skeleton {
+    @apply relative overflow-hidden rounded-md bg-muted/80;
+  }
+
+  .route-skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg,
+        transparent,
+        oklch(1 0 0 / 0.45),
+        transparent);
+    animation: route-skeleton-shimmer 1.35s ease-in-out infinite;
+  }
+
+  .dark .route-skeleton::after {
+    background: linear-gradient(90deg,
+        transparent,
+        oklch(1 0 0 / 0.06),
+        transparent);
+  }
+
+  .nav-progress-indeterminate {
+    animation: nav-progress-slide 0.95s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  .nav-progress-exit {
+    animation: nav-progress-exit 0.36s ease-out forwards;
+    transform-origin: left center;
+    will-change: opacity, transform;
   }
 }

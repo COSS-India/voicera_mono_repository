@@ -11,4 +11,10 @@ bcrypt>=4.0.0
 mailtrap>=2.0.0
 minio>=7.2.0
 httpx>=0.25.0
+APScheduler>=3.10.4
 
+# RAG / knowledge (rag_system + Knowledge Base ingest in the API process)
+chromadb>=0.4.0
+openai>=1.0.0
+numpy>=1.24.0
+pypdf>=4.0.0

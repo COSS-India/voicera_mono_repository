@@ -35,6 +35,83 @@ def _get_api_headers() -> Dict[str, str]:
         logger.warning("⚠️ INTERNAL_API_KEY not set - API calls may fail")
     return headers
 
+
+def fetch_integration_key(org_id: str, model: str) -> Optional[str]:
+    """
+    Fetch integration API key for a given org and provider model from the backend.
+
+    Uses the bot endpoint which requires X-API-Key (INTERNAL_API_KEY).
+    Returns None on 404 or any error so callers can fall back to .env.
+
+    Args:
+        org_id: Organization ID
+        model: Provider/model name (e.g. "OpenAI", "Deepgram", "ElevenLabs")
+
+    Returns:
+        The API key string, or None if not found or on error
+    """
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/integrations/bot/get-api-key"
+    headers = _get_api_headers()
+
+    try:
+        response = requests.post(
+            api_endpoint,
+            json={"org_id": org_id, "model": model},
+            headers=headers,
+            timeout=10,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        data = response.json()
+        return data.get("api_key")
+    except requests.exceptions.RequestException as e:
+        logger.debug(f"Integration key fetch failed for org={org_id} model={model}: {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"Integration key fetch error for org={org_id} model={model}: {e}")
+        return None
+
+
+def fetch_knowledge_chunks(
+    *,
+    org_id: str,
+    question: str,
+    document_ids: Optional[list[str]] = None,
+    top_k: int = 3,
+    timeout: float = 0.8,
+) -> list[dict]:
+    """
+    Retrieve top-k knowledge chunks for runtime RAG augmentation.
+
+    Uses internal API-key auth and returns an empty list on failures (fail-open).
+    """
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/rag/retrieve"
+    headers = _get_api_headers()
+    payload = {
+        "org_id": org_id,
+        "question": question,
+        "top_k": top_k,
+        "document_ids": document_ids or [],
+    }
+    try:
+        response = requests.post(
+            api_endpoint,
+            json=payload,
+            headers=headers,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        chunks = data.get("chunks") if isinstance(data, dict) else []
+        return chunks if isinstance(chunks, list) else []
+    except Exception as e:
+        logger.debug("Knowledge retrieval failed: %s", e)
+        return []
+
+
 async def fetch_agent_config_from_backend(agent_id: str) -> dict:
     """
     Fetch agent configuration from backend API.
@@ -253,6 +330,90 @@ async def update_meeting_end_time(
         logger.error(f"❌ Failed to update meeting end time: {e}")
         logger.debug(f"API endpoint: {api_endpoint}, payload: {payload}")
         return False
+
+
+def fetch_batch_agent_call_config(org_id: str, agent_type: str) -> Optional[Dict[str, Any]]:
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/batches/worker/agent-config"
+    headers = _get_api_headers()
+    try:
+        response = requests.post(
+            api_endpoint,
+            json={"org_id": org_id, "agent_type": agent_type},
+            headers=headers,
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.error(f"Failed to fetch batch agent call config: {e}")
+        return None
+
+
+def claim_next_batch_contact(org_id: str, batch_id: str) -> Optional[Dict[str, Any]]:
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/batches/worker/claim-next"
+    headers = _get_api_headers()
+    try:
+        response = requests.post(
+            api_endpoint,
+            json={"org_id": org_id, "batch_id": batch_id},
+            headers=headers,
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json() if response.text else {}
+        if not isinstance(data, dict):
+            return None
+        contact = data.get("contact")
+        return contact if isinstance(contact, dict) else None
+    except Exception as e:
+        logger.error(f"Failed to claim next batch contact: {e}")
+        return None
+
+
+def report_batch_contact_result(
+    *,
+    org_id: str,
+    batch_id: str,
+    row_number: int,
+    ok: bool,
+    error: Optional[str] = None,
+) -> None:
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/batches/worker/report"
+    headers = _get_api_headers()
+    try:
+        requests.post(
+            api_endpoint,
+            json={
+                "org_id": org_id,
+                "batch_id": batch_id,
+                "row_number": row_number,
+                "ok": ok,
+                "error": error,
+            },
+            headers=headers,
+            timeout=10,
+        ).raise_for_status()
+    except Exception as e:
+        logger.error(f"Failed to report batch contact result: {e}")
+
+
+def finalize_batch_execution(org_id: str, batch_id: str, stopped: bool) -> None:
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/batches/worker/finalize"
+    headers = _get_api_headers()
+    try:
+        requests.post(
+            api_endpoint,
+            json={"org_id": org_id, "batch_id": batch_id, "stopped": stopped},
+            headers=headers,
+            timeout=10,
+        ).raise_for_status()
+    except Exception as e:
+        logger.error(f"Failed to finalize batch execution: {e}")
     except Exception as e:
         logger.error(f"❌ Error updating meeting end time: {e}")
         logger.debug(traceback.format_exc())

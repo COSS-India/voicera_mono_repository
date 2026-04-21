@@ -6,14 +6,15 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   Bot,
   Hash,
-  Users,
-  Megaphone,
   ChevronsUpDown,
   LogOut,
   History,
   BarChart3,
   Contact,
   Plug,
+  BookOpen,
+  Activity,
+  Layers3,
 } from "lucide-react"
 
 import {
@@ -46,19 +47,19 @@ const mainNavItems = [
     icon: Bot,
   },
   {
-    title: "Campaigns",
-    url: "/campaigns",
-    icon: Megaphone,
-  },
-  {
     title: "Numbers",
     url: "/numbers",
     icon: Hash,
   },
   {
-    title: "Audiences",
-    url: "/audiences",
-    icon: Users,
+    title: "Knowledge Base",
+    url: "/knowledge-base",
+    icon: BookOpen,
+  },
+  {
+    title: "Batches",
+    url: "/batches",
+    icon: Layers3,
   },
   {
     title: "History",
@@ -69,6 +70,11 @@ const mainNavItems = [
     title: "Analytics",
     url: "/analytics",
     icon: BarChart3,
+  },
+  {
+    title: "Telemetry",
+    url: "/telemetry",
+    icon: Activity,
   },
 ]
 

@@ -172,8 +172,77 @@ def initialize_database():
                 if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
                     logger.warning(f"Index creation warning: {e}")
         
+        # 9. KnowledgeDocuments collection (org-scoped PDF knowledge base)
+        if "KnowledgeDocuments" not in existing_collections:
+            logger.info("Creating KnowledgeDocuments collection...")
+            kd = db["KnowledgeDocuments"]
+            kd.create_index("document_id", unique=True, name="document_id_unique")
+            kd.create_index("org_id", name="org_id_index")
+            logger.info("✓ Created KnowledgeDocuments with indexes on document_id and org_id")
+        else:
+            logger.debug("KnowledgeDocuments collection already exists. Ensuring indexes...")
+            kd = db["KnowledgeDocuments"]
+            try:
+                kd.create_index("document_id", unique=True, name="document_id_unique")
+                kd.create_index("org_id", name="org_id_index")
+            except Exception as e:
+                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                    logger.warning(f"Index creation warning: {e}")
+
+        # 10. Batches collection (immutable CSV uploads)
+        if "Batches" not in existing_collections:
+            logger.info("Creating Batches collection...")
+            batches = db["Batches"]
+            batches.create_index("batch_id", unique=True, name="batch_id_unique")
+            batches.create_index("org_id", name="org_id_index")
+            batches.create_index(
+                [("org_id", 1), ("batch_name", 1)],
+                unique=True,
+                name="org_batch_name_unique",
+                partialFilterExpression={"batch_name": {"$type": "string"}},
+            )
+            batches.create_index([("org_id", 1), ("agent_type", 1), ("created_at", -1)], name="org_agent_created_at")
+            batches.create_index([("execution_status", 1), ("scheduled_at_utc", 1)], name="execution_scheduled_at_index")
+            logger.info("✓ Created Batches with indexes")
+        else:
+            logger.debug("Batches collection already exists. Ensuring indexes...")
+            batches = db["Batches"]
+            try:
+                batches.create_index("batch_id", unique=True, name="batch_id_unique")
+                batches.create_index("org_id", name="org_id_index")
+                batches.create_index(
+                    [("org_id", 1), ("batch_name", 1)],
+                    unique=True,
+                    name="org_batch_name_unique",
+                    partialFilterExpression={"batch_name": {"$type": "string"}},
+                )
+                batches.create_index([("org_id", 1), ("agent_type", 1), ("created_at", -1)], name="org_agent_created_at")
+                batches.create_index([("execution_status", 1), ("scheduled_at_utc", 1)], name="execution_scheduled_at_index")
+            except Exception as e:
+                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                    logger.warning(f"Index creation warning: {e}")
+
+        # 11. BatchContacts collection (parsed per-contact rows)
+        if "BatchContacts" not in existing_collections:
+            logger.info("Creating BatchContacts collection...")
+            batch_contacts = db["BatchContacts"]
+            batch_contacts.create_index([("batch_id", 1), ("row_number", 1)], unique=True, name="batch_row_unique")
+            batch_contacts.create_index([("org_id", 1), ("agent_type", 1)], name="org_agent_index")
+            batch_contacts.create_index([("batch_id", 1), ("status", 1)], name="batch_status_index")
+            logger.info("✓ Created BatchContacts with indexes")
+        else:
+            logger.debug("BatchContacts collection already exists. Ensuring indexes...")
+            batch_contacts = db["BatchContacts"]
+            try:
+                batch_contacts.create_index([("batch_id", 1), ("row_number", 1)], unique=True, name="batch_row_unique")
+                batch_contacts.create_index([("org_id", 1), ("agent_type", 1)], name="org_agent_index")
+                batch_contacts.create_index([("batch_id", 1), ("status", 1)], name="batch_status_index")
+            except Exception as e:
+                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                    logger.warning(f"Index creation warning: {e}")
+        
         logger.info("Database initialization completed successfully")
-        logger.info("Collections verified: UserTable, AgentConfig, Audience, Campaigns, CallLogs, PhoneNumber, Members, Integrations")
+        logger.info("Collections verified: UserTable, AgentConfig, Audience, Campaigns, CallLogs, PhoneNumber, Members, Integrations, KnowledgeDocuments, Batches, BatchContacts")
         
     except Exception as e:
         logger.error(f"Error initializing database: {e}")

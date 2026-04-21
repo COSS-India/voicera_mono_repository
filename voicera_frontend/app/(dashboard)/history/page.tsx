@@ -104,18 +104,18 @@ function HistoryPageContent() {
       try {
         const meetingsData = await getMeetings()
         setMeetings(meetingsData)
-        
+
         // Extract unique agent types, phone numbers from meetings
         const agentTypes = new Set<string>()
         const fromNumbers = new Set<string>()
         const toNumbers = new Set<string>()
-        
+
         meetingsData.forEach(meeting => {
           if (meeting.agent_type) agentTypes.add(meeting.agent_type)
           if (meeting.from_number) fromNumbers.add(meeting.from_number)
           if (meeting.to_number) toNumbers.add(meeting.to_number)
         })
-        
+
         setUniqueAgentTypes(Array.from(agentTypes).sort())
         setUniqueFromNumbers(Array.from(fromNumbers).sort())
         setUniqueToNumbers(Array.from(toNumbers).sort())
@@ -138,7 +138,7 @@ function HistoryPageContent() {
       filtered = filtered.filter(meeting => {
         const meetingDate = meeting.start_time_utc || meeting.created_at
         if (!meetingDate) return false
-        
+
         try {
           const date = new Date(meetingDate)
           if (dateRange.from) {
@@ -175,7 +175,7 @@ function HistoryPageContent() {
               return meeting.from_number === filter.value
             case 'to_number':
               return meeting.to_number === filter.value
-            
+
             default:
               return true
           }
@@ -208,12 +208,12 @@ function HistoryPageContent() {
       filtered = [...filtered].sort((a, b) => {
         const durationA = getDurationInSeconds(a)
         const durationB = getDurationInSeconds(b)
-        
+
         // Put calls with no duration (-1) at the end
         if (durationA === -1 && durationB === -1) return 0
         if (durationA === -1) return 1
         if (durationB === -1) return -1
-        
+
         if (durationSortOrder === 'longest') {
           // Longest to shortest (descending)
           return durationB - durationA
@@ -227,15 +227,15 @@ function HistoryPageContent() {
       filtered = [...filtered].sort((a, b) => {
         const dateA = a.start_time_utc || a.created_at
         const dateB = b.start_time_utc || b.created_at
-        
+
         if (!dateA && !dateB) return 0
         if (!dateA) return 1
         if (!dateB) return -1
-        
+
         try {
           const timeA = new Date(dateA).getTime()
           const timeB = new Date(dateB).getTime()
-          
+
           if (dateSortOrder === 'latest') {
             // Latest to oldest (descending)
             return timeB - timeA
@@ -417,7 +417,7 @@ function HistoryPageContent() {
     const headers = Object.keys(data[0])
     const csvRows = [
       headers.join(","),
-      ...data.map(row => 
+      ...data.map(row =>
         headers.map(header => {
           const value = row[header as keyof typeof row]
           // Escape commas and quotes in CSV
@@ -449,18 +449,18 @@ function HistoryPageContent() {
     }
 
     const doc = new jsPDF()
-    
+
     // Add title
     doc.setFontSize(16)
     doc.text("Meetings History", 14, 15)
-    
+
     // Add export date
     doc.setFontSize(10)
     doc.text(`Exported on: ${format(new Date(), "dd/MM/yyyy, hh:mm:ss a")}`, 14, 22)
-    
+
     // Prepare table data
     const headers = Object.keys(data[0])
-    const rows = data.map(row => 
+    const rows = data.map(row =>
       headers.map(header => String(row[header as keyof typeof row]))
     )
 
@@ -483,7 +483,7 @@ function HistoryPageContent() {
     setSelectedMeeting(meeting)
     setIsSheetOpen(true)
     setIsLoadingDetails(true)
-    
+
     try {
       // Fetch detailed meeting data including transcript
       const details = await getMeetingDetails(meeting.meeting_id)
@@ -568,134 +568,134 @@ function HistoryPageContent() {
 
             {/* Filter Dropdown */}
             {mounted && (
-            <Popover open={filterDropdownOpen} onOpenChange={setFilterDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="h-10 px-4 gap-2 rounded-lg border-slate-200">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  Filter
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-56 p-0" align="start">
-                {addingFilter ? (
-                  // Show input for the selected filter type
-                  <div className="p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">{getFilterLabel(addingFilter)}</span>
-                      <button onClick={() => setAddingFilter(null)}>
-                        <X className="h-4 w-4 text-slate-400" />
-                      </button>
-                    </div>
-                    {addingFilter === 'call_status' ? (
-                      <div className="space-y-1">
-                        {['Completed', 'Failed', 'In Progress', 'Missed'].map(status => {
-                          let bgColor = "";
-                          if (status === 'In Progress') {
-                            bgColor = "bg-orange-50";
-                          } else if (status === 'Missed') {
-                            bgColor = "bg-red-50";
-                          } else if (status === 'Completed') {
-                            bgColor = "bg-green-50";
-                          }
+              <Popover open={filterDropdownOpen} onOpenChange={setFilterDropdownOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="h-10 px-4 gap-2 rounded-lg border-slate-200">
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Filter
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-0" align="start">
+                  {addingFilter ? (
+                    // Show input for the selected filter type
+                    <div className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">{getFilterLabel(addingFilter)}</span>
+                        <button onClick={() => setAddingFilter(null)}>
+                          <X className="h-4 w-4 text-slate-400" />
+                        </button>
+                      </div>
+                      {addingFilter === 'call_status' ? (
+                        <div className="space-y-1">
+                          {['Completed', 'Failed', 'In Progress', 'Missed'].map(status => {
+                            let bgColor = "";
+                            if (status === 'In Progress') {
+                              bgColor = "bg-orange-50";
+                            } else if (status === 'Missed') {
+                              bgColor = "bg-red-50";
+                            } else if (status === 'Completed') {
+                              bgColor = "bg-green-50";
+                            }
 
-                          return (
+                            return (
+                              <button
+                                key={status}
+                                onClick={() => addFilter('call_status', status)}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded ${bgColor}`}
+                              >
+                                {status}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : addingFilter === 'call_type' ? (
+                        <div className="space-y-1">
+                          {['Inbound', 'Outbound'].map(type => (
                             <button
-                              key={status}
-                              onClick={() => addFilter('call_status', status)}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded ${bgColor}`}
-                            >
-                              {status}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : addingFilter === 'call_type' ? (
-                      <div className="space-y-1">
-                        {['Inbound', 'Outbound'].map(type => (
-                          <button
-                            key={type}
-                            onClick={() => addFilter('call_type', type)}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
-                          >
-                            {type}
-                          </button>
-                        ))}
-                      </div>
-                    ) : addingFilter === 'assistant_name' ? (
-                      <div className="space-y-1 max-h-60 overflow-y-auto">
-                        {uniqueAgentTypes.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-slate-500">No agents available</div>
-                        ) : (
-                          uniqueAgentTypes.map(agentType => (
-                            <button
-                              key={agentType}
-                              onClick={() => {
-                                addFilter('assistant_name', agentType)
-                                setFilterDropdownOpen(false)
-                              }}
+                              key={type}
+                              onClick={() => addFilter('call_type', type)}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
                             >
-                              {agentType}
+                              {type}
                             </button>
-                          ))
-                        )}
-                      </div>
-                    ) : addingFilter === 'from_number' ? (
-                      <div className="space-y-1 max-h-60 overflow-y-auto">
-                        {uniqueFromNumbers.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-slate-500">No numbers available</div>
-                        ) : (
-                          uniqueFromNumbers.map(number => (
-                            <button
-                              key={number}
-                              onClick={() => {
-                                addFilter('from_number', number)
-                                setFilterDropdownOpen(false)
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
-                            >
-                              {number}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    ) : addingFilter === 'to_number' ? (
-                      <div className="space-y-1 max-h-60 overflow-y-auto">
-                        {uniqueToNumbers.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-slate-500">No numbers available</div>
-                        ) : (
-                          uniqueToNumbers.map(number => (
-                            <button
-                              key={number}
-                              onClick={() => {
-                                addFilter('to_number', number)
-                                setFilterDropdownOpen(false)
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
-                            >
-                              {number}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  // Show filter options list
-                  <div className="py-1">
-                    {filterOptions.map(option => (
-                      <button
-                        key={option.id}
-                        onClick={() => setAddingFilter(option.id)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-100"
-                      >
-                        <Plus className="h-4 w-4 text-slate-400" />
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+                          ))}
+                        </div>
+                      ) : addingFilter === 'assistant_name' ? (
+                        <div className="space-y-1 max-h-60 overflow-y-auto">
+                          {uniqueAgentTypes.length === 0 ? (
+                            <div className="px-3 py-2 text-sm text-slate-500">No agents available</div>
+                          ) : (
+                            uniqueAgentTypes.map(agentType => (
+                              <button
+                                key={agentType}
+                                onClick={() => {
+                                  addFilter('assistant_name', agentType)
+                                  setFilterDropdownOpen(false)
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
+                              >
+                                {agentType}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      ) : addingFilter === 'from_number' ? (
+                        <div className="space-y-1 max-h-60 overflow-y-auto">
+                          {uniqueFromNumbers.length === 0 ? (
+                            <div className="px-3 py-2 text-sm text-slate-500">No numbers available</div>
+                          ) : (
+                            uniqueFromNumbers.map(number => (
+                              <button
+                                key={number}
+                                onClick={() => {
+                                  addFilter('from_number', number)
+                                  setFilterDropdownOpen(false)
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
+                              >
+                                {number}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      ) : addingFilter === 'to_number' ? (
+                        <div className="space-y-1 max-h-60 overflow-y-auto">
+                          {uniqueToNumbers.length === 0 ? (
+                            <div className="px-3 py-2 text-sm text-slate-500">No numbers available</div>
+                          ) : (
+                            uniqueToNumbers.map(number => (
+                              <button
+                                key={number}
+                                onClick={() => {
+                                  addFilter('to_number', number)
+                                  setFilterDropdownOpen(false)
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
+                              >
+                                {number}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    // Show filter options list
+                    <div className="py-1">
+                      {filterOptions.map(option => (
+                        <button
+                          key={option.id}
+                          onClick={() => setAddingFilter(option.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-100"
+                        >
+                          <Plus className="h-4 w-4 text-slate-400" />
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
             )}
             {!mounted && (
               <Button variant="outline" className="h-10 px-4 gap-2 rounded-lg border-slate-200" disabled>
@@ -708,19 +708,19 @@ function HistoryPageContent() {
           <div className="flex items-center gap-3">
             {/* Export Button */}
             {mounted && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="h-10 px-4 gap-2 rounded-lg bg-slate-900 hover:bg-slate-800">
-                  <Download className="h-4 w-4" />
-                  Export
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={exportToCSV}>Export as CSV</DropdownMenuItem>
-                <DropdownMenuItem onClick={exportToPDF}>Export as PDF</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="h-10 px-4 gap-2 rounded-lg bg-slate-900 hover:bg-slate-800">
+                    <Download className="h-4 w-4" />
+                    Export
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={exportToCSV}>Export as CSV</DropdownMenuItem>
+                  <DropdownMenuItem onClick={exportToPDF}>Export as PDF</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {!mounted && (
               <Button className="h-10 px-4 gap-2 rounded-lg bg-slate-900 hover:bg-slate-800" disabled>
@@ -754,7 +754,7 @@ function HistoryPageContent() {
               </div>
             )}
             {activeFilters.map((filter, index) => (
-              <div 
+              <div
                 key={index}
                 className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1"
               >
@@ -782,7 +782,7 @@ function HistoryPageContent() {
         <div className="px-5 lg:px-8 py-4">
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-7 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-600">
+            <div className="grid grid-cols-8 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-600">
               <div className="flex items-center gap-2">
                 Call Type
                 {mounted && (
@@ -1046,20 +1046,22 @@ function HistoryPageContent() {
                       durationSortOrder === null
                         ? 'Sort by duration'
                         : durationSortOrder === 'longest'
-                        ? 'Sort: Longest to Shortest'
-                        : 'Sort: Shortest to Longest'
+                          ? 'Sort: Longest to Shortest'
+                          : 'Sort: Shortest to Longest'
                     }
                   >
-                    <ArrowUpDown className={`h-3.5 w-3.5 ${
-                      durationSortOrder 
-                        ? "text-slate-600" 
+                    <ArrowUpDown className={`h-3.5 w-3.5 ${durationSortOrder
+                        ? "text-slate-600"
                         : "text-slate-400 hover:text-slate-600"
-                    } cursor-pointer`} />
+                      } cursor-pointer`} />
                   </button>
                 )}
                 {!mounted && (
                   <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
                 )}
+              </div>
+              <div className="flex items-center justify-center">
+                Conversation Data
               </div>
             </div>
 
@@ -1070,8 +1072,8 @@ function HistoryPageContent() {
               </div>
             ) : paginatedMeetings.length === 0 ? (
               <div className="px-5 py-12 text-center text-slate-500">
-                {activeFilters.length > 0 
-                  ? "No calls match your filters" 
+                {activeFilters.length > 0
+                  ? "No calls match your filters"
                   : "No calls found"}
               </div>
             ) : (
@@ -1082,9 +1084,9 @@ function HistoryPageContent() {
                   "Completed": "bg-green-50 text-green-700",
                   "In Progress": "bg-orange-50 text-orange-700"
                 }
-                
+
                 const isBusy = meeting.call_busy
-                
+
                 const rowContent = (
                   <div
                     onClick={() => {
@@ -1092,17 +1094,15 @@ function HistoryPageContent() {
                         handleMeetingClick(meeting)
                       }
                     }}
-                    className={`grid grid-cols-7 gap-3 px-5 py-4 border-b border-slate-100 items-center hover:bg-slate-50 ${
-                      isBusy ? "cursor-default" : "cursor-pointer"
-                    }`}
+                    className={`grid grid-cols-8 gap-3 px-5 py-4 border-b border-slate-100 items-center hover:bg-slate-50 ${isBusy ? "cursor-default" : "cursor-pointer"
+                      }`}
                   >
                     <div>
                       <span
-                        className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold ${
-                          meeting.inbound
+                        className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold ${meeting.inbound
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-blue-50 text-blue-700"
-                        }`}
+                          }`}
                         style={{
                           minWidth: '84px',
                           justifyContent: 'center',
@@ -1123,7 +1123,7 @@ function HistoryPageContent() {
                             className="mr-1"
                             style={{ opacity: 0.95, verticalAlign: "middle" }}
                           >
-                            <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5V5c0 1.149.15 2.263.43 3.326a13.022 13.022 0 0 0 9.244 9.244c1.063.28 2.177.43 3.326.43h1.5a1.5 1.5 0 0 0 1.5-1.5v-1.148a1.5 1.5 0 0 0-1.175-1.465l-3.223-.716a1.5 1.5 0 0 0-1.767 1.052l-.267.933c-.117.41-.555.643-.95.48a11.542 11.542 0 0 1-6.254-6.254c-.163-.395.07-.833.48-.95l.933-.267a1.5 1.5 0 0 0 1.052-1.767l-.716-3.223A1.5 1.5 0 0 0 4.648 2H3.5Zm13.22.22a.75.75 0 1 1 1.06 1.06L14.56 6.5h2.69a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 1 1.5 0v2.69l3.22-3.22Z"/>
+                            <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5V5c0 1.149.15 2.263.43 3.326a13.022 13.022 0 0 0 9.244 9.244c1.063.28 2.177.43 3.326.43h1.5a1.5 1.5 0 0 0 1.5-1.5v-1.148a1.5 1.5 0 0 0-1.175-1.465l-3.223-.716a1.5 1.5 0 0 0-1.767 1.052l-.267.933c-.117.41-.555.643-.95.48a11.542 11.542 0 0 1-6.254-6.254c-.163-.395.07-.833.48-.95l.933-.267a1.5 1.5 0 0 0 1.052-1.767l-.716-3.223A1.5 1.5 0 0 0 4.648 2H3.5Zm13.22.22a.75.75 0 1 1 1.06 1.06L14.56 6.5h2.69a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 1 1.5 0v2.69l3.22-3.22Z" />
                           </svg>
                         ) : (
                           <svg
@@ -1136,7 +1136,7 @@ function HistoryPageContent() {
                             className="mr-1"
                             style={{ opacity: 0.95, verticalAlign: "middle" }}
                           >
-                            <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5V5c0 1.149.15 2.263.43 3.326a13.022 13.022 0 0 0 9.244 9.244c1.063.28 2.177.43 3.326.43h1.5a1.5 1.5 0 0 0 1.5-1.5v-1.148a1.5 1.5 0 0 0-1.175-1.465l-3.223-.716a1.5 1.5 0 0 0-1.767 1.052l-.267.933c-.117.41-.555.643-.95.48a11.542 11.542 0 0 1-6.254-6.254c-.163-.395.07-.833.48-.95l.933-.267a1.5 1.5 0 0 0 1.052-1.767l-.716-3.223A1.5 1.5 0 0 0 4.648 2H3.5Zm13 2.56l-3.22 3.22a.75.75 0 1 1-1.06-1.06l3.22-3.22h-2.69a.75.75 0 0 1 0-1.5h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V4.56Z"/>
+                            <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5V5c0 1.149.15 2.263.43 3.326a13.022 13.022 0 0 0 9.244 9.244c1.063.28 2.177.43 3.326.43h1.5a1.5 1.5 0 0 0 1.5-1.5v-1.148a1.5 1.5 0 0 0-1.175-1.465l-3.223-.716a1.5 1.5 0 0 0-1.767 1.052l-.267.933c-.117.41-.555.643-.95.48a11.542 11.542 0 0 1-6.254-6.254c-.163-.395.07-.833.48-.95l.933-.267a1.5 1.5 0 0 0 1.052-1.767l-.716-3.223A1.5 1.5 0 0 0 4.648 2H3.5Zm13 2.56l-3.22 3.22a.75.75 0 1 1-1.06-1.06l3.22-3.22h-2.69a.75.75 0 0 1 0-1.5h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V4.56Z" />
                           </svg>
                         )}
                         {meeting.inbound ? "Inbound" : "Outbound"}
@@ -1160,14 +1160,32 @@ function HistoryPageContent() {
                       <span className="text-slate-900">
                         {formatDate(meeting.start_time_utc || meeting.created_at)}
                       </span>
-                      
+
                     </div>
                     <div className="text-sm text-slate-900 flex items-center justify-center">
                       {meeting.call_busy ? "N/A" : formatDuration(meeting.duration, meeting.start_time_utc, meeting.end_time_utc)}
                     </div>
+                    <div className="flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!isBusy) handleMeetingClick(meeting)
+                        }}
+                        disabled={isBusy}
+                        className={`inline-flex flex-col items-center justify-center rounded-lg border px-3 py-1.5 leading-tight ${isBusy
+                            ? "border-slate-200 text-slate-300 cursor-not-allowed"
+                            : "border-slate-200 text-slate-800 hover:bg-slate-50"
+                          }`}
+                        title={isBusy ? "No call log data" : "Open recording and transcript"}
+                      >
+                        <span className="text-xs font-bold tracking-wide">Recording</span>
+                        <span className="text-[10px] text-slate-500">transcription etc</span>
+                      </button>
+                    </div>
                   </div>
                 )
-                
+
                 if (isBusy) {
                   return (
                     <Tooltip key={meeting.meeting_id}>
@@ -1180,7 +1198,7 @@ function HistoryPageContent() {
                     </Tooltip>
                   )
                 }
-                
+
                 return (
                   <div key={meeting.meeting_id}>
                     {rowContent}
@@ -1217,7 +1235,7 @@ function HistoryPageContent() {
         </div>
       </main>
 
-      
+
 
       {/* Meeting Detail Sheet */}
       <MeetingDetailSheet

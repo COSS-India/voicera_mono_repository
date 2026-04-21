@@ -36,11 +36,23 @@ class Settings:
     # Internal API Key for service-to-service communication (bot -> backend)
     INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "")
     
+    # RAG / Knowledge base — Chroma persistence (default: voicera_backend/rag_system/chroma_data)
+    CHROMA_BASE_DIR: str = os.getenv(
+        "CHROMA_BASE_DIR",
+        str(Path(__file__).resolve().parent.parent / "rag_system" / "chroma_data"),
+    )
+
     # Vobiz API Configuration
     VOBIZ_API_BASE_URL: str = os.getenv("VOBIZ_API_BASE_URL", "https://api.vobiz.ai/api/v1")
     VOBIZ_ACCOUNT_ID: str = os.getenv("VOBIZ_ACCOUNT_ID", "")
     VOBIZ_AUTH_ID: str = os.getenv("VOBIZ_AUTH_ID", "")
     VOBIZ_AUTH_TOKEN: str = os.getenv("VOBIZ_AUTH_TOKEN", "")
+    VOICE_SERVER_URL: str = (
+        os.getenv("VOICE_SERVER_URL")
+        or os.getenv("JOHNAIC_SERVER_URL")
+        or "http://localhost:7860"
+    )
+    BATCH_SCHEDULER_POLL_SECONDS: int = int(os.getenv("BATCH_SCHEDULER_POLL_SECONDS", "5"))
     
     @property
     def mongodb_uri(self) -> str:
@@ -53,4 +65,3 @@ class Settings:
 
 # Global settings instance
 settings = Settings()
-
