@@ -2,15 +2,15 @@
 
 # Build all services
 build-all-services:
-	docker compose build mongodb backend minio frontend voice_server nginx --no-cache
+	docker compose build mongodb backend minio frontend voice_server
 
 # Build all services
 start-all-services:
-	docker compose up -d mongodb backend minio frontend voice_server nginx
+	docker compose up -d mongodb backend minio frontend voice_server
 
 # Build all services
 stop-all-services:
-	docker compose down mongodb backend minio frontend voice_server nginx
+	docker compose down mongodb backend minio frontend voice_server
 
 build-backend-services:
 	docker compose build mongodb backend minio
