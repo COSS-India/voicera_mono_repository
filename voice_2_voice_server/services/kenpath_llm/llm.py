@@ -14,10 +14,31 @@ import uuid
 import os
 
 
+# Hold messages and lang codes per language
+KENPATH_HINDI_HOLD_MESSAGES = [
+    "कृपया रुकिए, मैं जानकारी खोज रही हूँ",
+    "एक क्षण रुकिए, मैं जांच कर रही हूँ",
+    "कृपया प्रतीक्षा करें, मैं उत्तर खोज रही हूँ",
+    "थोड़ा समय दें, मैं जानकारी प्राप्त कर रही हूँ",
+]
+KENPATH_MARATHI_HOLD_MESSAGES = [
+    "कृपया थांबा, मी माहिती शोधत आहे",
+    "एक क्षण थांबा, मी तपासत आहे",
+    "कृपया प्रतीक्षा करा, मी उत्तर शोधत आहे",
+    "थोडा वेळ द्या, मी माहिती मिळवत आहे",
+]
+
+
 class KenpathLLM(OpenAILLMService):
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        vistaar_session_id: Optional[str] = None,
+        language: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.response_timeout = 1.0  # seconds
+        self._vistaar_session_id = vistaar_session_id
 
         # JWT config
         self._private_key = Path(os.environ["KENPATH_JWT_PRIVATE_KEY_PATH"]).read_text()
@@ -30,17 +51,24 @@ class KenpathLLM(OpenAILLMService):
         # Shared aiohttp session (created lazily)
         self._session: Optional[aiohttp.ClientSession] = None
 
-        self.hold_messages = [
-            "कृपया थांबा, मी माहिती शोधत आहे",
-            "एक क्षण थांबा, मी तपासत आहे",
-            "कृपया प्रतीक्षा करा, मी उत्तर शोधत आहे",
-            "थोडा वेळ द्या, मी माहिती मिळवत आहे",
-        ]
+        # Language: Hindi -> Hindi hold messages and hi/hi; else Marathi (current behaviour)
+        lang_lower = (language or "").strip().lower()
+        if lang_lower == "hindi":
+            self.hold_messages = list(KENPATH_HINDI_HOLD_MESSAGES)
+            self._source_lang = "hi"
+            self._target_lang = "hi"
+        else:
+            self.hold_messages = list(KENPATH_MARATHI_HOLD_MESSAGES)
+            self._source_lang = "mr"
+            self._target_lang = "mr"
+
         self.hold_message_index = 0
 
         logger.info(
-            f"🤖 KenpathLLM initialized | timeout={self.response_timeout}s | url={self._base_url}"
+            f"🤖 KenpathLLM initialized | timeout={self.response_timeout}s | url={self._base_url} | lang={self._source_lang}"
         )
+        if self._vistaar_session_id:
+            logger.info(f"📞 Vistaar session ID for this call: {self._vistaar_session_id}")
 
     def _generate_jwt(self) -> str:
         """Generate a fresh JWT token (local operation, ~microseconds)."""
@@ -141,13 +169,15 @@ class KenpathLLM(OpenAILLMService):
     async def _stream_vistaar_completions(
         self,
         query: str,
-        source_lang: str = "mr",
-        target_lang: str = "mr",
+        source_lang: Optional[str] = None,
+        target_lang: Optional[str] = None,
         session_id: Optional[str] = None,
     ):
         """Stream words from Vistaar production API with JWT auth."""
         url = f"{self._base_url}/api/voice/"
-        session_id = session_id or str(uuid.uuid4())
+        session_id = session_id or self._vistaar_session_id or str(uuid.uuid4())
+        source_lang = source_lang if source_lang is not None else self._source_lang
+        target_lang = target_lang if target_lang is not None else self._target_lang
 
         params = {
             "query": query,
@@ -160,7 +190,7 @@ class KenpathLLM(OpenAILLMService):
             "Authorization": f"Bearer {self._generate_jwt()}",
         }
 
-        logger.info(f"📡 Calling Vistaar API (session: {session_id[:8]}...)")
+        logger.info(f"📡 Vistaar API request | session_id={session_id} | query={query[:50]}...")
 
         session = await self._get_session()
 

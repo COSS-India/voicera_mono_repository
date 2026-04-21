@@ -314,6 +314,14 @@ class BhashiniSTTService(STTService):
             yield None
             return
 
+        BhashiniSTTService._stt_audio_chunk_count += 1
+        c = BhashiniSTTService._stt_audio_chunk_count
+        if c <= 5 or c % 100 == 0:
+            logger.info(
+                "🎤 Bhashini STT: sending audio to API chunk_count=%d audio_len=%d bytes",
+                c,
+                len(audio),
+            )
         try:
             # logger.debug("STT [AUDIO] Sending {} bytes of audio to Bhashini", len(audio))
             await self._sio.emit("data", (
