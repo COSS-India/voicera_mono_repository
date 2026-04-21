@@ -31,7 +31,7 @@ except ImportError:
 
 
 class IndicConformerRESTSTTService(STTService):
-    """REST client for ai4bharat_stt_server. language_id \"bhb\" (Bhili) uses POST /transcribe/bhili."""
+    """REST client for ai4bharat_stt_server. language_id 'bhb' uses POST /transcribe/bhili."""
 
     def __init__(
         self,
@@ -44,59 +44,71 @@ class IndicConformerRESTSTTService(STTService):
     ):
         if not AIOHTTP_AVAILABLE:
             raise ImportError("aiohttp package required. Install with: pip install aiohttp")
-        
+
         super().__init__(sample_rate=sample_rate, **kwargs)
-        
+
         server_url = os.getenv("INDIC_STT_SERVER_URL")
         if not server_url:
             raise ValueError("INDIC_STT_SERVER_URL environment variable not set")
-        
+
         base = server_url.rstrip("/")
+        self._server_base_url = base
         self._language_id = language_id
-        # bhb = Bhili → NeMo route on the STT server; anything else → Indic Conformer /transcribe
-        self._bhili_endpoint = language_id == "bhb"
-        self._transcribe_url = (
-            f"{base}/transcribe/bhili" if self._bhili_endpoint else f"{base}/transcribe"
-        )
+
+        self._bhili_endpoint = False
+        self._transcribe_url = ""
+        self._refresh_transcribe_url()
+
         self._sample_rate = sample_rate
         self._input_sample_rate = input_sample_rate
-        
+
         self._session: Optional[aiohttp.ClientSession] = None
         self._vad_analyzer: Optional[VADAnalyzer] = vad_analyzer
-        
+
         self._audio_buffer = b""
         self._text_chunks = []
         self._is_speaking = False
-        
+
         self._stopping_start_time: Optional[float] = None
         self._stopping_triggered = False
         self._STOPPING_DURATION_MS = 10
-        
+
         self._resampler = create_stream_resampler()
-        
+
         logger.info(
             f"IndicConformerRESTSTTService initialized - transcribe URL: {self._transcribe_url}"
         )
 
+    def _refresh_transcribe_url(self) -> None:
+        self._bhili_endpoint = self._language_id == "bhb"
+        if self._bhili_endpoint:
+            self._transcribe_url = f"{self._server_base_url}/transcribe/bhili"
+        else:
+            self._transcribe_url = f"{self._server_base_url}/transcribe"
+
+    def _payload_language_id(self) -> str:
+        if self._language_id == "bhb":
+            return "mr"
+        return self._language_id
+
     async def _transcribe_buffer(self) -> str:
         if not self._audio_buffer or len(self._audio_buffer) < 3200:
             return ""
-        
+
         try:
-            audio_b64 = base64.b64encode(self._audio_buffer).decode('utf-8')
-            lid = self._language_id
-            
+            audio_b64 = base64.b64encode(self._audio_buffer).decode("utf-8")
+            lid = self._payload_language_id()
+
             async with self._session.post(
                 self._transcribe_url,
                 json={"audio_b64": audio_b64, "language_id": lid},
-                timeout=aiohttp.ClientTimeout(total=10)
+                timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status == 200:
                     data = await response.json()
                     return data.get("text", "")
-                else:
-                    logger.error(f"Transcription request failed: {response.status}")
-                    return ""
+                logger.error(f"Transcription request failed: {response.status}")
+                return ""
         except Exception as e:
             logger.error(f"Transcription error: {e}")
             return ""
@@ -104,60 +116,60 @@ class IndicConformerRESTSTTService(STTService):
     def _check_stopping_state(self) -> bool:
         if self._vad_analyzer is None:
             return False
-        
+
         try:
             vad_state = self._vad_analyzer._vad_state
-            
+
             if vad_state == VADState.STOPPING:
                 current_time = time.time() * 1000
-                
+
                 if self._stopping_start_time is None:
                     self._stopping_start_time = current_time
                     return False
-                
+
                 duration_ms = current_time - self._stopping_start_time
-                
+
                 if duration_ms >= self._STOPPING_DURATION_MS and not self._stopping_triggered:
                     self._stopping_triggered = True
                     return True
-                
+
                 return False
-            else:
-                self._stopping_start_time = None
-                self._stopping_triggered = False
-                return False
-                
+
+            self._stopping_start_time = None
+            self._stopping_triggered = False
+            return False
+
         except AttributeError:
             return False
 
     async def process_frame(self, frame: Frame, direction):
         # Handle UserStoppedSpeakingFrame BEFORE calling super() to ensure
         # TranscriptionFrame is pushed downstream BEFORE UserStoppedSpeakingFrame
-        # This matches the WebSocket behavior where the server sends final transcription
-        # immediately when is_speaking=false, and the frame reaches aggregator first
+        # This matches the WebSocket behavior where final transcription is emitted first.
         if isinstance(frame, UserStoppedSpeakingFrame):
             logger.debug("VAD: User stopped speaking")
             self._is_speaking = False
             self._stopping_start_time = None
             self._stopping_triggered = False
-            
+
             # Push final transcription BEFORE the UserStoppedSpeakingFrame
-            # so aggregator receives transcription first, then stop frame
             if self._text_chunks:
                 accumulated = " ".join(self._text_chunks)
                 logger.info(f"Final: {accumulated}")
-                await self.push_frame(TranscriptionFrame(
-                    text=accumulated,
-                    user_id=self._user_id,
-                    timestamp=str(int(time.time() * 1000))
-                ))
+                await self.push_frame(
+                    TranscriptionFrame(
+                        text=accumulated,
+                        user_id=self._user_id,
+                        timestamp=str(int(time.time() * 1000)),
+                    )
+                )
                 # Clear everything after sending
                 self._text_chunks = []
                 self._audio_buffer = b""
-        
-        # Now call parent's process_frame which will push UserStoppedSpeakingFrame downstream
+
+        # Parent will push UserStoppedSpeakingFrame downstream
         await super().process_frame(frame, direction)
-        
+
         if isinstance(frame, UserStartedSpeakingFrame):
             logger.debug("VAD: User started speaking")
             self._is_speaking = True
@@ -185,17 +197,17 @@ class IndicConformerRESTSTTService(STTService):
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
         if not audio:
             return
-        
+
         try:
             resampled_audio = audio
             if self._input_sample_rate != self._sample_rate:
                 resampled_audio = await self._resampler.resample(
                     audio,
                     self._input_sample_rate,
-                    self._sample_rate
+                    self._sample_rate,
                 )
-            
-            self._audio_buffer += resampled_audio            
+
+            self._audio_buffer += resampled_audio
             if self._check_stopping_state():
                 logger.info("STOPPING state triggered, transcribing buffer")
                 text = await self._transcribe_buffer()
@@ -206,24 +218,22 @@ class IndicConformerRESTSTTService(STTService):
                     yield InterimTranscriptionFrame(
                         text=accumulated,
                         user_id=self._user_id,
-                        timestamp=str(int(time.time() * 1000))
+                        timestamp=str(int(time.time() * 1000)),
                     )
                 self._audio_buffer = b""
-            
-            # Note: Final transcription is now sent immediately in process_frame()
-            # when UserStoppedSpeakingFrame is received, matching WebSocket behavior
-                
+
+            # Final transcription is sent in process_frame() on UserStoppedSpeakingFrame
+
         except Exception as e:
             logger.error(f"STT processing error: {e}")
             yield ErrorFrame(f"STT processing failed: {str(e)}")
 
     async def set_language(self, language_id: str) -> None:
-        if self._bhili_endpoint:
-            self._language_id = "bhb"
-            logger.info("Bhili STT endpoint: language_id remains bhb")
-        else:
-            self._language_id = language_id
-            logger.info(f"Language changed to: {language_id}")
+        self._language_id = language_id
+        self._refresh_transcribe_url()
+        logger.info(
+            f"Language changed to: {language_id} | endpoint: {self._transcribe_url} | payload_language: {self._payload_language_id()}"
+        )
 
     def get_model_info(self) -> Dict[str, Any]:
         return {
@@ -240,8 +250,9 @@ class IndicConformerRESTSTTService(STTService):
 
     def get_supported_languages(self) -> list:
         return [
+            "bhb",
             "as", "bn", "brx", "doi", "gu", "hi", "kn", "kok", "ks", "mai",
-            "ml", "mni", "mr", "ne", "or", "pa", "sa", "sat", "sd", "ta", "te", "ur"
+            "ml", "mni", "mr", "ne", "or", "pa", "sa", "sat", "sd", "ta", "te", "ur",
         ]
 
     def can_generate_metrics(self) -> bool:
