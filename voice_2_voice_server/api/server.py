@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
 
-from .bot import bot, ubona_bot
+from .bot import bot, ubona_bot, telnyx_bot
 from .telemetry import router as telemetry_router
 from .backend_utils import (
     create_meeting_in_backend,
@@ -158,6 +158,102 @@ async def make_outbound_call_vobiz(
     result = response.json()
     logger.info(f"✅ Call initiated: {result.get('call_uuid', 'unknown')}")
     return result
+
+
+async def make_outbound_call_telnyx(
+    customer_number: str,
+    agent_id: str,
+    caller_id: Optional[str] = None,
+) -> dict:
+    """Initiate an outbound call via the Telnyx Call Control API.
+
+    Credentials are read from environment variables (not the backend
+    Integrations collection) because the Telnyx integration is currently
+    configured at the server level. If we later want per-org Telnyx
+    credentials we can mirror the pattern used in make_outbound_call_vobiz().
+
+    Args:
+        customer_number: E.164 destination number (for example "+14155550123").
+        agent_id: Voicera agent ID used in the TeXML webhook query string.
+        caller_id: Optional E.164 override for the From number. Falls back to
+            TELNYX_CALLER_ID when not provided.
+
+    Returns:
+        Parsed JSON response from POST https://api.telnyx.com/v2/calls.
+
+    Raises:
+        ValueError: If any required environment variable is missing.
+        httpx.HTTPStatusError: If the Telnyx API returns a non-2xx status.
+    """
+    import httpx  # fastapi[all] brings httpx in; avoid pulling telnyx SDK.
+
+    api_key = _get_env_or_raise("TELNYX_API_KEY")
+    connection_id = _get_env_or_raise("TELNYX_CONNECTION_ID")
+    server_url = _get_env_or_raise("JOHNAIC_SERVER_URL")
+    from_number = caller_id or _get_env_or_raise("TELNYX_CALLER_ID")
+
+    webhook_url = f"{server_url}/telnyx/answer?agent_id={agent_id}"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "connection_id": connection_id,
+        "to": customer_number,
+        "from": from_number,
+        "webhook_url": webhook_url,
+        "webhook_url_method": "POST",
+    }
+
+    ws_url = os.environ.get("JOHNAIC_WEBSOCKET_URL", "<not set>")
+    logger.info(
+        "📞 Telnyx outbound call: {} → {} agent={} | webhook_url={} | websocket_base={}",
+        from_number,
+        customer_number,
+        agent_id,
+        webhook_url,
+        ws_url,
+    )
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.telnyx.com/v2/calls",
+            json=payload,
+            headers=headers,
+            timeout=30,
+        )
+        response.raise_for_status()
+        result = response.json()
+
+    # Telnyx wraps the resource in a "data" key.
+    data = result.get("data", {}) if isinstance(result, dict) else {}
+    call_control_id = data.get("call_control_id", "unknown")
+    logger.info(f"✅ Telnyx call initiated: call_control_id={call_control_id}")
+    return result
+
+
+def _build_telnyx_stream_xml(websocket_url: str) -> str:
+    """Build the TeXML response that tells Telnyx to start a bidirectional stream.
+
+    Telnyx's TeXML <Stream> element is compatible with Twilio's and accepts the
+    audio/x-l16;rate=16000 contentType when we want 16kHz PCM. Default remains
+    mu-law 8kHz so a fresh deploy works out of the box.
+    """
+    sample_rate = int(os.environ.get("SAMPLE_RATE", "8000"))
+    if sample_rate == 16000:
+        content_type = "audio/x-l16;rate=16000"
+    else:
+        content_type = "audio/x-mulaw;rate=8000"
+
+    logger.info(f"Sending Telnyx TeXML with contentType: {content_type}")
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<Response>\n"
+        f'    <Stream url="{websocket_url}" bidirectional="true" '
+        f'contentType="{content_type}" />\n'
+        "</Response>"
+    )
 
 
 def _build_stream_xml(websocket_url: str) -> str:
@@ -557,6 +653,179 @@ async def ubona_stream(websocket: WebSocket, agent_id: str):
         logger.debug(traceback.format_exc())
     finally:
         logger.info(f"🔌 Ubona WS closed: call_id={call_id}")
+
+# === Telnyx routes ===
+
+class TelnyxOutboundCallRequest(BaseModel):
+    """Request model for initiating outbound Telnyx calls."""
+    customer_number: str
+    agent_id: str
+    caller_id: Optional[str] = None
+
+
+@app.post("/telnyx/outbound/call/")
+async def make_telnyx_outbound_call(request: TelnyxOutboundCallRequest):
+    """Initiate an outbound call via Telnyx Call Control.
+
+    Mirrors /outbound/call/ for Vobiz but routes through Telnyx.
+    """
+    try:
+        result = await make_outbound_call_telnyx(
+            request.customer_number,
+            request.agent_id,
+            request.caller_id,
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "message": "Telnyx outbound call initiated",
+                "customer_number": request.customer_number,
+                "agent_id": request.agent_id,
+                "caller_id": request.caller_id,
+                "result": result,
+            },
+        )
+    except ValueError as e:
+        logger.error(f"❌ Invalid Telnyx request: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"❌ Telnyx outbound call failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.api_route("/telnyx/answer", methods=["GET", "POST"])
+async def telnyx_answer_webhook(request: Request):
+    """TeXML answer webhook.
+
+    Telnyx hits this URL when the outbound (or inbound) call connects. We
+    respond with a <Stream> TeXML instruction pointing at our WebSocket, and
+    Telnyx then opens a bidirectional media stream there.
+    """
+    agent_id = request.query_params.get("agent_id")
+
+    # Telnyx may send form-encoded (TeXML webhooks) or JSON (Call Control
+    # webhooks). Read both defensively so we don't crash either way.
+    form_data_dict: Dict[str, Any] = {}
+    try:
+        form_data = await request.form()
+        form_data_dict = dict(form_data)
+    except Exception:
+        form_data_dict = {}
+
+    if not form_data_dict:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                form_data_dict = body
+        except Exception:
+            form_data_dict = {}
+
+    logger.info(
+        "📞 Telnyx answer webhook: method={} agent_id={} keys={}",
+        request.method,
+        agent_id,
+        list(form_data_dict.keys()),
+    )
+
+    ws_prefix = os.environ.get("JOHNAIC_WEBSOCKET_URL", "")
+    if not ws_prefix:
+        logger.warning(
+            "📞 Telnyx answer webhook: JOHNAIC_WEBSOCKET_URL not set; returning empty TeXML"
+        )
+    websocket_url = f"{ws_prefix}/telnyx/stream/{agent_id}"
+    xml_body = _build_telnyx_stream_xml(websocket_url)
+
+    logger.info(
+        "📞 Telnyx answer webhook: returning Stream TeXML | websocket_url={}",
+        websocket_url,
+    )
+    return Response(content=xml_body, media_type="application/xml")
+
+
+@app.websocket("/telnyx/stream/{agent_id}")
+async def telnyx_websocket_endpoint(websocket: WebSocket, agent_id: str):
+    """WebSocket endpoint for Telnyx Media Streaming.
+
+    Telnyx frames follow the connected → start → media → stop sequence.
+    The "start" event carries call_control_id and stream_id that we need
+    to forward to the pipeline (so the serializer can hang the call up on
+    EndFrame via the Call Control API).
+    """
+    logger.info(
+        "🔌 Telnyx WebSocket CONNECTION ATTEMPT: /telnyx/stream/{}", agent_id
+    )
+    await websocket.accept()
+    logger.info(
+        "🔌 Telnyx WebSocket ACCEPTED: agent_id={} - waiting for 'start' event",
+        agent_id,
+    )
+
+    call_control_id: Optional[str] = None
+    stream_id: Optional[str] = None
+
+    try:
+        agent_config = await fetch_agent_config_from_backend(agent_id)
+        if not agent_config:
+            logger.error(f"❌ Failed to fetch agent config from backend: {agent_id}")
+            await websocket.close(code=1008, reason="Agent config not found")
+            return
+        agent_type = agent_config.get("agent_type")
+        logger.info(f"📥 Telnyx agent config: {agent_config}")
+
+        # Skip optional "connected" preamble, same pattern as Vobiz.
+        first_message = await websocket.receive_text()
+        data = json.loads(first_message)
+        first_event = data.get("event", "<no event key>")
+        logger.info(
+            f"📨 Telnyx first WS message: event={first_event}, keys={list(data.keys())}"
+        )
+
+        if first_event == "connected":
+            logger.info("📨 Telnyx: skipping 'connected' event, waiting for 'start'")
+            first_message = await websocket.receive_text()
+            data = json.loads(first_message)
+            first_event = data.get("event", "<no event key>")
+            logger.info(
+                f"📨 Telnyx second WS message: event={first_event}, keys={list(data.keys())}"
+            )
+
+        if first_event != "start":
+            logger.warning(
+                f"⚠️ Telnyx: expected 'start' event, got: {first_event}. keys={list(data.keys())}"
+            )
+            return
+
+        start_info = data.get("start", {})
+        # Telnyx places ids under the "start" object, but we also check the top
+        # level to be forgiving across protocol variants.
+        call_control_id = (
+            start_info.get("call_control_id")
+            or data.get("call_control_id")
+            or "unknown"
+        )
+        stream_id = (
+            start_info.get("stream_id")
+            or data.get("stream_id")
+            or data.get("streamId")
+            or "unknown"
+        )
+
+        logger.info(
+            f"📞 Telnyx call started: call_control_id={call_control_id}, stream_id={stream_id}"
+        )
+
+        await telnyx_bot(websocket, stream_id, call_control_id, agent_type, agent_config)
+
+    except FileNotFoundError as e:
+        logger.error(f"❌ {e}")
+        await websocket.close(code=1008, reason="Agent config not found")
+    except Exception as e:
+        logger.error(f"❌ Telnyx WebSocket error: {e}")
+        logger.debug(traceback.format_exc())
+    finally:
+        logger.info(f"🔌 Telnyx WebSocket closed: call_control_id={call_control_id}")
+
 
 def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info"):
     """Run the server with optimized settings for low-latency voice applications.

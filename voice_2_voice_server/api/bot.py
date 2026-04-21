@@ -29,6 +29,7 @@ from pipecat.transports.websocket.fastapi import (
 from storage.minio_client import MinIOStorage
 from serializer.vobiz_serializer import VobizFrameSerializer
 from serializer.ubona_serializer import UbonaFrameSerializer
+from serializer.telnyx_serializer import TelnyxFrameSerializer
 from .services import (
     create_llm_service,
     create_stt_service,
@@ -540,3 +541,159 @@ async def ubona_bot(
                 logger.error(f"Failed to save transcript: {e}")
 
         await submit_call_recording(call_sid=call_id, agent_type=agent_type, agent_config=agent_config, storage=storage, call_start_time=call_start_time)
+
+
+async def telnyx_bot(
+    websocket_client,
+    stream_id: str,
+    call_control_id: str,
+    agent_type: str,
+    agent_config: dict,
+    transcript_callback: Optional[Callable[[str, str, Optional[str]], Awaitable[None]]] = None,
+) -> None:
+    """Telnyx bot entry point - sets up transport and runs the pipeline.
+
+    Mirrors the structure of bot() (used for Vobiz) but wires in
+    TelnyxFrameSerializer so we decode Telnyx's Media Streaming protocol
+    (PCMU by default, L16 at 16kHz when negotiated via TeXML).
+
+    Args:
+        websocket_client: The FastAPI WebSocket from /telnyx/stream/{agent_id}.
+        stream_id: Telnyx stream_id from the "start" event.
+        call_control_id: Telnyx call_control_id from the "start" event.
+            Needed for auto hang-up via the Call Control API.
+        agent_type: Resolved agent type (used to pick services).
+        agent_config: Full agent configuration dict.
+        transcript_callback: Optional transcript event callback.
+    """
+    sample_rate = _get_sample_rate()
+    session_timeout = agent_config.get("session_timeout_minutes", 10) * 60
+
+    call_start_time = time.monotonic()
+    storage = MinIOStorage.from_env()
+
+    # 16kHz => L16 (Raw PCM); 8kHz => PCMU (mu-law). Telnyx spec.
+    if sample_rate == 16000:
+        inbound_encoding = "L16"
+        outbound_encoding = "L16"
+    else:
+        inbound_encoding = "PCMU"
+        outbound_encoding = "PCMU"
+
+    telnyx_api_key = os.environ.get("TELNYX_API_KEY")
+
+    serializer = TelnyxFrameSerializer(
+        stream_id=stream_id,
+        call_control_id=call_control_id,
+        outbound_encoding=outbound_encoding,
+        inbound_encoding=inbound_encoding,
+        api_key=telnyx_api_key,
+        params=TelnyxFrameSerializer.InputParams(
+            telnyx_sample_rate=sample_rate,
+            sample_rate=sample_rate,
+        ),
+    )
+
+    vad_analyzer = SileroVADAnalyzer(
+        sample_rate=sample_rate,
+        params=VADParams(
+            stop_secs=0.35,
+            min_volume=0.3,
+            confidence=0.4,
+            start_secs=0.1,
+        ),
+    )
+    vad_analyzer._smoothing_factor = 0.1
+
+    import pipecat.transports.base_input
+    pipecat.transports.base_input.AUDIO_INPUT_TIMEOUT_SECS = 0.1
+    import pipecat.transports.base_output
+    pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
+
+    websocket_client = _LoggingWebSocketWrapper(websocket_client, call_sid=call_control_id)
+    logger.info(
+        "Telnyx WebSocket logging enabled for call_control_id=%s", call_control_id
+    )
+
+    transport = FastAPIWebsocketTransport(
+        websocket=websocket_client,
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            vad_analyzer=vad_analyzer,
+            serializer=serializer,
+            audio_in_passthrough=True,
+            session_timeout=session_timeout,
+            audio_out_10ms_chunks=2,
+        ),
+    )
+
+    patch_immediate_first_chunk(transport)
+
+    audiobuffer = AudioBufferProcessor()
+    transcript = TranscriptProcessor()
+    call_data = {
+        "audio_chunks": [],
+        "audio_sample_rate": None,
+        "audio_num_channels": None,
+        "transcript_lines": [],
+    }
+
+    @audiobuffer.event_handler("on_audio_data")
+    async def on_audio_data(buffer, audio, sample_rate, num_channels):
+        call_data["audio_chunks"].append(audio)
+        if call_data["audio_sample_rate"] is None:
+            call_data["audio_sample_rate"] = sample_rate
+            call_data["audio_num_channels"] = num_channels
+
+    @transcript.event_handler("on_transcript_update")
+    async def on_transcript_update(processor, frame):
+        for message in frame.messages:
+            ts = f"[{message.timestamp}] " if message.timestamp else ""
+            call_data["transcript_lines"].append(f"{ts}{message.role}: {message.content}")
+            if transcript_callback is not None:
+                try:
+                    await transcript_callback(message.role, message.content, message.timestamp)
+                except Exception as cb_err:
+                    logger.warning(f"transcript_callback error: {cb_err}")
+
+    try:
+        await run_bot(
+            transport,
+            agent_config,
+            audiobuffer,
+            transcript,
+            vad_analyzer=vad_analyzer,
+            vistaar_session_id=call_control_id,
+        )
+    finally:
+        logger.info(f"Saving Telnyx call data for {call_control_id}...")
+        if call_data["audio_chunks"] and call_data["audio_sample_rate"]:
+            try:
+                await storage.save_recording_from_chunks(
+                    call_control_id,
+                    call_data["audio_chunks"],
+                    call_data["audio_sample_rate"],
+                    call_data["audio_num_channels"],
+                )
+                logger.info(f"Saved {len(call_data['audio_chunks'])} audio chunks")
+            except Exception as e:
+                logger.error(f"Failed to save audio: {e}")
+
+        if call_data["transcript_lines"]:
+            try:
+                await storage.save_transcript_from_lines(
+                    call_control_id, call_data["transcript_lines"]
+                )
+                logger.info(f"Saved {len(call_data['transcript_lines'])} transcript lines")
+            except Exception as e:
+                logger.error(f"Failed to save transcript: {e}")
+
+        await submit_call_recording(
+            call_sid=call_control_id,
+            agent_type=agent_type,
+            agent_config=agent_config,
+            storage=storage,
+            call_start_time=call_start_time,
+        )
