@@ -521,9 +521,13 @@ def create_tts_service(
         if model == "indic-parler-tts":
             speaker = tts_config.get("speaker") or args.get("speaker")
             description = tts_config.get("description") or args.get("description")
+            language_id = (
+                TTS_LANGUAGE_MAP[provider].get(language, language) if language else "hi"
+            )
             return IndicParlerRESTTTSService(
                 speaker=speaker,
                 description=description,
+                language_id=language_id,
                 sample_rate=sample_rate
             )
         else:

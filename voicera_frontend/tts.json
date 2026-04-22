@@ -126,8 +126,9 @@
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,
@@ -163,8 +164,9 @@
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,
@@ -185,8 +187,9 @@
       "Telugu": {
         "models": {
           "deepgram": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "model": "aura-2",
+            "voices": ["thalia", "arcas", "helena", "andromeda", "apollo"]
           },
           "gcp": {
             "available": true,
@@ -194,8 +197,9 @@
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,
@@ -231,8 +235,9 @@
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,
@@ -268,8 +273,9 @@
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,
@@ -305,8 +311,9 @@
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,
@@ -342,8 +349,9 @@
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,
@@ -379,8 +387,9 @@
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,
@@ -416,8 +425,9 @@
             "voices": []
           },
           "cartesia": {
-            "available": false,
-            "voices": []
+            "available": true,
+            "models": ["sonic-3", "sonic-multilingual"],
+            "voices": "use Cartesia voice library"
           },
           "sarvam": {
             "available": true,

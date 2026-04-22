@@ -35,6 +35,7 @@ class IndicParlerRESTTTSService(TTSService):
         *,
         speaker: str | None = "Divya",
         description: str = "A clear, natural voice with good audio quality.",
+        language_id: str = "hi",
         sample_rate: int = 44100,
         **kwargs,
     ):
@@ -45,6 +46,7 @@ class IndicParlerRESTTTSService(TTSService):
         self._ws_url = _ws_url(server_url)
         self._speaker = speaker
         self._description = description
+        self._language_id = language_id
         self._session: aiohttp.ClientSession | None = None
 
     def _description_for_server(self) -> str:
@@ -85,7 +87,11 @@ class IndicParlerRESTTTSService(TTSService):
             async with session.ws_connect(self._ws_url, autoping=True) as ws:
                 await ws.send_str(
                     json.dumps(
-                        {"prompt": text, "description": self._description_for_server()}
+                        {
+                            "prompt": text,
+                            "description": self._description_for_server(),
+                            "language": self._language_id,
+                        }
                     )
                 )
 

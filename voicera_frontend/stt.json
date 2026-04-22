@@ -29,7 +29,7 @@
       },
       "Bengali": {
         "models": {
-          "deepgram": [],
+          "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2"],
           "sarvam": ["saarika:v2", "saarika:v2.5"],
           "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
@@ -39,7 +39,7 @@
       },
       "Tamil": {
         "models": {
-          "deepgram": [],
+          "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2"],
           "sarvam": ["saarika:v2", "saarika:v2.5"],
           "ai4bharat": ["indic-conformer-stt"],
@@ -48,7 +48,7 @@
       },
       "Telugu": {
         "models": {
-          "deepgram": [],
+          "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2"],
           "sarvam": ["saarika:v2", "saarika:v2.5"],
           "ai4bharat": ["indic-conformer-stt"],
@@ -57,7 +57,7 @@
       },
       "Marathi": {
         "models": {
-          "deepgram": [],
+          "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2"],
           "sarvam": ["saarika:v2", "saarika:v2.5"],
           "ai4bharat": ["indic-conformer-stt"],
@@ -71,7 +71,7 @@
       },
       "Gujarati": {
         "models": {
-          "deepgram": [],
+          "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2"],
           "sarvam": ["saarika:v2", "saarika:v2.5"],
           "ai4bharat": ["indic-conformer-stt"],
@@ -80,7 +80,7 @@
       },
       "Kannada": {
         "models": {
-          "deepgram": [],
+          "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2"],
           "sarvam": ["saarika:v2", "saarika:v2.5"],
           "ai4bharat": ["indic-conformer-stt"],
@@ -89,7 +89,7 @@
       },
       "Malayalam": {
         "models": {
-          "deepgram": [],
+          "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2"],
           "sarvam": ["saarika:v2", "saarika:v2.5"],
           "ai4bharat": ["indic-conformer-stt"],
@@ -98,7 +98,7 @@
       },
       "Punjabi": {
         "models": {
-          "deepgram": [],
+          "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2"],
           "sarvam": ["saarika:v2", "saarika:v2.5"],
           "ai4bharat": ["indic-conformer-stt"],
