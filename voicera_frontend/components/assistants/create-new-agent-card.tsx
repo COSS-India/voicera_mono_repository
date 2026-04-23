@@ -10,8 +10,7 @@ export function CreateNewAgentCard({ onCreateNew }: CreateNewAgentCardProps) {
   return (
     <div
       onClick={onCreateNew}
-      className="shadow-md cursor-pointer group relative bg-white rounded-2xl border border-dashed border-slate-300 overflow-hidden hover:shadow-lg hover:border-slate-400 transition-all duration-300"
-      style={{ minHeight: "360px", minWidth: "0" }}
+      className="group relative flex min-h-[190px] cursor-pointer items-center justify-center overflow-hidden rounded-[14px] border border-[#e0ddd6] bg-white p-4 text-center transition-all duration-150 hover:-translate-y-[2px]"
       tabIndex={0}
       role="button"
       aria-label="Create New Agent"
@@ -22,33 +21,25 @@ export function CreateNewAgentCard({ onCreateNew }: CreateNewAgentCardProps) {
         }
       }}
     >
-      {/* Top Bar: Icon placement (empty for plus card) */}
-      <div className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between">
-        <div className="h-9 w-9 rounded-lg bg-white/80 backdrop-blur-sm border border-slate-200/50 flex items-center justify-center shadow-sm opacity-0" />
-        <div className="h-9 w-9" />
-      </div>
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundColor: "#FFFFFF",
+          backgroundImage: "radial-gradient(circle, #e7e4de 1.2px, transparent 1.2px)",
+          backgroundSize: "28px 28px",
+        }}
+      />
 
-      {/* Wave Hero Section (grey - like placeholder) */}
-      <div className="relative h-40 bg-gradient-to-br from-slate-50 via-white to-slate-50 overflow-hidden flex items-center justify-center">
-        {/* Simple animated "pulse" ring for plus */}
-        <div className="relative flex flex-col items-center justify-center w-full h-full">
-          <span className="absolute inline-flex h-20 w-20 rounded-full bg-slate-200 opacity-30 animate-pulse" />
-          <span className="inline-flex h-16 w-16 rounded-full border-4 border-slate-300 items-center justify-center bg-white z-10 group-hover:border-slate-400 transition-colors">
-            <Plus className="h-7 w-7 text-slate-400 group-hover:text-slate-600 transition-colors" />
-          </span>
+      <div className="relative z-[1] flex flex-col items-center">
+        <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-[#d6d2cb] bg-white">
+          <Plus className="h-6 w-6 text-[#5a5650]" />
         </div>
-        {/* Subtle overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
-      </div>
-
-      {/* Content Section */}
-      <div className="px-5 pb-5 -mt-2 flex flex-col h-[120px] items-center justify-center">
-        <h3 className="text-lg font-semibold text-slate-900 mb-2 text-center">
-          Create New Agent
-        </h3>
-        <p className="text-sm text-slate-500 text-center">
-          Generate a new AI agent for your team
-        </p>
+        <div className="mt-3">
+          <h3 className="text-[18px] font-semibold text-[#2e2b27]">Create New Agent</h3>
+          <p className="mt-1.5 text-[13px] leading-[1.5] text-[#8a8680]">
+            Generate a new AI agent for your team
+          </p>
+        </div>
       </div>
     </div>
   )

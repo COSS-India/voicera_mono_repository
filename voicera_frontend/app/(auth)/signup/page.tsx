@@ -65,12 +65,17 @@ export default function SignupPage() {
           <div>
             {/* Animated logo section */}
             <motion.div
-              className="mb-8 bg-white rounded-lg p-2 inline-block"
+              className="-ml-1 mb-8 block"
               initial={{ opacity: 0, y: -35 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ type: "spring", stiffness: 60, damping: 15, delay: 0.1 }}
             >
-              <img src="/ekstep.svg" alt="Ekstep" className="h-14 w-16" />
+              <img
+                src="/voicera-logo-black-source.png"
+                alt="VoiceRA"
+                className="h-[92px] w-auto max-w-[340px]"
+                style={{ filter: "brightness(0) invert(1)" }}
+              />
             </motion.div>
             
             <div className="max-w-lg">
@@ -162,8 +167,6 @@ export default function SignupPage() {
             transition={{ type: "spring", stiffness: 60, damping: 16, delay: 0.67 }}
           >
             <div className="flex items-center gap-4 text-white/60 text-sm mb-2">
-              <span>EkStep Foundation © 2026</span>
-              <span>·</span>
               <Link href="#" className="hover:text-white transition-colors">Privacy</Link>
               <span>·</span>
               <Link href="#" className="hover:text-white transition-colors">Terms</Link>
@@ -183,20 +186,12 @@ export default function SignupPage() {
         >
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
-            <div className="h-10 w-10 rounded-lg bg-slate-900 flex items-center justify-center">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                className="w-6 h-6 text-white"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" x2="12" y1="19" y2="22" />
-              </svg>
-            </div>
-            <span className="text-xl font-semibold text-slate-900">EkStep</span>
+            <img
+              src="/voicera-logo-black-source.png"
+              alt="VoiceRA"
+              className="h-10 w-auto max-w-[180px]"
+              style={{ filter: "brightness(0) saturate(100%)" }}
+            />
           </div>
 
           <div className="mb-8">

@@ -399,9 +399,7 @@ export function TestBrowserDialog({
             ref={transcriptViewportRef}
             className="mb-3 max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3"
           >
-            {transcripts.length === 0 ? (
-              <p className="text-xs text-slate-500">Transcript will appear here during the session.</p>
-            ) : (
+            {transcripts.length > 0 && (
               <div className="space-y-2">
                 {transcripts.map((t) => (
                   <div key={t.id} className={`flex ${t.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -419,41 +417,26 @@ export function TestBrowserDialog({
                     </div>
                   </div>
                 ))}
+                {transcripts.length === 0 && (
+                  <div className="flex justify-center items-center h-full">
+                    <p className="text-sm text-slate-500">No transcripts yet</p>
+                  </div>
+                )}
+               
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center">
             <div className="flex items-center gap-2 text-sm text-slate-700">
               <Radio className={`h-4 w-4 ${isConnected ? "text-green-600" : "text-slate-400"}`} />
               <span>Status: {sessionLabel}</span>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!isConnected}
-              onClick={() =>
-                setIsMuted((v) => {
-                  const next = !v
-                  isMutedRef.current = next
-                  return next
-                })
-              }
-              className={
-                isMuted
-                  ? "h-8 border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                  : "h-8 border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-              }
-            >
-              {isMuted ? <MicOff className="h-4 w-4 mr-1" /> : <Mic className="h-4 w-4 mr-1" />}
-              {isMuted ? "Unmute" : "Mute"}
-            </Button>
           </div>
           {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2 justify-center sm:justify-center">
           {!isConnected ? (
             <Button type="button" onClick={startSession} disabled={isConnecting || !agent?.agent_id}>
               {isConnecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mic className="h-4 w-4 mr-2" />}
@@ -465,6 +448,26 @@ export function TestBrowserDialog({
               End Session
             </Button>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!isConnected}
+            onClick={() =>
+              setIsMuted((v) => {
+                const next = !v
+                isMutedRef.current = next
+                return next
+              })
+            }
+            className={
+              isMuted
+                ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+            }
+          >
+            {isMuted ? <MicOff className="h-4 w-4 mr-1" /> : <Mic className="h-4 w-4 mr-1" />}
+            {isMuted ? "Unmute" : "Mute"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -108,11 +108,11 @@ function NavigationProgressInner() {
       aria-hidden
     >
       {phase === "busy" ? (
-        <div className="relative h-full w-full bg-indigo-500/15">
-          <div className="nav-progress-indeterminate h-full w-[42%] rounded-r-sm bg-indigo-600 shadow-[0_0_14px_rgba(79,70,229,0.55)]" />
+        <div className="relative h-full w-full bg-black/10">
+          <div className="nav-progress-indeterminate h-full w-[42%] rounded-r-sm bg-black shadow-[0_0_14px_rgba(0,0,0,0.45)]" />
         </div>
       ) : (
-        <div className="nav-progress-exit h-full w-full origin-left bg-indigo-600 shadow-[0_0_14px_rgba(79,70,229,0.45)]" />
+        <div className="nav-progress-exit h-full w-full origin-left bg-black shadow-[0_0_14px_rgba(0,0,0,0.35)]" />
       )}
     </div>
   )
