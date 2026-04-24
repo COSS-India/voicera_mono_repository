@@ -10,3 +10,5 @@ __pycache__/*
 models/IndicConformer.nemo
 IndicConformer.nemo
 bhili-asr/
+
+run_stt_benchmark.py

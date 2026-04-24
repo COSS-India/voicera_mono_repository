@@ -479,6 +479,113 @@ function HistoryPageContent() {
     doc.save(`meetings_export_${format(new Date(), "yyyy-MM-dd")}.pdf`)
   }
 
+  const escapeCsvValue = (value: string) => {
+    if (value.includes(",") || value.includes("\"") || value.includes("\n")) {
+      return `"${value.replace(/"/g, "\"\"")}"`
+    }
+    return value
+  }
+
+  const buildTranscriptText = (meeting: Meeting) => {
+    if (meeting.transcript_content && meeting.transcript_content.trim()) {
+      return meeting.transcript_content.trim()
+    }
+
+    if (Array.isArray(meeting.transcript) && meeting.transcript.length > 0) {
+      return meeting.transcript
+        .map((message) => {
+          const role = message.role || "unknown"
+          const timestamp = message.timestamp ? `[${message.timestamp}] ` : ""
+          return `${timestamp}${role}: ${message.content}`
+        })
+        .join("\n")
+        .trim()
+    }
+
+    return ""
+  }
+
+  const prepareTranscriptExportData = (meetingsToExport: Meeting[]) => {
+    return meetingsToExport
+      .map((meeting) => {
+        const transcriptText = buildTranscriptText(meeting)
+        return {
+          "Meeting ID": meeting.meeting_id || "-",
+          "Agent Name": meeting.agent_type || "-",
+          "To Number": meeting.to_number || "-",
+          "From Number": meeting.from_number || "-",
+          "Call Type": meeting.inbound ? "Inbound" : "Outbound",
+          "Called On": formatDate(meeting.start_time_utc || meeting.created_at),
+          Transcript: transcriptText,
+        }
+      })
+      .filter((row) => row.Transcript.trim().length > 0)
+  }
+
+  const exportTranscriptRowsToCSV = (
+    rows: Array<Record<string, string>>,
+    fileName: string
+  ) => {
+    if (rows.length === 0) {
+      alert("No transcriptions available to export")
+      return
+    }
+
+    const headers = Object.keys(rows[0])
+    const csvRows = [
+      headers.join(","),
+      ...rows.map((row) =>
+        headers.map((header) => escapeCsvValue(String(row[header] ?? ""))).join(",")
+      ),
+    ]
+
+    const csvContent = csvRows.join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", fileName)
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const exportAllTranscriptionsToCSV = () => {
+    const transcriptRows = prepareTranscriptExportData(filteredMeetings)
+    exportTranscriptRowsToCSV(
+      transcriptRows,
+      `transcriptions_export_${format(new Date(), "yyyy-MM-dd")}.csv`
+    )
+  }
+
+  const exportSelectedAgentTranscriptionsToCSV = () => {
+    const selectedAgentFilter = activeFilters.find(
+      (filter) => filter.field === "assistant_name"
+    )
+
+    if (!selectedAgentFilter) {
+      alert("Please select an agent filter first")
+      return
+    }
+
+    const agentMeetings = filteredMeetings.filter(
+      (meeting) => meeting.agent_type === selectedAgentFilter.value
+    )
+    const transcriptRows = prepareTranscriptExportData(agentMeetings)
+    const safeAgentName = selectedAgentFilter.value
+      .trim()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_-]/g, "")
+      .toLowerCase() || "agent"
+
+    exportTranscriptRowsToCSV(
+      transcriptRows,
+      `transcriptions_${safeAgentName}_${format(new Date(), "yyyy-MM-dd")}.csv`
+    )
+  }
+
   const handleMeetingClick = async (meeting: Meeting) => {
     setSelectedMeeting(meeting)
     setIsSheetOpen(true)
@@ -719,6 +826,12 @@ function HistoryPageContent() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={exportToCSV}>Export as CSV</DropdownMenuItem>
                 <DropdownMenuItem onClick={exportToPDF}>Export as PDF</DropdownMenuItem>
+                <DropdownMenuItem onClick={exportAllTranscriptionsToCSV}>
+                  Export All Transcriptions (CSV)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={exportSelectedAgentTranscriptionsToCSV}>
+                  Export Transcriptions for Selected Agent (CSV)
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             )}

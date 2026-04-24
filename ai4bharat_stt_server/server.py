@@ -1,5 +1,4 @@
 """Minimal REST-based Indic Conformer STT Server"""
-
 import asyncio
 import base64
 import argparse

@@ -224,7 +224,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-[13px] font-medium text-[#1a1a1a]">
-                      kowshik
+                      {isLoading ? "Loading..." : user?.name || "Unknown"}
                     </span>
                   </div>
                   <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground opacity-35" />
