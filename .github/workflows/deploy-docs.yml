@@ -37,4 +37,4 @@ jobs:
 
       - run: pip install mkdocs-material 
 
-      - run: mkdocs gh-deploy --force
+      - run: mkdocs gh-deploy --force -f docs/mkdocs.yml
