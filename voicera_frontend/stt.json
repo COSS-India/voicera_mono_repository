@@ -5,7 +5,7 @@
         "models": {
           "deepgram": ["nova-3", "nova-2", "flux-general-en"],
           "gcp": ["chirp_3", "chirp_2", "long", "short", "telephony"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
           "elevenlabs": ["scribe-v2", "scribe-v2-realtime"]
         }
       },
@@ -13,7 +13,7 @@
         "models": {
           "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2", "long", "short"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
           "elevenlabs": ["scribe-v2", "scribe-v2-realtime"]
         }
       },
@@ -21,7 +21,7 @@
         "models": {
           "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2", "long", "short", "telephony"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
           "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
@@ -29,9 +29,9 @@
       },
       "Bengali": {
         "models": {
-          "deepgram": ["nova-3", "nova-2"],
+          "deepgram": ["nova-3"],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
           "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
@@ -39,27 +39,30 @@
       },
       "Tamil": {
         "models": {
-          "deepgram": ["nova-3", "nova-2"],
+          "deepgram": ["nova-3"],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Telugu": {
         "models": {
-          "deepgram": ["nova-3", "nova-2"],
+          "deepgram": ["nova-3"],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Marathi": {
         "models": {
-          "deepgram": ["nova-3", "nova-2"],
+          "deepgram": ["nova-3"],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
@@ -71,36 +74,40 @@
       },
       "Gujarati": {
         "models": {
-          "deepgram": ["nova-3", "nova-2"],
+          "deepgram": ["nova-3"],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Kannada": {
         "models": {
-          "deepgram": ["nova-3", "nova-2"],
+          "deepgram": ["nova-3"],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Malayalam": {
         "models": {
-          "deepgram": ["nova-3", "nova-2"],
+          "deepgram": [],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Punjabi": {
         "models": {
-          "deepgram": ["nova-3", "nova-2"],
+          "deepgram": [],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
@@ -109,7 +116,8 @@
         "models": {
           "deepgram": [],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": ["saarika:v2", "saarika:v2.5"],
+          "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
@@ -118,76 +126,110 @@
         "models": {
           "deepgram": [],
           "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": [],
+          "sarvam": ["saaras:v3"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Urdu": {
         "models": {
-          "deepgram": [],
-          "gcp": ["chirp_3", "chirp_2"],
-          "sarvam": [],
+          "deepgram": ["nova-3"],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Nepali": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_3", "chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Sanskrit": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Manipuri": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Bodo": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Dogri": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Konkani": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Kashmiri": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Maithili": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Santali": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
       },
       "Sindhi": {
         "models": {
+          "deepgram": [],
+          "gcp": ["chirp_2", "long", "short"],
+          "sarvam": ["saaras:v3"],
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
           "ai4bharat": ["indic-conformer-stt"],
           "bhashini": ["bhashini/ai4bharat/conformer-multilingual-asr"]
         }
@@ -196,12 +238,12 @@
     "model_details": {
       "deepgram": {
         "nova-3": {
-          "description": "Latest, highest accuracy model",
+          "description": "Latest general ASR; Indian langs per Deepgram docs (nova-3 monolingual list). Malayalam and Punjabi are not listed—use other providers.",
           "streaming": true,
           "recommended": true
         },
         "nova-2": {
-          "description": "Previous generation, stable",
+          "description": "Legacy; Hindi and English (India) among Indic—other Indic use nova-3 only per Deepgram model/language overview.",
           "streaming": true,
           "recommended": false
         },
@@ -214,12 +256,12 @@
       },
       "gcp": {
         "chirp_3": {
-          "description": "Latest universal speech model",
+          "description": "Chirp 3 transcription (see GCP table; not all locales—Urdu/Sanskrit-style langs often need chirp_2).",
           "streaming": true,
           "recommended": true
         },
         "chirp_2": {
-          "description": "Previous Chirp version",
+          "description": "Previous Chirp version; broader locale coverage when chirp_3 omits a language.",
           "streaming": true,
           "recommended": false
         },
@@ -240,13 +282,18 @@
         }
       },
       "sarvam": {
+        "saaras:v3": {
+          "description": "Saaras v3 STT — 22 Indian languages + English per Sarvam docs (recommended over Saarika for full coverage).",
+          "streaming": true,
+          "recommended": true
+        },
         "saarika:v2": {
-          "description": "Production-ready Indian language STT",
+          "description": "Legacy Saarika v2 STT",
           "streaming": true,
           "recommended": false
         },
         "saarika:v2.5": {
-          "description": "Latest Sarvam STT model",
+          "description": "Saarika v2.5 — 11 Indian languages + English; use saaras:v3 for Assamese and other extended languages.",
           "streaming": true,
           "recommended": true
         }
@@ -267,35 +314,45 @@
       },
       "elevenlabs": {
         "scribe-v2": {
-          "description": "State-of-the-art transcription in 90+ languages",
+          "description": "Scribe v2 — 90+ languages (ISO 639-3 language_code); see ElevenLabs Speech-to-Text supported languages.",
           "streaming": false,
           "recommended": true
         },
         "scribe-v2-realtime": {
-          "description": "Real-time transcription in 90+ languages",
+          "description": "Scribe v2 Realtime — same language set as batch Scribe v2 where enabled.",
           "streaming": true,
           "recommended": true
         }
       }
     },
     "auto_select_logic": {
-      "description": "Priority order for auto-selecting STT model based on language",
+      "description": "Priority order for auto-selecting STT model based on language (first supported provider wins)",
       "priority": {
         "English (United States)": ["deepgram:flux-general-en", "deepgram:nova-3", "gcp:chirp_3"],
         "English (India)": ["sarvam:saarika:v2.5", "deepgram:nova-3", "gcp:chirp_3"],
         "Hindi": ["sarvam:saarika:v2.5", "deepgram:nova-3", "gcp:chirp_3"],
-        "Bengali": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Tamil": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Telugu": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Marathi": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
+        "Bengali": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
+        "Tamil": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
+        "Telugu": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
+        "Marathi": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
         "bhb": ["ai4bharat:indic-conformer-stt"],
-        "Gujarati": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Kannada": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Malayalam": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Punjabi": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Odia": ["sarvam:saarika:v2.5", "gcp:chirp_3"],
-        "Assamese": ["gcp:chirp_3"],
-        "Urdu": ["gcp:chirp_3"]
+        "Gujarati": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
+        "Kannada": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
+        "Malayalam": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "gcp:chirp_3"],
+        "Punjabi": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "gcp:chirp_3"],
+        "Odia": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "gcp:chirp_3"],
+        "Assamese": ["sarvam:saaras:v3", "elevenlabs:scribe-v2-realtime", "gcp:chirp_3"],
+        "Urdu": ["sarvam:saaras:v3", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_2"],
+        "Nepali": ["sarvam:saaras:v3", "elevenlabs:scribe-v2-realtime", "gcp:chirp_3"],
+        "Sanskrit": ["sarvam:saaras:v3", "gcp:chirp_2"],
+        "Manipuri": ["sarvam:saaras:v3", "gcp:chirp_2"],
+        "Bodo": ["sarvam:saaras:v3", "gcp:chirp_2"],
+        "Dogri": ["sarvam:saaras:v3", "gcp:chirp_2"],
+        "Konkani": ["sarvam:saaras:v3", "gcp:chirp_2"],
+        "Kashmiri": ["sarvam:saaras:v3", "gcp:chirp_2"],
+        "Maithili": ["sarvam:saaras:v3", "gcp:chirp_2"],
+        "Santali": ["sarvam:saaras:v3", "gcp:chirp_2"],
+        "Sindhi": ["sarvam:saaras:v3", "elevenlabs:scribe-v2-realtime", "gcp:chirp_2"]
       }
     }
   }

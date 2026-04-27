@@ -267,13 +267,21 @@ def create_stt_service(
             raw_model.replace("-", "_") if isinstance(raw_model, str) and raw_model else raw_model
         )
         lang_code = STT_LANGUAGE_MAP[provider].get(language) if language else None
-        # Pipecat < 0.0.105 uses params=InputParams(language_code=...); >= 0.0.105 uses settings=
+        # Pipecat: Realtime STT expects ISO 639-3 (or 639-1) language_code; Settings field name varies by version.
         try:
             from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTSettings
-            settings = ElevenLabsRealtimeSTTSettings(
-                language=lang_code,
-                **({"model": model} if model else {}),
-            )
+            import inspect
+
+            kwargs_settings = {}
+            if model:
+                kwargs_settings["model"] = model
+            if lang_code is not None:
+                sig = inspect.signature(ElevenLabsRealtimeSTTSettings)
+                if "language_code" in sig.parameters:
+                    kwargs_settings["language_code"] = lang_code
+                elif "language" in sig.parameters:
+                    kwargs_settings["language"] = lang_code
+            settings = ElevenLabsRealtimeSTTSettings(**kwargs_settings)
             return ElevenLabsRealtimeSTTService(
                 api_key=api_key,
                 sample_rate=sample_rate,
