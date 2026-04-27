@@ -7,3 +7,4 @@ files/
 venv/
 *.ipynb
 .env 
+run_tts_benchmark.py

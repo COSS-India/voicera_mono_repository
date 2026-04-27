@@ -324,10 +324,39 @@ export function MeetingDetailSheet({
 
   
 
-  const downloadAudio = () => {
+  const downloadAudio = async () => {
     const recordingUrl = meetingDetails?.recording_url || meeting?.recording_url
     if (!recordingUrl) return
-    window.open(recordingUrl, "_blank")
+    try {
+      const token = getAuthToken()
+      if (!token) {
+        console.error("No auth token available for recording download")
+        return
+      }
+
+      const response = await fetch(recordingUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        console.error("Failed to download recording:", response.status, response.statusText)
+        return
+      }
+
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = blobUrl
+      link.download = `${meeting?.meeting_id || "recording"}.wav`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(blobUrl)
+    } catch (error) {
+      console.error("Error downloading recording:", error)
+    }
   }
 
   const downloadTranscript = () => {

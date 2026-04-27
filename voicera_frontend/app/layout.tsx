@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   title: "VoiceEra - AI Voice Assistants",
   description: "Build and manage your AI voice assistants",
   icons: {
-    icon: "/ekstep.svg",
+    icon: "/voicera-logo-black-source.png",
   },
 };
 

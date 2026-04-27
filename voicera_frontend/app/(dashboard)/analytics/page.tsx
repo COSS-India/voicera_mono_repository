@@ -28,6 +28,7 @@ import {
   Users,
   Calendar as CalendarIcon,
   List,
+  Download,
 } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { 
@@ -43,6 +44,7 @@ import { getAnalytics, getAgents, fetchApiRoute, type Analytics, type Agent } fr
 import { getOrgId } from "@/lib/api"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
+import { downloadAnalyticsPdf } from "@/lib/export-analytics-pdf"
 
 interface PhoneNumber {
   id?: string
@@ -203,15 +205,56 @@ export default function AnalyticsPage() {
     setDateRange({ from: undefined, to: undefined })
   }
 
+  const handleDownloadPdf = () => {
+    if (!analytics) return
+
+    let dateRangeLabel = "All time"
+    if (dateRange.from) {
+      dateRangeLabel = dateRange.to
+        ? `${format(dateRange.from, "MMM d, yyyy")} – ${format(dateRange.to, "MMM d, yyyy")}`
+        : format(dateRange.from, "MMM d, yyyy")
+    }
+
+    const agentLabel =
+      selectedAgent === "all"
+        ? "All agents"
+        : agents.find((a) => a.agent_type === selectedAgent)?.agent_type ?? selectedAgent
+
+    const phoneLabel =
+      selectedPhoneNumber === "all"
+        ? "All numbers"
+        : phoneNumbers.find((p) => p.phone_number === selectedPhoneNumber)?.phone_number ??
+          selectedPhoneNumber
+
+    downloadAnalyticsPdf(analytics, {
+      dateRangeLabel,
+      agentLabel,
+      phoneLabel,
+    })
+  }
+
+  const canDownloadPdf = Boolean(orgId && analytics && !loading && !error)
+
   return (
     <div className="flex flex-col h-screen bg-slate-50">
       {/* Header */}
       <header className="border-b bg-white">
-        <div className="flex h-16 items-center gap-4 px-6">
+        <div className="flex h-16 items-center justify-between gap-4 px-6">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-slate-600" />
             <h1 className="text-lg font-semibold text-slate-900">Analytics</h1>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={!canDownloadPdf}
+            onClick={handleDownloadPdf}
+          >
+            <Download className="h-4 w-4" />
+            Download PDF
+          </Button>
         </div>
       </header>
 

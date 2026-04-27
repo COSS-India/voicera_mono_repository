@@ -3,7 +3,7 @@ WebSocket TTS server: continuous batching with the same loop as test_parler_tts.
 (prefill when a request arrives, step all running requests together, stream PCM chunks).
 
 Client sends one JSON object per utterance:
-  {"prompt": "...", "description": "..."}
+  {"prompt": "...", "description": "...", "language": "bhb"|"hi"|...}
 
 Server first sends a small JSON metadata frame, then binary frames (float32 mono PCM),
 then a final JSON {"type": "done"}.
@@ -29,6 +29,11 @@ from inference.runner import ParlerTTSModelRunner, TTSRequest
 AUDIO_SAMPLE_RATE = 44100
 
 here = os.path.dirname(os.path.abspath(__file__))
+
+
+def _is_bhili_language(value: str | None) -> bool:
+    raw = (value or "").strip().lower()
+    return raw in {"bhb", "bhili"}
 
 
 @torch.no_grad()
@@ -94,8 +99,8 @@ def inference_worker(
 
 async def handle_client(
     websocket: websockets.ServerProtocol,
-    runner: ParlerTTSModelRunner,
-    prefill_q: queue.Queue,
+    prefill_q_default: queue.Queue,
+    prefill_q_bhili: queue.Queue,
 ) -> None:
     try:
         raw = await websocket.recv()
@@ -106,6 +111,7 @@ async def handle_client(
         msg = json.loads(raw)
         prompt = msg["prompt"]
         description = msg["description"]
+        language = msg.get("language") or msg.get("language_id") or msg.get("lang")
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         await websocket.send(json.dumps({"type": "error", "message": f"bad request: {e}"}))
         return
@@ -113,7 +119,8 @@ async def handle_client(
     out_q: queue.Queue = queue.Queue()
     pid = uuid.uuid4().hex[:8]
     req = TTSRequest(prompt=prompt, description=description, pid=pid)
-    prefill_q.put((req, out_q))
+    target_q = prefill_q_bhili if _is_bhili_language(language) else prefill_q_default
+    target_q.put((req, out_q))
 
     await websocket.send(
         json.dumps(
@@ -142,40 +149,66 @@ async def handle_client(
 async def main_async(
     host: str,
     port: int,
-    checkpoint_path: str,
+    checkpoint_path_default: str,
+    checkpoint_path_bhili: str,
     decode_every: int,
 ) -> None:
-    runner = ParlerTTSModelRunner(checkpoint_path, play_steps=decode_every)
-    prefill_q: queue.Queue = queue.Queue()
+    runner_default = ParlerTTSModelRunner(checkpoint_path_default, play_steps=decode_every)
+    runner_bhili = ParlerTTSModelRunner(checkpoint_path_bhili, play_steps=decode_every)
+    prefill_q_default: queue.Queue = queue.Queue()
+    prefill_q_bhili: queue.Queue = queue.Queue()
     stop_evt = threading.Event()
 
-    thread = threading.Thread(
+    thread_default = threading.Thread(
         target=inference_worker,
-        args=(runner, prefill_q, stop_evt, decode_every),
+        args=(runner_default, prefill_q_default, stop_evt, decode_every),
         daemon=True,
     )
-    thread.start()
+    thread_bhili = threading.Thread(
+        target=inference_worker,
+        args=(runner_bhili, prefill_q_bhili, stop_evt, decode_every),
+        daemon=True,
+    )
+    thread_default.start()
+    thread_bhili.start()
 
     async with websockets.serve(
-        lambda ws: handle_client(ws, runner, prefill_q),
+        lambda ws: handle_client(ws, prefill_q_default, prefill_q_bhili),
         host,
         port,
         max_size=None,
     ):
         print(
             f"TTS WebSocket server ws://{host}:{port} "
-            f"(checkpoints={checkpoint_path}, decode_every={decode_every})"
+            f"(default_checkpoints={checkpoint_path_default}, "
+            f"bhili_checkpoints={checkpoint_path_bhili}, decode_every={decode_every})"
         )
         await asyncio.Future()
 
 
 def main() -> None:
     load_dotenv(os.path.join(here, ".env"))
-    checkpoint_path = os.environ.get("CHECKPOINT_PATH", "").strip()
-    if not checkpoint_path:
+    checkpoint_path_bhili = os.environ.get("CHECKPOINT_PATH", "").strip()
+    checkpoint_path_default = os.environ.get("CHECKPOINT_PATH_DEFAULT", "").strip()
+    if not checkpoint_path_bhili:
         raise SystemExit(
             "CHECKPOINT_PATH must be set in .env (same directory as server.py). "
             "No default or CLI override is used."
+        )
+    if not checkpoint_path_default:
+        raise SystemExit(
+            "CHECKPOINT_PATH_DEFAULT must be set in .env (same directory as server.py). "
+            "No default or CLI override is used."
+        )
+    if not os.path.isdir(checkpoint_path_default):
+        raise SystemExit(
+            f"Default checkpoint folder not found: {checkpoint_path_default}. "
+            "Set CHECKPOINT_PATH_DEFAULT in .env to a valid checkpoint directory."
+        )
+    if not os.path.isdir(checkpoint_path_bhili):
+        raise SystemExit(
+            f"Bhili checkpoint folder not found: {checkpoint_path_bhili}. "
+            "Set CHECKPOINT_PATH in .env to a valid checkpoint directory."
         )
 
     parser = argparse.ArgumentParser(description="Parler TTS WebSocket server (continuous batching)")
@@ -195,7 +228,13 @@ def main() -> None:
     if args.decode_every < 1:
         parser.error("--decode-every must be >= 1")
     asyncio.run(
-        main_async(args.host, args.port, checkpoint_path, args.decode_every),
+        main_async(
+            args.host,
+            args.port,
+            checkpoint_path_default,
+            checkpoint_path_bhili,
+            args.decode_every,
+        ),
     )
 
 
