@@ -1,0 +1,2520 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../quick-reference/">
+      
+      
+        <link rel="next" href="../api/endpoints/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Troubleshooting Guide - VoiceERA Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#troubleshooting-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="VoiceERA Documentation" class="md-header__button md-logo" aria-label="VoiceERA Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            VoiceERA Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Troubleshooting Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="VoiceERA Documentation" class="md-nav__button md-logo" aria-label="VoiceERA Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    VoiceERA Documentation
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VoiceERA Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VoiceERA Quick Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#service-startup-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Service Startup Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Service Startup Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#docker-container-wont-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker Container Won't Start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#port-already-in-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port Already in Use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-connection-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Connection Failed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-backend-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API &amp; Backend Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API &amp; Backend Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#401-unauthorized-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        401 Unauthorized Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#500-internal-server-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        500 Internal Server Error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slow-api-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slow API Responses
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#voice-server-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Voice Server Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Voice Server Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#websocket-connection-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WebSocket Connection Failed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stt-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        STT Not Working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tts-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TTS Not Working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#high-cpu-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High CPU Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frontend-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontend Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Frontend Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#page-wont-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Page Won't Load
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#login-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Login Not Working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#api-call-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Call Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mongodb-disk-space-full" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MongoDB Disk Space Full
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mongodb-replication-issues-replica-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MongoDB Replication Issues (Replica Set)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-minio-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage (MinIO) Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Storage (MinIO) Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cant-upload-to-minio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can't Upload to MinIO
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#download-urls-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download URLs Not Working
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring &amp; Performance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring &amp; Performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-service-health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check Service Health
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitor-resource-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Resource Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#network-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Network Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Network Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#services-cant-communicate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Services Can't Communicate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Development Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changes-not-reflected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changes Not Reflected
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependency-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependency Conflicts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting Help
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Api
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Api
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Endpoints Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/rest-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST API Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/websocket-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket API Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Flow Through the System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Architecture Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/system-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker &amp; Docker Compose Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/environment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment Variables Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/production/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing to VoiceERA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/local-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Development Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../services/ai4bharat-stt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI4Bharat STT Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../services/ai4bharat-tts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI4Bharat TTS Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../services/backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backend API Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../services/frontend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../services/voice-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Voice Server Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#service-startup-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Service Startup Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Service Startup Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#docker-container-wont-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker Container Won't Start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#port-already-in-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port Already in Use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-connection-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Connection Failed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-backend-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API &amp; Backend Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API &amp; Backend Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#401-unauthorized-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        401 Unauthorized Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#500-internal-server-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        500 Internal Server Error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slow-api-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slow API Responses
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#voice-server-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Voice Server Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Voice Server Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#websocket-connection-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WebSocket Connection Failed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stt-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        STT Not Working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tts-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TTS Not Working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#high-cpu-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High CPU Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frontend-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontend Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Frontend Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#page-wont-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Page Won't Load
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#login-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Login Not Working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#api-call-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Call Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mongodb-disk-space-full" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MongoDB Disk Space Full
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mongodb-replication-issues-replica-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MongoDB Replication Issues (Replica Set)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-minio-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage (MinIO) Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Storage (MinIO) Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cant-upload-to-minio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can't Upload to MinIO
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#download-urls-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download URLs Not Working
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring &amp; Performance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring &amp; Performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-service-health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check Service Health
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitor-resource-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitor Resource Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#network-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Network Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Network Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#services-cant-communicate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Services Can't Communicate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Development Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changes-not-reflected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changes Not Reflected
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependency-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependency Conflicts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting Help
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="troubleshooting-guide">Troubleshooting Guide</h1>
+<p>Common issues and their solutions.</p>
+<h2 id="service-startup-issues">Service Startup Issues</h2>
+<h3 id="docker-container-wont-start">Docker Container Won't Start</h3>
+<p><strong>Problem:</strong> Container exits immediately or keeps restarting</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check logs
+docker-compose logs backend
+
+# Look for common errors:
+# - Port already in use
+# - Missing environment variables
+# - Database connection failure
+
+# Rebuild image
+docker-compose build --no-cache backend
+
+# Try again
+docker-compose up backend
+</code></pre>
+<h3 id="port-already-in-use">Port Already in Use</h3>
+<p><strong>Problem:</strong> <code>Error response from daemon: Ports are not available</code></p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Find process using port
+lsof -i :8000
+
+# Kill the process
+kill -9 &lt;PID&gt;
+
+# Or change port in docker-compose.yml
+ports:
+  - &quot;8001:8000&quot;  # Map to 8001 instead
+</code></pre>
+<h3 id="database-connection-failed">Database Connection Failed</h3>
+<p><strong>Problem:</strong> Backend can't connect to MongoDB</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Ensure MongoDB is running
+docker-compose ps mongodb
+
+# Check MongoDB logs
+docker-compose logs mongodb
+
+# MongoDB needs time to start
+sleep 30
+docker-compose up backend
+
+# Verify MongoDB is healthy
+docker exec voicera_mongodb mongosh --eval &quot;db.adminCommand('ping')&quot;
+</code></pre>
+<hr />
+<h2 id="api-backend-issues">API &amp; Backend Issues</h2>
+<h3 id="401-unauthorized-errors">401 Unauthorized Errors</h3>
+<p><strong>Problem:</strong> Getting 401 when accessing protected endpoints</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Ensure JWT token is in request headers
+curl -H &quot;Authorization: Bearer &lt;token&gt;&quot; http://localhost:8000/agents
+
+# Check token validity
+curl -X POST http://localhost:8000/auth/login \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;email&quot;:&quot;user@example.com&quot;,&quot;password&quot;:&quot;password&quot;}'
+
+# If login fails, check MongoDB has user data
+docker-compose exec mongodb mongosh \
+  --username admin --password admin123 \
+  --eval &quot;db.users.find()&quot;
+</code></pre>
+<h3 id="500-internal-server-error">500 Internal Server Error</h3>
+<p><strong>Problem:</strong> Backend returns 500 error</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check backend logs for detailed error
+docker-compose logs backend | grep -i error
+
+# Common causes:
+# 1. Database error - check MongoDB logs
+docker-compose logs mongodb
+
+# 2. Missing API keys - check .env file
+cat voicera_backend/.env | grep -i api
+
+# 3. Dependency error - reinstall packages
+docker-compose build --no-cache backend
+</code></pre>
+<h3 id="slow-api-responses">Slow API Responses</h3>
+<p><strong>Problem:</strong> API endpoints are slow (&gt;1 second)</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check database indexes
+docker-compose exec mongodb mongosh --username admin --password admin123 \
+  --eval &quot;db.call_logs.getIndexes()&quot;
+
+# If missing indexes, create them:
+# From troubleshooting/create-indexes.js
+
+# Check MongoDB connection pool
+docker-compose exec mongodb mongosh --username admin --password admin123 \
+  --eval &quot;db.serverStatus().connections&quot;
+
+# Check backend resource usage
+docker stats voicera_backend
+</code></pre>
+<hr />
+<h2 id="voice-server-issues">Voice Server Issues</h2>
+<h3 id="websocket-connection-failed">WebSocket Connection Failed</h3>
+<p><strong>Problem:</strong> Frontend can't establish WebSocket connection</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check voice server is running
+docker-compose ps voice_server
+
+# Check WebSocket endpoint
+curl http://localhost:7860/health
+
+# Verify backend connection
+docker-compose exec voice_server curl http://backend:8000/health
+
+# Check logs
+docker-compose logs voice_server
+
+# Firewall issue? Allow WebSocket traffic
+sudo ufw allow 7860/tcp
+</code></pre>
+<h3 id="stt-not-working">STT Not Working</h3>
+<p><strong>Problem:</strong> Voice server can't transcribe audio</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check STT provider configuration
+docker-compose exec voice_server cat .env | grep STT
+
+# If using Deepgram, verify API key
+export DEEPGRAM_API_KEY=...
+docker-compose exec voice_server python -c \
+  &quot;from deepgram import DeepgramClient; print('OK')&quot;
+
+# If using AI4Bharat, check service is running
+docker-compose ps ai4bharat_stt_server
+
+# Verify connection to STT service
+docker-compose exec voice_server curl http://ai4bharat_stt_server:8001/health
+</code></pre>
+<h3 id="tts-not-working">TTS Not Working</h3>
+<p><strong>Problem:</strong> Voice server can't generate speech</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check TTS provider configuration
+docker-compose exec voice_server cat .env | grep TTS
+
+# Test TTS endpoint manually
+curl -X POST http://localhost:8002/synthesize \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;text&quot;:&quot;Hello world&quot;,&quot;language&quot;:&quot;en&quot;}'
+
+# If using AI4Bharat
+docker-compose ps ai4bharat_tts_server
+docker-compose logs ai4bharat_tts_server
+</code></pre>
+<h3 id="high-cpu-usage">High CPU Usage</h3>
+<p><strong>Problem:</strong> Voice server consuming 100% CPU</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check active sessions
+docker-compose exec voice_server curl http://localhost:7860/health | grep sessions
+
+# Kill stuck sessions
+docker-compose restart voice_server
+
+# Check audio buffer settings in .env
+AUDIO_CHUNK_SIZE=2048  # Reduce if too high
+BATCH_SIZE=32          # Reduce for slower machines
+</code></pre>
+<hr />
+<h2 id="frontend-issues">Frontend Issues</h2>
+<h3 id="page-wont-load">Page Won't Load</h3>
+<p><strong>Problem:</strong> Frontend shows blank page or 404</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check frontend is running
+docker-compose ps frontend
+
+# Check logs
+docker-compose logs frontend
+
+# Verify API connection
+curl http://localhost:3000
+
+# Check .env.local configuration
+cat voicera_frontend/.env.local
+
+# Ensure API_BASE_URL is correct
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+</code></pre>
+<h3 id="login-not-working">Login Not Working</h3>
+<p><strong>Problem:</strong> Login credentials rejected</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check if user exists in database
+docker-compose exec mongodb mongosh --username admin --password admin123 \
+  --eval &quot;db.users.findOne({email:'user@example.com'})&quot;
+
+# Create test user
+docker-compose exec backend python -c \
+  &quot;from app.services.auth_service import create_user; create_user('user@example.com', 'password123')&quot;
+
+# Clear browser storage
+# Open browser console and run:
+# localStorage.clear()
+# sessionStorage.clear()
+# Then reload page
+</code></pre>
+<h3 id="api-call-errors">API Call Errors</h3>
+<p><strong>Problem:</strong> Frontend API calls failing with CORS or network errors</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check backend is running and accessible
+curl http://localhost:8000/health
+
+# Check CORS configuration in backend
+# Should include frontend origin in CORS_ORIGINS
+
+# Frontend .env should have correct API URL
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+
+# Check browser console for detailed error
+# Open DevTools (F12) and check Network and Console tabs
+</code></pre>
+<hr />
+<h2 id="database-issues">Database Issues</h2>
+<h3 id="mongodb-disk-space-full">MongoDB Disk Space Full</h3>
+<p><strong>Problem:</strong> MongoDB stops accepting writes</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check disk usage
+df -h /data/db
+
+# Clean up old data
+docker-compose exec mongodb mongosh --username admin --password admin123 \
+  --eval &quot;db.call_logs.deleteMany({created_at: {'\$lt': new Date(Date.now() - 30*24*60*60*1000)}})&quot;
+
+# Or expand volume
+# Stop container, expand volume, restart
+</code></pre>
+<h3 id="mongodb-replication-issues-replica-set">MongoDB Replication Issues (Replica Set)</h3>
+<p><strong>Problem:</strong> Replica set stuck in recovery</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check replica set status
+docker-compose exec mongodb mongosh --username admin --password admin123 \
+  --eval &quot;rs.status()&quot;
+
+# Reset replica set if needed (DATA LOSS!)
+# Only if absolutely necessary
+docker-compose exec mongodb mongosh --username admin --password admin123 \
+  --eval &quot;rs.initiate()&quot;
+</code></pre>
+<hr />
+<h2 id="storage-minio-issues">Storage (MinIO) Issues</h2>
+<h3 id="cant-upload-to-minio">Can't Upload to MinIO</h3>
+<p><strong>Problem:</strong> Recording uploads failing</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check MinIO is running
+docker-compose ps minio
+
+# Check MinIO console
+# Open http://localhost:9001
+
+# Verify credentials
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=minioadmin
+
+# Create bucket if missing
+docker-compose exec minio mc mb minio/recordings
+
+# Check available space
+docker stats voicera_minio
+</code></pre>
+<h3 id="download-urls-not-working">Download URLs Not Working</h3>
+<p><strong>Problem:</strong> Pre-signed URLs expire or fail</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check S3 bucket policy allows public read (if needed)
+# Otherwise use pre-signed URLs with short expiry
+
+# Verify backend can access MinIO
+docker-compose exec backend python -c \
+  &quot;from app.storage.minio_client import get_minio; print(get_minio())&quot;
+</code></pre>
+<hr />
+<h2 id="monitoring-performance">Monitoring &amp; Performance</h2>
+<h3 id="check-service-health">Check Service Health</h3>
+<pre><code class="language-bash"># All services
+docker-compose ps
+
+# Individual health checks
+curl http://localhost:8000/health           # Backend
+curl http://localhost:7860/health           # Voice Server
+curl http://localhost:9001/minio/health     # MinIO
+curl http://localhost:27017                 # MongoDB
+
+# Detailed status
+docker inspect voicera_backend | grep -A 20 &quot;State&quot;
+</code></pre>
+<h3 id="monitor-resource-usage">Monitor Resource Usage</h3>
+<pre><code class="language-bash"># Real-time stats
+docker stats
+
+# See which container is using most resources
+docker stats --no-stream
+
+# Memory issues?
+docker stats voicera_backend
+docker update --memory 4g voicera_backend  # Increase limit
+
+# CPU issues?
+# Check logs for infinite loops
+# Restart container if needed
+</code></pre>
+<hr />
+<h2 id="network-issues">Network Issues</h2>
+<h3 id="services-cant-communicate">Services Can't Communicate</h3>
+<p><strong>Problem:</strong> Backend can't reach MongoDB</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Check network
+docker network ls | grep voicera
+
+# Inspect network
+docker network inspect voicera_mono_repository_voicera_network
+
+# Test DNS resolution
+docker-compose exec backend nslookup mongodb
+
+# Test connectivity
+docker-compose exec backend ping mongodb
+
+# If not working, rebuild network
+docker-compose down
+docker network prune
+docker-compose up -d
+</code></pre>
+<hr />
+<h2 id="development-issues">Development Issues</h2>
+<h3 id="changes-not-reflected">Changes Not Reflected</h3>
+<p><strong>Problem:</strong> Code changes don't appear when running</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Ensure hot-reload is enabled for local development
+RELOAD=true  # In backend .env
+
+# For frontend, usually works automatically with npm run dev
+
+# Manual rebuild if needed
+docker-compose build --no-cache &lt;service&gt;
+docker-compose up &lt;service&gt;
+</code></pre>
+<h3 id="dependency-conflicts">Dependency Conflicts</h3>
+<p><strong>Problem:</strong> ModuleNotFoundError or ImportError</p>
+<p><strong>Solution:</strong></p>
+<pre><code class="language-bash"># Backend - reinstall Python dependencies
+docker-compose exec backend pip install --no-cache-dir -r requirements.txt
+
+# Frontend - reinstall Node packages
+docker-compose exec frontend npm install --legacy-peer-deps
+
+# Or rebuild containers
+docker-compose build --no-cache
+docker-compose up -d
+</code></pre>
+<hr />
+<h2 id="getting-help">Getting Help</h2>
+<p>If you're stuck:</p>
+<ol>
+<li>
+<p><strong>Check the logs</strong> - Often has the answer
+   <code>bash
+   docker-compose logs -f &lt;service&gt;</code></p>
+</li>
+<li>
+<p><strong>Google the error</strong> - Exact error message usually helps</p>
+</li>
+<li>
+<p><strong>Search GitHub issues</strong> - voicera/voicera/issues</p>
+</li>
+<li>
+<p><strong>Ask in discussions</strong> - voicera/voicera/discussions</p>
+</li>
+<li>
+<p><strong>Check documentation</strong> - You're reading it!</p>
+</li>
+</ol>
+<hr />
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li><strong><a href="../getting-started/quickstart/">Quick Start</a></strong> - Get started</li>
+<li><strong><a href="../getting-started/configuration/">Configuration</a></strong> - Setup guide</li>
+<li><strong><a href="../deployment/docker/">Docker</a></strong> - Container guide</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
