@@ -1,0 +1,4 @@
+site_name: VoiceERA Documentation
+theme:
+  name: material
+docs_dir: docs
