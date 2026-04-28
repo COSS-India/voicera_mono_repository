@@ -42,6 +42,8 @@ import { getOrgId, getIntegrations, createIntegration, deleteIntegration, Integr
 /** Backend integration model names for Vobiz (stored in MongoDB Integrations collection). */
 const VOBIZ_AUTH_ID_MODEL = "VobizAuthId"
 const VOBIZ_AUTH_TOKEN_MODEL = "VobizAuthToken"
+const PLIVO_AUTH_ID_MODEL = "PlivoAuthId"
+const PLIVO_AUTH_TOKEN_MODEL = "PlivoAuthToken"
 
 // Provider type definitions
 type ProviderCapability = "stt" | "tts" | "llm"
@@ -125,6 +127,11 @@ interface TelephonyProvider {
 
 const telephonyProviders: TelephonyProvider[] = [
   {
+    id: "plivo",
+    name: "Plivo",
+    description: "Telephony API for voice calls (Auth ID and Auth Token from your Plivo account)",
+  },
+  {
     id: "vobiz",
     name: "Vobiz",
     description: "Telephony API for voice calls (Auth ID and Auth Token from your Vobiz account)",
@@ -181,9 +188,12 @@ export default function IntegrationsPage() {
   const [vobizModalOpen, setVobizModalOpen] = useState(false)
   const [vobizAuthId, setVobizAuthId] = useState("")
   const [vobizAuthToken, setVobizAuthToken] = useState("")
+  const [plivoAuthId, setPlivoAuthId] = useState("")
+  const [plivoAuthToken, setPlivoAuthToken] = useState("")
   const [modalVobizAuthId, setModalVobizAuthId] = useState("")
   const [modalVobizAuthToken, setModalVobizAuthToken] = useState("")
   const [vobizTokenVisible, setVobizTokenVisible] = useState(false)
+  const [telephonyProviderModal, setTelephonyProviderModal] = useState<"vobiz" | "plivo">("vobiz")
   
   // Loading state
   const [isLoading, setIsLoading] = useState(true)
@@ -203,12 +213,18 @@ export default function IntegrationsPage() {
       const keys: Record<string, string> = {}
       setVobizAuthId("")
       setVobizAuthToken("")
+      setPlivoAuthId("")
+      setPlivoAuthToken("")
       
       integrations.forEach((integration: Integration) => {
         if (integration.model === VOBIZ_AUTH_ID_MODEL) {
           setVobizAuthId(integration.api_key)
         } else if (integration.model === VOBIZ_AUTH_TOKEN_MODEL) {
           setVobizAuthToken(integration.api_key)
+        } else if (integration.model === PLIVO_AUTH_ID_MODEL) {
+          setPlivoAuthId(integration.api_key)
+        } else if (integration.model === PLIVO_AUTH_TOKEN_MODEL) {
+          setPlivoAuthToken(integration.api_key)
         } else {
           const provider = providers.find(
             (p) => p.name.toLowerCase() === integration.model.toLowerCase()
@@ -333,51 +349,76 @@ export default function IntegrationsPage() {
   const isEditing = selectedProvider && connectedProviders[selectedProvider.id]
 
   const vobizConnected = Boolean(vobizAuthId && vobizAuthToken)
+  const plivoConnected = Boolean(plivoAuthId && plivoAuthToken)
 
-  const openVobizModal = () => {
+  const openTelephonyModal = (provider: "vobiz" | "plivo") => {
     setSearchQuery("")
-    setModalVobizAuthId(vobizAuthId || "")
-    setModalVobizAuthToken(vobizAuthToken || "")
+    setTelephonyProviderModal(provider)
+    if (provider === "vobiz") {
+      setModalVobizAuthId(vobizAuthId || "")
+      setModalVobizAuthToken(vobizAuthToken || "")
+    } else {
+      setModalVobizAuthId(plivoAuthId || "")
+      setModalVobizAuthToken(plivoAuthToken || "")
+    }
     setVobizTokenVisible(false)
     setVobizModalOpen(true)
   }
 
-  const handleVobizSave = async () => {
+  const handleTelephonySave = async () => {
     if (!modalVobizAuthId.trim() || !modalVobizAuthToken.trim()) return
     setIsSaving(true)
     try {
       const orgId = getOrgId()
       if (!orgId) throw new Error("Organization ID not found")
+      const authIdModel =
+        telephonyProviderModal === "vobiz" ? VOBIZ_AUTH_ID_MODEL : PLIVO_AUTH_ID_MODEL
+      const authTokenModel =
+        telephonyProviderModal === "vobiz" ? VOBIZ_AUTH_TOKEN_MODEL : PLIVO_AUTH_TOKEN_MODEL
       await createIntegration({
         org_id: orgId,
-        model: VOBIZ_AUTH_ID_MODEL,
+        model: authIdModel,
         api_key: modalVobizAuthId.trim(),
       })
       await createIntegration({
         org_id: orgId,
-        model: VOBIZ_AUTH_TOKEN_MODEL,
+        model: authTokenModel,
         api_key: modalVobizAuthToken.trim(),
       })
-      setVobizAuthId(modalVobizAuthId.trim())
-      setVobizAuthToken(modalVobizAuthToken.trim())
+      if (telephonyProviderModal === "vobiz") {
+        setVobizAuthId(modalVobizAuthId.trim())
+        setVobizAuthToken(modalVobizAuthToken.trim())
+      } else {
+        setPlivoAuthId(modalVobizAuthId.trim())
+        setPlivoAuthToken(modalVobizAuthToken.trim())
+      }
       setVobizModalOpen(false)
     } catch (error) {
-      console.error("Error saving Vobiz integration:", error)
+      console.error("Error saving telephony integration:", error)
     } finally {
       setIsSaving(false)
     }
   }
 
-  const handleVobizDisconnect = async () => {
+  const handleTelephonyDisconnect = async () => {
     setIsSaving(true)
     try {
-      await deleteIntegration(VOBIZ_AUTH_ID_MODEL)
-      await deleteIntegration(VOBIZ_AUTH_TOKEN_MODEL)
-      setVobizAuthId("")
-      setVobizAuthToken("")
+      const authIdModel =
+        telephonyProviderModal === "vobiz" ? VOBIZ_AUTH_ID_MODEL : PLIVO_AUTH_ID_MODEL
+      const authTokenModel =
+        telephonyProviderModal === "vobiz" ? VOBIZ_AUTH_TOKEN_MODEL : PLIVO_AUTH_TOKEN_MODEL
+      await deleteIntegration(authIdModel)
+      await deleteIntegration(authTokenModel)
+      if (telephonyProviderModal === "vobiz") {
+        setVobizAuthId("")
+        setVobizAuthToken("")
+      } else {
+        setPlivoAuthId("")
+        setPlivoAuthToken("")
+      }
       setVobizModalOpen(false)
     } catch (error) {
-      console.error("Error disconnecting Vobiz:", error)
+      console.error("Error disconnecting telephony provider:", error)
     } finally {
       setIsSaving(false)
     }
@@ -482,47 +523,56 @@ export default function IntegrationsPage() {
             </div>
             <Card>
               <CardContent className="p-0">
-                <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10">
-                      <Phone className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Vobiz</span>
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          Telephony
-                        </Badge>
-                        {vobizConnected && (
-                          <div className="flex items-center justify-center h-5 w-5 rounded-full bg-green-500/10">
-                            <Check className="h-3 w-3 text-green-600" />
+                {telephonyProviders.map((provider, index) => {
+                  const isVobiz = provider.id === "vobiz"
+                  const connected = isVobiz ? vobizConnected : plivoConnected
+                  return (
+                    <div
+                      key={provider.id}
+                      className={`flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors ${index > 0 ? "border-t" : ""}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10">
+                          <Phone className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{provider.name}</span>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              Telephony
+                            </Badge>
+                            {connected && (
+                              <div className="flex items-center justify-center h-5 w-5 rounded-full bg-green-500/10">
+                                <Check className="h-3 w-3 text-green-600" />
+                              </div>
+                            )}
                           </div>
-                        )}
+                          <p className="text-xs text-muted-foreground truncate max-w-[420px]">
+                            {provider.description}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate max-w-[420px]">
-                        {telephonyProviders[0].description}
-                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openTelephonyModal(isVobiz ? "vobiz" : "plivo")}
+                        className="gap-1.5 shrink-0"
+                      >
+                        {connected ? (
+                          <>
+                            <Settings2 className="h-3.5 w-3.5" />
+                            Manage
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-3.5 w-3.5" />
+                            Connect
+                          </>
+                        )}
+                      </Button>
                     </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openVobizModal}
-                    className="gap-1.5 shrink-0"
-                  >
-                    {vobizConnected ? (
-                      <>
-                        <Settings2 className="h-3.5 w-3.5" />
-                        Manage
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="h-3.5 w-3.5" />
-                        Connect
-                      </>
-                    )}
-                  </Button>
-                </div>
+                  )
+                })}
               </CardContent>
             </Card>
           </section>
@@ -756,23 +806,23 @@ export default function IntegrationsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Vobiz Telephony — Auth ID + Auth Token */}
+      {/* Telephony Provider — Auth ID + Auth Token */}
       <Dialog open={vobizModalOpen} onOpenChange={setVobizModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Phone className="h-5 w-5" />
-              {vobizConnected ? "Manage" : "Connect"} Vobiz
+              {(telephonyProviderModal === "vobiz" ? vobizConnected : plivoConnected) ? "Manage" : "Connect"} {telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"}
             </DialogTitle>
             <DialogDescription>
-              Enter your Vobiz Auth ID and Auth Token from the Vobiz dashboard. These are stored per
+              Enter your {telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"} Auth ID and Auth Token from the provider dashboard. These are stored per
               organization and used for telephony APIs (not from server environment variables).
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="vobiz-auth-id">Vobiz Auth ID</Label>
+              <Label htmlFor="vobiz-auth-id">{telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"} Auth ID</Label>
               <Input
                 id="vobiz-auth-id"
                 type="text"
@@ -784,7 +834,7 @@ export default function IntegrationsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="vobiz-auth-token">Vobiz Auth Token</Label>
+              <Label htmlFor="vobiz-auth-token">{telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"} Auth Token</Label>
               <div className="relative">
                 <Input
                   id="vobiz-auth-token"
@@ -815,10 +865,10 @@ export default function IntegrationsPage() {
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            {vobizConnected && (
+            {(telephonyProviderModal === "vobiz" ? vobizConnected : plivoConnected) && (
               <Button
                 variant="outline"
-                onClick={handleVobizDisconnect}
+                onClick={handleTelephonyDisconnect}
                 disabled={isSaving}
                 className="text-destructive hover:text-destructive hover:bg-destructive/10 sm:mr-auto"
               >
@@ -827,7 +877,7 @@ export default function IntegrationsPage() {
               </Button>
             )}
             <Button
-              onClick={handleVobizSave}
+              onClick={handleTelephonySave}
               disabled={
                 !modalVobizAuthId.trim() || !modalVobizAuthToken.trim() || isSaving
               }
@@ -840,7 +890,7 @@ export default function IntegrationsPage() {
               ) : (
                 <>
                   <Save className="h-4 w-4 mr-1.5" />
-                  {vobizConnected ? "Update" : "Connect"}
+                  {(telephonyProviderModal === "vobiz" ? vobizConnected : plivoConnected) ? "Update" : "Connect"}
                 </>
               )}
             </Button>

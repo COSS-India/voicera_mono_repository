@@ -47,6 +47,7 @@ class Settings:
     VOBIZ_ACCOUNT_ID: str = os.getenv("VOBIZ_ACCOUNT_ID", "")
     VOBIZ_AUTH_ID: str = os.getenv("VOBIZ_AUTH_ID", "")
     VOBIZ_AUTH_TOKEN: str = os.getenv("VOBIZ_AUTH_TOKEN", "")
+    PLIVO_API_BASE_URL: str = os.getenv("PLIVO_API_BASE_URL", "https://api.plivo.com/v1")
     VOICE_SERVER_URL: str = (
         os.getenv("VOICE_SERVER_URL")
         or os.getenv("JOHNAIC_SERVER_URL")

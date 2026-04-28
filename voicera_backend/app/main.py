@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
 from app.services.batch_scheduler import start_batch_scheduler, stop_batch_scheduler
-from app.routers import users, agents, meetings, campaigns, audience, call_recordings, phone_numbers, vobiz, analytics, integrations, members, knowledge, rag, batches
+from app.routers import users, agents, meetings, campaigns, audience, call_recordings, phone_numbers, vobiz, plivo, analytics, integrations, members, knowledge, rag, batches
 import logging
 
 # Configure logging
@@ -43,6 +43,7 @@ app.include_router(audience.router, prefix=settings.API_V1_PREFIX)
 app.include_router(call_recordings.router, prefix=settings.API_V1_PREFIX)
 app.include_router(phone_numbers.router, prefix=settings.API_V1_PREFIX)
 app.include_router(vobiz.router, prefix=settings.API_V1_PREFIX)
+app.include_router(plivo.router, prefix=settings.API_V1_PREFIX)
 app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
 app.include_router(integrations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(members.router, prefix=settings.API_V1_PREFIX)

@@ -65,7 +65,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { fetchApiRoute, getOrgId, getAgents, getVobizNumbers, linkVobizNumber, unlinkVobizNumber, type Agent } from "@/lib/api"
+import { fetchApiRoute, getOrgId, getAgents, getVobizNumbers, getPlivoNumbers, linkVobizNumber, linkPlivoNumber, unlinkVobizNumber, unlinkPlivoNumber, type Agent } from "@/lib/api"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 
@@ -86,6 +86,11 @@ interface PhoneNumberDisplay extends PhoneNumber {
   addedOn: string
   usedBy: string | null
   agentName?: string
+}
+type AgentWithTelephony = Agent & {
+  telephony_provider?: string
+  agent_category?: string
+  plivo_app_id?: string
 }
 
 export default function NumbersPage() {
@@ -131,7 +136,8 @@ export default function NumbersPage() {
     if (!agentType) return null
     const agent = agents.find(a => a.agent_type === agentType)
     if (!agent) return agentType
-    return (agent as any).agent_category || agent.agent_type || agentType
+    const telephonyAgent = agent as AgentWithTelephony
+    return telephonyAgent.agent_category || agent.agent_type || agentType
   }
 
   // Fetch phone numbers and agents
@@ -216,8 +222,24 @@ export default function NumbersPage() {
       
       // If provider is Vobiz, first link to Vobiz application, then update database
       if (selectedPhoneNumber.provider === "Vobiz" && selectedAgent?.vobiz_app_id) {
-        // Step 1: Link number to Vobiz application
         await linkVobizNumber(selectedPhoneNumber.number, selectedAgent.vobiz_app_id)
+        
+        // Step 2: Update database with agent_type
+        const response = await fetchApiRoute("/api/phone-numbers/attach", {
+          method: "POST",
+          body: JSON.stringify({
+            phone_number: selectedPhoneNumber.number,
+            provider: selectedPhoneNumber.provider,
+            agent_type: selectedAgentType,
+          }),
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.detail || error.error || "Failed to attach phone number")
+        }
+      } else if (selectedPhoneNumber.provider === "Plivo" && (selectedAgent as AgentWithTelephony)?.plivo_app_id) {
+        await linkPlivoNumber(selectedPhoneNumber.number, (selectedAgent as AgentWithTelephony).plivo_app_id as string)
         
         // Step 2: Update database with agent_type
         const response = await fetchApiRoute("/api/phone-numbers/attach", {
@@ -299,8 +321,9 @@ export default function NumbersPage() {
       
       // If provider is Vobiz, first unlink from Vobiz application, then update database
       if (phoneToDetach.provider === "Vobiz") {
-        // Step 1: Unlink number from Vobiz application
         await unlinkVobizNumber(phoneToDetach.number)
+      } else if (phoneToDetach.provider === "Plivo") {
+        await unlinkPlivoNumber(phoneToDetach.number)
       }
       
       // Step 2: Update database to remove agent_type (for both Vobiz and Plivo)
@@ -379,6 +402,18 @@ export default function NumbersPage() {
         } finally {
           setIsLoadingVobizNumbers(false)
         }
+      } else if (selectedProvider === "Plivo" && addNumberDialogOpen) {
+        try {
+          setIsLoadingVobizNumbers(true)
+          const data = await getPlivoNumbers()
+          setVobizNumbers(data.numbers || [])
+        } catch (error) {
+          console.error("Error fetching Plivo numbers:", error)
+          setErrorMessage(error instanceof Error ? error.message : "Failed to fetch Plivo numbers")
+          setErrorDialogOpen(true)
+        } finally {
+          setIsLoadingVobizNumbers(false)
+        }
       } else if (selectedProvider !== "Vobiz") {
         // Clear Vobiz numbers when switching away from Vobiz
         setVobizNumbers([])
@@ -392,8 +427,8 @@ export default function NumbersPage() {
   const handleAddNewNumber = async () => {
     if (!selectedProvider) return
 
-    // For Vobiz, validate that a number is selected
-    if (selectedProvider === "Vobiz") {
+    // For telephony providers using provider inventory, validate a number is selected
+    if (selectedProvider === "Vobiz" || selectedProvider === "Plivo") {
       if (!selectedVobizNumber) {
         setErrorMessage("Please select a phone number")
         setErrorDialogOpen(true)
@@ -410,7 +445,9 @@ export default function NumbersPage() {
     }
 
     // Check if phone number already exists
-    const phoneNumberToAdd = selectedProvider === "Vobiz" ? selectedVobizNumber : newPhoneNumber
+    const phoneNumberToAdd = (selectedProvider === "Vobiz" || selectedProvider === "Plivo")
+      ? selectedVobizNumber
+      : newPhoneNumber
     const numberExists = phoneNumbers.some(phone => phone.number === phoneNumberToAdd)
     
     if (numberExists) {
@@ -683,7 +720,7 @@ export default function NumbersPage() {
                             .filter((agent) => {
                               // Only show agents with telephony_provider matching the phone number's provider
                               if (!selectedPhoneNumber) return false
-                              const agentProvider = (agent as any).telephony_provider
+                              const agentProvider = (agent as AgentWithTelephony).telephony_provider
                               if (agentProvider !== selectedPhoneNumber.provider) return false
                               
                               // Exclude agents that are already attached to a phone number
@@ -810,7 +847,7 @@ export default function NumbersPage() {
                 <div>
                   <DialogTitle>Try Another Number</DialogTitle>
                   <DialogDescription className="mt-1">
-                    We couldn't process your request. Please try another phone number.
+                    We couldn&apos;t process your request. Please try another phone number.
                   </DialogDescription>
                 </div>
               </div>
@@ -863,7 +900,7 @@ export default function NumbersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Vobiz">Vobiz</SelectItem>
-                    <SelectItem value="Plivo" disabled>
+                    <SelectItem value="Plivo">
                       Plivo
                     </SelectItem>
                   </SelectContent>
@@ -871,7 +908,7 @@ export default function NumbersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone Number</Label>
-                {selectedProvider === "Vobiz" ? (
+                {(selectedProvider === "Vobiz" || selectedProvider === "Plivo") ? (
                   <>
                     {isLoadingVobizNumbers ? (
                       <div className="flex items-center justify-center h-10 border border-neutral-200 rounded-md">
@@ -901,7 +938,7 @@ export default function NumbersPage() {
                       </Select>
                     )}
                     <p className="text-xs text-neutral-500">
-                      Select a phone number from your Vobiz account
+                      Select a phone number from your {selectedProvider} account
                     </p>
                   </>
                 ) : (
@@ -930,7 +967,7 @@ export default function NumbersPage() {
                 disabled={
                   !selectedProvider || 
                   isAddingNumber ||
-                  (selectedProvider === "Vobiz" ? !selectedVobizNumber : newPhoneNumber.length !== 13) ||
+                  ((selectedProvider === "Vobiz" || selectedProvider === "Plivo") ? !selectedVobizNumber : newPhoneNumber.length !== 13) ||
                   isLoadingVobizNumbers
                 }
                 className="bg-neutral-900 hover:bg-neutral-800"

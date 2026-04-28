@@ -4,7 +4,6 @@ import os
 import json
 import time
 import traceback
-from datetime import datetime
 
 from loguru import logger
 from dotenv import load_dotenv
@@ -26,6 +25,8 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
+from pipecat.serializers.plivo import PlivoFrameSerializer
+from pipecat.runner.utils import parse_telephony_websocket
 from storage.minio_client import MinIOStorage
 from serializer.vobiz_serializer import VobizFrameSerializer
 from serializer.ubona_serializer import UbonaFrameSerializer
@@ -255,12 +256,13 @@ async def run_bot(
 
 async def bot(
     websocket_client,
-    stream_sid: str,
-    call_sid: str,
+    stream_sid: Optional[str],
+    call_sid: Optional[str],
     agent_type: str,
     agent_config: dict,
+    provider: str = "vobiz",
     transcript_callback: Optional[Callable[[str, str, Optional[str]], Awaitable[None]]] = None,
-) -> None:
+) -> str:
     """Main bot entry point - sets up transport and runs the pipeline."""
     sample_rate = _get_sample_rate()
     session_timeout = agent_config.get("session_timeout_minutes", 10) * 60
@@ -276,19 +278,47 @@ async def bot(
     
     # Track call start time
     call_start_time = time.monotonic()
-    start_time_utc = datetime.utcnow().isoformat()
     
     # Initialize MinIO storage
     storage = MinIOStorage.from_env()
-    
-    serializer = VobizFrameSerializer(
-        stream_sid=stream_sid,
-        call_sid=call_sid,
-        params=VobizFrameSerializer.InputParams(
-            vobiz_sample_rate=sample_rate,
-            sample_rate=sample_rate
+
+    normalized_provider = (provider or "vobiz").strip().lower()
+    if normalized_provider == "plivo":
+        await websocket_client.accept()
+        _, telephony_call_data = await parse_telephony_websocket(websocket_client)
+        stream_sid = (
+            stream_sid
+            or telephony_call_data.get("stream_id")
+            or telephony_call_data.get("streamId")
+            or "unknown"
         )
-    )
+        call_sid = (
+            call_sid
+            or telephony_call_data.get("call_id")
+            or telephony_call_data.get("callId")
+            or "unknown"
+        )
+        serializer = PlivoFrameSerializer(
+            stream_id=stream_sid,
+            call_id=call_sid,
+            params=PlivoFrameSerializer.InputParams(
+                plivo_sample_rate=sample_rate,
+                sample_rate=sample_rate,
+                auto_hang_up=False,
+            ),
+        )
+    else:
+        stream_sid = stream_sid or "unknown"
+        call_sid = call_sid or "unknown"
+        serializer = VobizFrameSerializer(
+            stream_sid=stream_sid,
+            call_sid=call_sid,
+            params=VobizFrameSerializer.InputParams(
+                vobiz_sample_rate=sample_rate,
+                sample_rate=sample_rate
+            )
+        )
+    
     
     vad_analyzer = SileroVADAnalyzer(
         sample_rate=sample_rate,
@@ -398,6 +428,7 @@ async def bot(
             storage=storage,
             call_start_time=call_start_time
         )
+    return call_sid
 
 async def ubona_bot(
     websocket_client,

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { getCurrentUser, getAgents, createAgent, createVobizApplication, deleteVobizApplication, deleteAgent, unlinkVobizNumber, fetchApiRoute, getIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type KnowledgeDocument } from "@/lib/api"
+import { getCurrentUser, getAgents, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type KnowledgeDocument } from "@/lib/api"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -203,6 +203,9 @@ interface AgentConfig {
   stability: number
   telephonyProvider: string
 }
+type AgentWithTelephony = Agent & {
+  plivo_app_id?: string
+}
 
 const defaultConfig: AgentConfig = {
   id: "",
@@ -228,7 +231,7 @@ const defaultConfig: AgentConfig = {
   speedRate: 1,
   similarityBoost: 75,
   stability: 50,
-  telephonyProvider: "Vobiz",
+  telephonyProvider: "Plivo",
 }
 
 // Wizard steps configuration
@@ -529,7 +532,7 @@ export default function AssistantsPage() {
 
   // Handle create new agent
   const handleCreateNew = () => {
-    setConfig({ ...defaultConfig, id: "new", telephonyProvider: "Vobiz" })
+    setConfig({ ...defaultConfig, id: "new", telephonyProvider: "Plivo" })
     setCreateStep(1)
     setView("create")
   }
@@ -538,7 +541,7 @@ export default function AssistantsPage() {
   const handleBackToList = () => {
     setView("list")
     setCreateStep(1)
-    setConfig({ ...defaultConfig, telephonyProvider: "Vobiz" })
+    setConfig({ ...defaultConfig, telephonyProvider: "Plivo" })
   }
 
 
@@ -573,6 +576,8 @@ export default function AssistantsPage() {
           // If provider is Vobiz, unlink from Vobiz application first
           if (agent.telephony_provider === "Vobiz") {
             await unlinkVobizNumber(agent.phone_number)
+          } else if (agent.telephony_provider === "Plivo") {
+            await unlinkPlivoNumber(agent.phone_number)
           }
           
           // Detach phone number from agent in database
@@ -600,6 +605,14 @@ export default function AssistantsPage() {
         } catch (error) {
           console.error("Failed to delete Vobiz application:", error)
           // Continue with agent deletion even if Vobiz deletion fails
+        }
+      }
+      const telephonyAgent = agent as AgentWithTelephony
+      if (agent.telephony_provider === "Plivo" && telephonyAgent.plivo_app_id) {
+        try {
+          await deletePlivoApplication(telephonyAgent.plivo_app_id)
+        } catch (error) {
+          console.error("Failed to delete Plivo application:", error)
         }
       }
 
@@ -733,7 +746,7 @@ export default function AssistantsPage() {
       }
 
       // Build TTS model object WITHOUT language, using official provider name
-      const ttsModel: any = {
+      const ttsModel: Record<string, unknown> = {
         name: getProviderOfficialName(config.ttsProvider),
         ...((config.ttsProvider === "cartesia" || config.ttsProvider === "gcp") && {
           args: {
@@ -763,6 +776,8 @@ export default function AssistantsPage() {
       // If Vobiz provider, create Vobiz application first
       let vobizAppId: string | undefined
       let vobizAnswerUrl: string | undefined
+      let plivoAppId: string | undefined
+      let plivoAnswerUrl: string | undefined
       
       if (config.telephonyProvider === "Vobiz") {
         vobizAnswerUrl = `${process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL}/answer?agent_id=${agentId}`
@@ -775,6 +790,15 @@ export default function AssistantsPage() {
           vobizAppId = vobizAppResponse.app_id
         } else {
           throw new Error(vobizAppResponse.message || "Failed to create Vobiz application")
+        }
+      }
+      if (config.telephonyProvider === "Plivo") {
+        plivoAnswerUrl = `${process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL}/plivo/answer?agent_id=${agentId}`
+        const plivoAppResponse = await createPlivoApplication(config.name, plivoAnswerUrl)
+        if (plivoAppResponse.status === "success" && plivoAppResponse.app_id) {
+          plivoAppId = plivoAppResponse.app_id
+        } else {
+          throw new Error(plivoAppResponse.message || "Failed to create Plivo application")
         }
       }
 
@@ -798,10 +822,14 @@ export default function AssistantsPage() {
           stt_model: sttModel,
           tts_model: ttsModel,
         },
-        telephony_provider: config.telephonyProvider as any,
+        telephony_provider: config.telephonyProvider,
         ...(config.telephonyProvider === "Vobiz" && {
           vobiz_app_id: vobizAppId,
           vobiz_answer_url: vobizAnswerUrl,
+        }),
+        ...(config.telephonyProvider === "Plivo" && {
+          plivo_app_id: plivoAppId,
+          plivo_answer_url: plivoAnswerUrl,
         }),
       }
 
@@ -1731,7 +1759,7 @@ export default function AssistantsPage() {
                         <SelectItem value="Vobiz" className="py-3">
                           <span className="font-medium">Vobiz</span>
                         </SelectItem>
-                        <SelectItem disabled value="Plivo" className="py-3">
+                        <SelectItem value="Plivo" className="py-3">
                           <span className="font-medium">Plivo</span>
                         </SelectItem>
                       </SelectContent>

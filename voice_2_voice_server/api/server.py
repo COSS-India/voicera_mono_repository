@@ -1,4 +1,4 @@
-"""FastAPI server for Vobiz telephony integration with optimized TCP settings."""
+"""FastAPI server for telephony integration with optimized TCP settings."""
 
 import os
 import socket
@@ -151,6 +151,73 @@ async def make_outbound_call_vobiz(
     return result
 
 
+async def make_outbound_call_plivo(
+    customer_number: str,
+    agent_id: str,
+    caller_id: Optional[str] = None,
+) -> dict:
+    """Make an outbound call using Plivo API with org-scoped Integration credentials."""
+    agent_config = await fetch_agent_config_from_backend(agent_id)
+    if not agent_config:
+        raise ValueError(f"Could not load agent config for agent_id={agent_id}")
+    org_id = agent_config.get("org_id")
+    if not org_id:
+        raise ValueError("Agent has no org_id; cannot resolve Plivo credentials from Integrations")
+
+    auth_id = fetch_integration_key(org_id, "PlivoAuthId")
+    auth_token = fetch_integration_key(org_id, "PlivoAuthToken")
+    if not auth_id or not auth_token:
+        raise ValueError(
+            "Plivo Auth ID and Auth Token must be configured in Integrations (Telephony) for this organization."
+        )
+
+    server_url = _get_env_or_raise("JOHNAIC_SERVER_URL")
+    plivo_api_base_url = os.environ.get("PLIVO_API_BASE", "https://api.plivo.com/v1")
+
+    from_number = caller_id or os.environ.get("PLIVO_CALLER_ID")
+    if not from_number:
+        raise ValueError("No caller_id provided and PLIVO_CALLER_ID not set")
+
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    payload = {
+        "from": from_number,
+        "to": customer_number,
+        "answer_url": f"{server_url}/plivo/answer?agent_id={agent_id}",
+        "answer_method": "POST",
+        "hangup_url": f"{server_url}/plivo/hangup?agent_id={agent_id}",
+        "hangup_method": "POST",
+    }
+
+    logger.info(f"📞 Outbound Plivo call: {from_number} → {customer_number} (agent: {agent_id})")
+    plivo_api_url = f"{plivo_api_base_url}/Account/{auth_id}/Call/"
+    response = requests.post(
+        plivo_api_url,
+        json=payload,
+        headers=headers,
+        auth=(auth_id, auth_token),
+        timeout=30,
+    )
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"✅ Plivo call initiated: {result.get('request_uuid', 'unknown')}")
+    return result
+
+
+async def make_outbound_call_provider(
+    customer_number: str,
+    agent_id: str,
+    caller_id: Optional[str] = None,
+) -> dict:
+    """Dispatch outbound call based on agent telephony provider."""
+    agent_config = await fetch_agent_config_from_backend(agent_id)
+    if not agent_config:
+        raise ValueError(f"Could not load agent config for agent_id={agent_id}")
+    provider = (agent_config.get("telephony_provider") or "Vobiz").strip().lower()
+    if provider == "plivo":
+        return await make_outbound_call_plivo(customer_number, agent_id, caller_id)
+    return await make_outbound_call_vobiz(customer_number, agent_id, caller_id)
+
+
 def _build_stream_xml(websocket_url: str) -> str:
     """Build Vobiz XML response for WebSocket streaming."""
     sample_rate = int(os.environ.get("SAMPLE_RATE", "8000"))
@@ -170,11 +237,42 @@ def _build_stream_xml(websocket_url: str) -> str:
 </Response>'''
 
 
+def _resolve_call_identifier(payload: Dict[str, Any]) -> str:
+    """Resolve canonical provider call identifier for meeting_id."""
+    if not isinstance(payload, dict):
+        return "unknown"
+
+    candidate_paths = [
+        ("CallUUID",),            # Vobiz webhook
+        ("call_uuid",),
+        ("call_id",),
+        ("callId",),              # Plivo/ws variants
+        ("callSid",),
+        ("CallSid",),
+        ("request_uuid",),        # outbound response (fallback only)
+        ("start", "callId"),      # nested websocket start object
+        ("start", "callSid"),
+    ]
+
+    for path in candidate_paths:
+        value: Any = payload
+        for key in path:
+            if not isinstance(value, dict):
+                value = None
+                break
+            value = value.get(key)
+        if value:
+            resolved = str(value).strip()
+            if resolved:
+                return resolved
+    return "unknown"
+
+
 # === FastAPI App ===
 
 app = FastAPI(
-    title="Vobiz Telephony Agent API",
-    description="Voice bot API for Vobiz telephony integration",
+    title="Telephony Agent API",
+    description="Voice bot API for telephony integration",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -188,7 +286,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(telemetry_router)
-app.include_router(create_batch_router(make_outbound_call_vobiz))
+app.include_router(create_batch_router(make_outbound_call_provider))
 
 
 # === Routes ===
@@ -196,7 +294,7 @@ app.include_router(create_batch_router(make_outbound_call_vobiz))
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"service": "Vobiz Telephony Server", "status": "running"}
+    return {"service": "Telephony Server", "status": "running"}
 
 
 @app.get("/health")
@@ -216,7 +314,7 @@ async def make_outbound_call(request: OutboundCallRequest):
         Call initiation result
     """
     try:
-        result = await make_outbound_call_vobiz(
+        result = await make_outbound_call_provider(
             request.customer_number,
             request.agent_id,
             request.caller_id,
@@ -248,12 +346,14 @@ async def log_meeting(agent_id: str, form_data_dict: dict):
         org_id = agent_config.get("org_id")
 
         direction = form_data_dict.get("Direction", "outbound")
-        is_busy = form_data_dict.get("HangupCause", "unknown") == "USER_BUSY"
+        hangup_cause = str(form_data_dict.get("HangupCause", "")).upper()
+        call_status = str(form_data_dict.get("CallStatus", "")).lower()
+        is_busy = hangup_cause == "USER_BUSY" or call_status in {"busy", "no-answer", "failed"}
         start_time_utc = datetime.now(timezone.utc).isoformat()
         end_time_utc = start_time_utc if is_busy else ""
 
         meeting_data = {
-            "meeting_id": form_data_dict.get("CallUUID", "unknown"),
+            "meeting_id": _resolve_call_identifier(form_data_dict),
             "agent_type": agent_type,
             "org_id": org_id,
             "start_time_utc": start_time_utc,
@@ -349,6 +449,63 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
         logger.debug(traceback.format_exc())
     finally:
         logger.info(f"🔌 WebSocket closed: call_sid={call_sid}")
+
+
+@app.api_route("/plivo/answer", methods=["GET", "POST"])
+async def plivo_answer_webhook(request: Request):
+    """Plivo answer webhook - returns XML with WebSocket URL."""
+    agent_id = request.query_params.get("agent_id")
+    form_data = await request.form()
+    form_data_dict = dict(form_data)
+    await log_meeting(agent_id, form_data_dict)
+
+    websocket_prefix = os.environ.get("JOHNAIC_WEBSOCKET_URL", "")
+    websocket_url = f"{websocket_prefix}/plivo/agent/{agent_id}"
+    return Response(
+        content=_build_stream_xml(websocket_url),
+        media_type="application/xml",
+    )
+
+
+@app.api_route("/plivo/hangup", methods=["GET", "POST"])
+async def plivo_hangup_webhook(request: Request):
+    """Plivo hangup callback for provider-native call completion events."""
+    agent_id = request.query_params.get("agent_id")
+    form_data = await request.form()
+    form_data_dict = dict(form_data)
+    await log_meeting(agent_id, form_data_dict)
+    return Response(status_code=200)
+
+
+@app.websocket("/plivo/agent/{agent_id}")
+async def plivo_websocket_endpoint(websocket: WebSocket, agent_id: str):
+    """WebSocket endpoint for Plivo audio streaming."""
+    logger.info(f"🔌 Plivo WebSocket connected: agent={agent_id}")
+
+    call_sid = None
+    try:
+        agent_config = await fetch_agent_config_from_backend(agent_id)
+        agent_type = agent_config.get("agent_type")
+        if not agent_config:
+            logger.error(f"❌ Failed to fetch agent config from backend: {agent_id}")
+            return
+
+        call_sid = await bot(
+            websocket,
+            stream_sid=None,
+            call_sid=None,
+            agent_type=agent_type,
+            agent_config=agent_config,
+            provider="plivo",
+        )
+    except FileNotFoundError as e:
+        logger.error(f"❌ {e}")
+        await websocket.close(code=1008, reason="Agent config not found")
+    except Exception as e:
+        logger.error(f"❌ Plivo WebSocket error: {e}")
+        logger.debug(traceback.format_exc())
+    finally:
+        logger.info(f"🔌 Plivo WebSocket closed: call_sid={call_sid}")
 
 
 @app.websocket("/browser/agent/{agent_id}")

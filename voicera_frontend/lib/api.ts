@@ -331,6 +331,8 @@ export interface Agent {
   phone_number?: string
   vobiz_app_id?: string
   vobiz_answer_url?: string
+  plivo_app_id?: string
+  plivo_answer_url?: string
 }
 
 export interface AgentConfig {
@@ -377,6 +379,8 @@ export interface CreateAgentRequest {
   telephony_provider?: string
   vobiz_app_id?: string
   vobiz_answer_url?: string
+  plivo_app_id?: string
+  plivo_answer_url?: string
 }
 
 export interface Campaign {
@@ -552,6 +556,97 @@ export async function unlinkVobizNumber(phoneNumber: string): Promise<{ status: 
     throw new Error(error.detail || error.error || "Failed to unlink phone number")
   }
   
+  return response.json()
+}
+
+/**
+ * Create a Plivo application
+ */
+export async function createPlivoApplication(agentType: string, answerUrl: string): Promise<{ status: string; message: string; app_id?: string }> {
+  const response = await fetchApiRoute("/api/plivo/application", {
+    method: "POST",
+    body: JSON.stringify({
+      agent_type: agentType,
+      answer_url: answerUrl,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.error || "Failed to create Plivo application")
+  }
+
+  return response.json()
+}
+
+/**
+ * Delete a Plivo application
+ */
+export async function deletePlivoApplication(applicationId: string): Promise<{ status: string; message: string }> {
+  const response = await fetchApiRoute(`/api/plivo/application/${applicationId}`, {
+    method: "DELETE",
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.error || "Failed to delete Plivo application")
+  }
+
+  return response.json()
+}
+
+/**
+ * Get Plivo phone numbers
+ */
+export async function getPlivoNumbers(): Promise<{ status: string; numbers: string[] }> {
+  const response = await fetchApiRoute("/api/plivo/numbers", {
+    method: "GET",
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.error || "Failed to fetch Plivo numbers")
+  }
+
+  return response.json()
+}
+
+/**
+ * Link a phone number to a Plivo application
+ */
+export async function linkPlivoNumber(phoneNumber: string, applicationId: string): Promise<{ status: string; message: string }> {
+  const response = await fetchApiRoute("/api/plivo/numbers/link", {
+    method: "POST",
+    body: JSON.stringify({
+      phone_number: phoneNumber,
+      application_id: applicationId,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.error || "Failed to link phone number")
+  }
+
+  return response.json()
+}
+
+/**
+ * Unlink a phone number from a Plivo application
+ */
+export async function unlinkPlivoNumber(phoneNumber: string): Promise<{ status: string; message: string }> {
+  const response = await fetchApiRoute("/api/plivo/numbers/unlink", {
+    method: "DELETE",
+    body: JSON.stringify({
+      phone_number: phoneNumber,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.error || "Failed to unlink phone number")
+  }
+
   return response.json()
 }
 

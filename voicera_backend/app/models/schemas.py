@@ -58,6 +58,8 @@ class AgentConfigCreate(BaseModel):
     telephony_provider: Optional[str] = None
     vobiz_app_id: Optional[str] = None
     vobiz_answer_url: Optional[str] = None
+    plivo_app_id: Optional[str] = None
+    plivo_answer_url: Optional[str] = None
 
 class AgentConfigResponse(BaseModel):
     """Schema for agent config response."""
@@ -71,6 +73,8 @@ class AgentConfigResponse(BaseModel):
     telephony_provider: Optional[str] = None
     vobiz_app_id: Optional[str] = None
     vobiz_answer_url: Optional[str] = None
+    plivo_app_id: Optional[str] = None
+    plivo_answer_url: Optional[str] = None
     updated_at: Optional[str] = None
 
 class AgentConfigUpdate(BaseModel):
@@ -83,6 +87,8 @@ class AgentConfigUpdate(BaseModel):
     telephony_provider: Optional[str] = None
     vobiz_app_id: Optional[str] = None
     vobiz_answer_url: Optional[str] = None
+    plivo_app_id: Optional[str] = None
+    plivo_answer_url: Optional[str] = None
 
 # Meeting Models
 class MeetingCreate(BaseModel):
@@ -241,6 +247,27 @@ class VobizNumberLink(BaseModel):
 
 class VobizNumberUnlink(BaseModel):
     """Schema for unlinking phone number from Vobiz application."""
+    phone_number: str
+
+# Plivo Models
+class PlivoApplicationCreate(BaseModel):
+    """Schema for creating Plivo application."""
+    agent_type: str
+    answer_url: str
+
+class PlivoApplicationResponse(BaseModel):
+    """Schema for Plivo application response."""
+    status: str
+    message: str
+    app_id: Optional[str] = None
+
+class PlivoNumberLink(BaseModel):
+    """Schema for linking phone number to Plivo application."""
+    phone_number: str
+    application_id: str
+
+class PlivoNumberUnlink(BaseModel):
+    """Schema for unlinking phone number from Plivo application."""
     phone_number: str
 
 # Generic Response Models

@@ -66,6 +66,10 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
             agent_doc["vobiz_app_id"] = agent_data.vobiz_app_id
         if agent_data.vobiz_answer_url:
             agent_doc["vobiz_answer_url"] = agent_data.vobiz_answer_url
+        if agent_data.plivo_app_id:
+            agent_doc["plivo_app_id"] = agent_data.plivo_app_id
+        if agent_data.plivo_answer_url:
+            agent_doc["plivo_answer_url"] = agent_data.plivo_answer_url
         
         agent_table.insert_one(agent_doc)
         logger.info(f"Agent created successfully: {agent_data.agent_type}")
@@ -169,6 +173,10 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate) -> Dict[
             update_doc["vobiz_app_id"] = agent_data.vobiz_app_id
         if agent_data.vobiz_answer_url:
             update_doc["vobiz_answer_url"] = agent_data.vobiz_answer_url
+        if agent_data.plivo_app_id:
+            update_doc["plivo_app_id"] = agent_data.plivo_app_id
+        if agent_data.plivo_answer_url:
+            update_doc["plivo_answer_url"] = agent_data.plivo_answer_url
         
         result = agent_table.update_one(
             {"agent_type": agent_type},
