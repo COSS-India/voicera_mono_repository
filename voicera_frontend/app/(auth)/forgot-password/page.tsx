@@ -6,7 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Mail, Loader2, ArrowLeft, CheckCircle2 } from "lucide-react"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+function formatApiError(detail: unknown): string {
+  if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    return detail.map((e) => (typeof e === "object" && e && "msg" in e ? String(e.msg) : String(e))).join(", ")
+  }
+  return "Failed to send reset email"
+}
 
 export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -20,7 +26,7 @@ export default function ForgotPasswordPage() {
     setError("")
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/users/forgot-password`, {
+      const response = await fetch("/api/forgot-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -31,12 +37,16 @@ export default function ForgotPasswordPage() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.detail || "Failed to send reset email")
+        throw new Error(formatApiError(data.detail))
       }
 
       setSuccess(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred")
+      if (err instanceof TypeError && err.message === "Failed to fetch") {
+        setError("Could not reach server. Is the backend running on port 8000?")
+      } else {
+        setError(err instanceof Error ? err.message : "An error occurred")
+      }
     } finally {
       setIsLoading(false)
     }

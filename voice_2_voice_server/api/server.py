@@ -547,6 +547,7 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
                 )
             )
 
+        # Browser client streams 16 kHz L16 PCM (see test-browser-dialog.tsx).
         await bot(
             websocket,
             stream_sid,
@@ -554,6 +555,7 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
             agent_type,
             agent_config,
             transcript_callback=send_transcript,
+            sample_rate=16000,
         )
 
     except FileNotFoundError as e:

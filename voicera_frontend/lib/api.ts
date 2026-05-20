@@ -112,6 +112,27 @@ export async function fetchApiRoute(
   return response
 }
 
+async function parseErrorMessage(response: Response, fallbackMessage: string): Promise<string> {
+  const contentType = response.headers.get("content-type") || ""
+  if (contentType.includes("application/json")) {
+    try {
+      const error = await response.json()
+      return error.detail || error.error || fallbackMessage
+    } catch {
+      return fallbackMessage
+    }
+  }
+  try {
+    const text = await response.text()
+    if (text && text.trim().length > 0) {
+      return `${fallbackMessage}: ${text.slice(0, 200)}`
+    }
+  } catch {
+    return fallbackMessage
+  }
+  return fallbackMessage
+}
+
 /**
  * Get current user info (works for both org owners and members)
  */
@@ -161,11 +182,10 @@ export async function createAgent(agentData: CreateAgentRequest): Promise<Agent>
  * Get a single agent by ID
  */
 export async function getAgent(agentId: string, orgId: string): Promise<Agent> {
-  const response = await fetchApiRoute(`/api/agents/${agentId}?org_id=${encodeURIComponent(orgId)}`)
+  const response = await fetchApiRoute(`/api/agents/${encodeURIComponent(agentId)}?org_id=${encodeURIComponent(orgId)}`)
   
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || error.error || "Failed to fetch agent")
+    throw new Error(await parseErrorMessage(response, "Failed to fetch agent"))
   }
   
   return response.json()
@@ -175,14 +195,13 @@ export async function getAgent(agentId: string, orgId: string): Promise<Agent> {
  * Update an agent
  */
 export async function updateAgent(agentId: string, agentData: CreateAgentRequest): Promise<Agent> {
-  const response = await fetchApiRoute(`/api/agents/${agentId}`, {
+  const response = await fetchApiRoute(`/api/agents/${encodeURIComponent(agentId)}`, {
     method: "PUT",
     body: JSON.stringify(agentData),
   })
   
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || error.error || "Failed to update agent")
+    throw new Error(await parseErrorMessage(response, "Failed to update agent"))
   }
   
   return response.json()
@@ -191,14 +210,22 @@ export async function updateAgent(agentId: string, agentData: CreateAgentRequest
 /**
  * Delete an agent
  */
-export async function deleteAgent(agentId: string): Promise<{ status: string; message: string }> {
-  const response = await fetchApiRoute(`/api/agents/${agentId}`, {
-    method: "DELETE",
-  })
+export async function deleteAgent(
+  agentId: string,
+  options?: { agentType?: string }
+): Promise<{ status: string; message: string }> {
+  const trimmedAgentType = options?.agentType?.trim() || ""
+  const hasAgentType = trimmedAgentType.length > 0
+  const response = hasAgentType
+    ? await fetchApiRoute(`/api/agents?agent_type=${encodeURIComponent(trimmedAgentType)}`, {
+        method: "DELETE",
+      })
+    : await fetchApiRoute(`/api/agents/${encodeURIComponent(agentId)}`, {
+        method: "DELETE",
+      })
   
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || error.error || "Failed to delete agent")
+    throw new Error(await parseErrorMessage(response, "Failed to delete agent"))
   }
   
   return response.json()
@@ -498,6 +525,13 @@ export async function deleteVobizApplication(applicationId: string): Promise<{ s
   
   if (!response.ok) {
     const error = await response.json()
+    const errorMessage = String(error.detail || error.error || "")
+    if (response.status === 404 || errorMessage.toLowerCase().includes("not found")) {
+      return {
+        status: "success",
+        message: "Vobiz application already deleted",
+      }
+    }
     throw new Error(error.detail || error.error || "Failed to delete Vobiz application")
   }
   

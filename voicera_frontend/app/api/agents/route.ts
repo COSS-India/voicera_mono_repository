@@ -113,3 +113,54 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// DELETE - Delete an agent by agent_type (query param)
+export async function DELETE(request: NextRequest) {
+  try {
+    const authHeader = request.headers.get("Authorization")
+
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: "Authorization header is required" },
+        { status: 401 }
+      )
+    }
+
+    const { searchParams } = new URL(request.url)
+    const agentType = searchParams.get("agent_type")
+
+    if (!agentType) {
+      return NextResponse.json(
+        { error: "agent_type parameter is required" },
+        { status: 400 }
+      )
+    }
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/agents?agent_type=${encodeURIComponent(agentType)}`,
+      {
+        method: "DELETE",
+        headers: {
+          "Accept": "application/json",
+          "Authorization": authHeader,
+        },
+      }
+    )
+
+    const contentType = response.headers.get("content-type") || ""
+    const data = contentType.includes("application/json")
+      ? await response.json()
+      : { error: await response.text() }
+
+    if (!response.ok) {
+      return NextResponse.json(data, { status: response.status })
+    }
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error("Error deleting agent:", error)
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}

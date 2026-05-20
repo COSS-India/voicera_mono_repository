@@ -215,6 +215,7 @@ export default function AgentDetailPage() {
   // Form state
   const [systemPrompt, setSystemPrompt] = useState("")
   const [greetingMessage, setGreetingMessage] = useState("")
+  const [agentType, setAgentType] = useState("")
   const [language, setLanguage] = useState("")
   const [llmProvider, setLlmProvider] = useState("")
   const [llmModel, setLlmModel] = useState("")
@@ -396,6 +397,7 @@ export default function AgentDetailPage() {
     setAgent(null)
     setSystemPrompt("")
     setGreetingMessage("")
+    setAgentType("")
     setLanguage("")
     setLlmProvider("")
     setLlmModel("")
@@ -448,6 +450,7 @@ export default function AgentDetailPage() {
           const agentData = await getAgent(agentId, userData.org_id)
           console.log("Full agent data received:", JSON.stringify(agentData, null, 2))
           setAgent(agentData)
+          setAgentType(agentData.agent_type || "")
 
           setSystemPrompt(agentData.agent_config?.system_prompt || "")
           setGreetingMessage(agentData.agent_config?.greeting_message || "")
@@ -641,9 +644,11 @@ export default function AgentDetailPage() {
     const originalNormalized = JSON.stringify(normalize(originalConfig))
     const currentNormalized = JSON.stringify(normalize(currentConfig))
 
-    const hasChanged = originalNormalized !== currentNormalized
+    const hasConfigChanged = originalNormalized !== currentNormalized
+    const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
+    const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [systemPrompt, greetingMessage, language, llmProvider, llmModel, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent])
+  }, [agentType, systemPrompt, greetingMessage, language, llmProvider, llmModel, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -651,6 +656,11 @@ export default function AgentDetailPage() {
 
   const handleSave = async () => {
     if (!agent || !user) return
+    const trimmedAgentType = agentType.trim()
+    if (!trimmedAgentType) {
+      setErrorMessage("Agent name cannot be empty")
+      return
+    }
 
     setShowConfirmModal(false)
     setIsSaving(true)
@@ -661,7 +671,7 @@ export default function AgentDetailPage() {
 
       const updatedConfig: CreateAgentRequest = {
         org_id: user.org_id,
-        agent_type: agent.agent_type, // Use original agent_type - required for backend to find the agent
+        agent_type: trimmedAgentType,
         agent_id: agentId,
         agent_category: (agent as any).agent_category || "voicera_telephony",
         agent_config: {
@@ -708,6 +718,7 @@ export default function AgentDetailPage() {
       if (user?.org_id) {
         const refreshedAgent = await getAgent(agentId, user.org_id)
         setAgent(refreshedAgent)
+        setAgentType(refreshedAgent.agent_type || trimmedAgentType)
 
         if (refreshedAgent?.agent_config && typeof refreshedAgent.agent_config === 'object') {
           try {
@@ -725,6 +736,7 @@ export default function AgentDetailPage() {
         }
       } else if (updatedAgent?.agent_config && typeof updatedAgent.agent_config === 'object') {
         setAgent(updatedAgent)
+        setAgentType((updatedAgent as Agent).agent_type || trimmedAgentType)
         try {
           setOriginalConfig(JSON.parse(JSON.stringify(updatedAgent.agent_config)))
         } catch (e) {
@@ -1317,6 +1329,18 @@ export default function AgentDetailPage() {
               </h2>
 
               <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-2 block">
+                    Agent Name
+                  </label>
+                  <Input
+                    value={agentType}
+                    onChange={(e) => setAgentType(e.target.value)}
+                    className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                    placeholder="Enter agent name"
+                  />
+                </div>
+
                 <div>
                   <label className="text-sm font-medium text-slate-700 mb-2 block">
                     Greeting Message

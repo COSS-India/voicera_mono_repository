@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Eye, EyeOff, Lock, Loader2, Check, CheckCircle2, ArrowLeft } from "lucide-react"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+function formatApiError(detail: unknown): string {
+  if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    return detail.map((e) => (typeof e === "object" && e && "msg" in e ? String(e.msg) : String(e))).join(", ")
+  }
+  return "Failed to reset password"
+}
 
 function ResetPasswordForm() {
   const router = useRouter()
@@ -44,7 +50,7 @@ function ResetPasswordForm() {
     setError("")
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/users/reset-password`, {
+      const response = await fetch("/api/reset-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -58,12 +64,16 @@ function ResetPasswordForm() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.detail || "Failed to reset password")
+        throw new Error(formatApiError(data.detail))
       }
 
       setSuccess(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred")
+      if (err instanceof TypeError && err.message === "Failed to fetch") {
+        setError("Could not reach server. Is the backend running on port 8000?")
+      } else {
+        setError(err instanceof Error ? err.message : "An error occurred")
+      }
     } finally {
       setIsLoading(false)
     }

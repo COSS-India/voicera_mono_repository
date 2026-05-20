@@ -1,12 +1,12 @@
 """
 Agent API routes.
 """
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from app.models.schemas import (
     AgentConfigCreate, AgentConfigResponse, AgentConfigUpdate,
     SuccessResponse, ErrorResponse
 )
-from app.services import agent_service
+from app.services import agent_service, vobiz
 from app.auth import get_current_user, verify_api_key
 from typing import Dict, Any, List
 
@@ -171,7 +171,24 @@ async def update_agent_config(
             detail="Not authorized to update this agent"
         )
     
-    result = agent_service.update_agent_config(agent_type, agent_data)
+    new_agent_type = (agent_data.agent_type or agent_type).strip()
+    if (
+        new_agent_type != agent_type
+        and agent.get("telephony_provider") == "Vobiz"
+        and agent.get("vobiz_app_id")
+    ):
+        vobiz_result = await vobiz.update_vobiz_application_name(
+            current_user["org_id"],
+            str(agent["vobiz_app_id"]),
+            new_agent_type,
+        )
+        if vobiz_result["status"] == "fail":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to rename Vobiz application: {vobiz_result['message']}",
+            )
+
+    result = agent_service.update_agent_config(agent_type, agent_data, current_user["org_id"])
     if result["status"] == "fail":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -188,7 +205,7 @@ async def delete_agent(
     """
     Delete an agent configuration (protected endpoint).
     """
-    agent = agent_service.fetch_agent_config(agent_type)
+    agent = agent_service.fetch_agent_config_for_org(agent_type, current_user["org_id"])
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -201,7 +218,38 @@ async def delete_agent(
             detail="Not authorized to delete this agent"
         )
     
-    result = agent_service.delete_agent(agent_type)
+    result = agent_service.delete_agent(agent_type, current_user["org_id"])
+    if result["status"] == "fail":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["message"]
+        )
+    return result
+
+
+@router.delete("", response_model=Dict[str, Any])
+async def delete_agent_by_query(
+    agent_type: str = Query(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Delete an agent configuration by query param (safe for '/' in agent_type).
+    """
+    normalized_agent_type = agent_type.strip()
+    if not normalized_agent_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="agent_type is required"
+        )
+
+    agent = agent_service.fetch_agent_config_for_org(normalized_agent_type, current_user["org_id"])
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent type not found"
+        )
+
+    result = agent_service.delete_agent(normalized_agent_type, current_user["org_id"])
     if result["status"] == "fail":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

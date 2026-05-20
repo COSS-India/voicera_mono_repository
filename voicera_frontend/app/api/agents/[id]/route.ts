@@ -221,25 +221,29 @@ export async function DELETE(
     // Extract id from params (Next.js 16+ params are a Promise)
     const params = await Promise.resolve(context.params)
     const agentId = decodeURIComponent(params.id)
+    const { searchParams } = new URL(request.url)
+    const agentTypeParam = searchParams.get("agent_type")
 
     // Extract agent_type from agentId
     // The agentId format is typically: "org_id-agent_type-timestamp"
     // We need to extract the agent_type to call the backend
-    let agentTypeForUrl = ""
-    const parts = agentId.split('-')
-    
-    if (parts.length >= 3) {
+    let agentTypeForUrl = agentTypeParam ? decodeURIComponent(agentTypeParam).trim() : ""
+    const parts = agentId.split("-")
+
+    if (!agentTypeForUrl && parts.length >= 3) {
       // The agent_type is everything between org_id (first part) and timestamp (last part)
-      const extractedAgentType = parts.slice(1, -1).join('-')
+      const extractedAgentType = parts.slice(1, -1).join("-")
       if (extractedAgentType) {
         agentTypeForUrl = extractedAgentType
       }
-    } else if (parts.length === 2) {
+    } else if (!agentTypeForUrl && parts.length === 2) {
       // Fallback: if only 2 parts, the second might be the agent_type
       agentTypeForUrl = parts[1] || ""
     } else {
       // If it's a single part, it might be the agent_type directly
-      agentTypeForUrl = agentId
+      if (!agentTypeForUrl) {
+        agentTypeForUrl = agentId
+      }
     }
     
     if (!agentTypeForUrl) {
@@ -276,4 +280,3 @@ export async function DELETE(
     )
   }
 }
-

@@ -8,7 +8,13 @@ import { Input } from "@/components/ui/input"
 import { Eye, EyeOff, Mail, Lock, User, Building2, Loader2, Check } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+function formatApiError(detail: unknown): string {
+  if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    return detail.map((e) => (typeof e === "object" && e && "msg" in e ? String(e.msg) : String(e))).join(", ")
+  }
+  return "Signup failed"
+}
 
 export default function SignupPage() {
   const router = useRouter()
@@ -30,11 +36,18 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    const allRequirementsMet = passwordRequirements.every((req) => req.met)
+    if (!allRequirementsMet) {
+      setError("Please meet all password requirements before continuing.")
+      return
+    }
+
     setIsLoading(true)
     setError("")
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/users/signup`, {
+      const response = await fetch("/api/signup", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -45,13 +58,16 @@ export default function SignupPage() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.detail || "Signup failed")
+        throw new Error(formatApiError(data.detail))
       }
 
-      // Redirect to login on success
       router.push("/?registered=true")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred")
+      if (err instanceof TypeError && err.message === "Failed to fetch") {
+        setError("Could not reach server. Is the backend running on port 8000?")
+      } else {
+        setError(err instanceof Error ? err.message : "An error occurred")
+      }
     } finally {
       setIsLoading(false)
     }

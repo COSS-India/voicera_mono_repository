@@ -79,6 +79,7 @@ class AgentConfigResponse(BaseModel):
 
 class AgentConfigUpdate(BaseModel):
     """Schema for updating agent config."""
+    agent_type: Optional[str] = None
     agent_config: Dict[str, Any]
     agent_category: Optional[str] = None
     phone_number: Optional[str] = None

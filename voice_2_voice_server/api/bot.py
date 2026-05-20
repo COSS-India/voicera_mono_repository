@@ -8,8 +8,6 @@ import traceback
 from loguru import logger
 from dotenv import load_dotenv
 
-
-
 from pipecat.frames.frames import TTSSpeakFrame, TTSStartedFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -140,6 +138,7 @@ async def run_bot(
     handle_sigint: bool = False,
     vad_analyzer: Any = None,
     vistaar_session_id: Optional[str] = None,
+    sample_rate: Optional[int] = None,
 ) -> None:
     """Run the voice bot pipeline with the given configuration.
     
@@ -151,7 +150,7 @@ async def run_bot(
         handle_sigint: Whether to handle SIGINT for graceful shutdown
     """
     start_time = time.monotonic()
-    sample_rate = _get_sample_rate()
+    sample_rate = sample_rate or _get_sample_rate()
     
     logger.debug(f"Agent config: {json.dumps(agent_config, indent=2, default=str)}")
     
@@ -280,9 +279,10 @@ async def bot(
     agent_config: dict,
     provider: str = "vobiz",
     transcript_callback: Optional[Callable[[str, str, Optional[str]], Awaitable[None]]] = None,
+    sample_rate: Optional[int] = None,
 ) -> str:
     """Main bot entry point - sets up transport and runs the pipeline."""
-    sample_rate = _get_sample_rate()
+    sample_rate = sample_rate or _get_sample_rate()
     session_timeout = agent_config.get("session_timeout_minutes", 10) * 60
 
     import time
@@ -342,9 +342,9 @@ async def bot(
         sample_rate=sample_rate,
         params=VADParams(
             stop_secs=0.4,
-            min_volume=0.5,
+            min_volume=0.6,
             confidence=0.4,
-            start_secs=0.1,
+            start_secs=0.2,
         )
     )
     vad_analyzer._smoothing_factor = 0.1  # Faster volume change response
@@ -412,7 +412,16 @@ async def bot(
                     logger.debug(f"Transcript callback failed: {callback_error}")
     
     try:
-        await run_bot(transport, agent_config, audiobuffer, transcript, handle_sigint=False, vad_analyzer=vad_analyzer, vistaar_session_id=call_sid)
+        await run_bot(
+            transport,
+            agent_config,
+            audiobuffer,
+            transcript,
+            handle_sigint=False,
+            vad_analyzer=vad_analyzer,
+            vistaar_session_id=call_sid,
+            sample_rate=sample_rate,
+        )
     finally:
         logger.info(f"Saving call data for {call_sid}...")
         if call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:

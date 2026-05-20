@@ -162,6 +162,67 @@ async def delete_vobiz_application(org_id: str, application_id: str) -> Dict[str
             "message": error_message
         }
 
+async def update_vobiz_application_name(org_id: str, application_id: str, app_name: str) -> Dict[str, Any]:
+    """
+    Update Vobiz application name.
+
+    Args:
+        org_id: Organization identifier
+        application_id: Vobiz application ID
+        app_name: New application name
+
+    Returns:
+        Dict with status and message
+    """
+    try:
+        creds = _get_vobiz_auth_for_org(org_id)
+        if not creds:
+            return {
+                "status": "fail",
+                "message": "Vobiz Auth ID and Auth Token must be configured in Integrations (Telephony) for this organization.",
+            }
+        auth_id, auth_token = creds
+
+        url = f"{settings.VOBIZ_API_BASE_URL}/Account/{auth_id}/Application/{application_id}/"
+        headers = {
+            "X-Auth-ID": auth_id,
+            "X-Auth-Token": auth_token,
+            "Content-Type": "application/json",
+        }
+        payload = {"app_name": app_name}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+
+        logger.info("Vobiz application renamed successfully: %s -> %s", application_id, app_name)
+        return {
+            "status": "success",
+            "message": "Vobiz application renamed successfully",
+        }
+
+    except httpx.HTTPStatusError as e:
+        error_message = f"Vobiz API error: {e.response.text}"
+        logger.error(error_message)
+        return {
+            "status": "fail",
+            "message": error_message,
+        }
+    except httpx.RequestError as e:
+        error_message = f"Failed to connect to Vobiz API: {str(e)}"
+        logger.error(error_message)
+        return {
+            "status": "fail",
+            "message": error_message,
+        }
+    except Exception as e:
+        error_message = f"Error updating Vobiz application name: {str(e)}"
+        logger.error(error_message)
+        return {
+            "status": "fail",
+            "message": error_message,
+        }
+
 async def link_number_to_application(org_id: str, phone_number: str, application_id: str) -> Dict[str, Any]:
     """
     Link a phone number to a Vobiz application via API.

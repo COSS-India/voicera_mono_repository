@@ -621,7 +621,7 @@ export default function AssistantsPage() {
       if (!agentId) {
         throw new Error("Agent ID is missing")
       }
-      await deleteAgent(agentId)
+      await deleteAgent(agentId, { agentType: agent.agent_type })
 
       // Refresh the agents list after deletion
       const agentsData = await getAgents(user.org_id)

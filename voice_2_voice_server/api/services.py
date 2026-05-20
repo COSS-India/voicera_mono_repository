@@ -50,9 +50,21 @@ def _normalize_provider_name(raw_provider: Any, provider_map: dict[str, str], ki
     return provider_map.get(raw_provider.strip().lower(), raw_provider.strip())
 
 
-def _normalize_elevenlabs_stt_model(raw_model: Any) -> str:
+def _normalize_elevenlabs_stt_model(raw_model: Any, *, for_realtime: bool = True) -> str:
+    """Map agent STT model names to ElevenLabs API model IDs."""
     model = str(raw_model).strip() if raw_model is not None else "scribe_v2_realtime"
     model = model.replace("-", "_")
+    if for_realtime:
+        if model == "scribe_v2":
+            logger.warning(
+                "ElevenLabs 'scribe_v2' is batch-only; using 'scribe_v2_realtime' for streaming STT."
+            )
+            return "scribe_v2_realtime"
+        if model != "scribe_v2_realtime":
+            raise ServiceCreationError(
+                f"Invalid ElevenLabs realtime STT model '{model}'. Use scribe_v2_realtime."
+            )
+        return model
     allowed_models = {"scribe_v2", "scribe_v2_realtime"}
     if model not in allowed_models:
         raise ServiceCreationError(
@@ -307,18 +319,22 @@ def create_stt_service(
             api_key = os.getenv("ELEVENLABS_API_KEY")
             if not api_key:
                 raise ServiceCreationError("ELEVENLABS_API_KEY is required for ElevenLabs STT")
-        model = _normalize_elevenlabs_stt_model(args.get("model") or stt_config.get("model"))
+        model = _normalize_elevenlabs_stt_model(
+            args.get("model") or stt_config.get("model"), for_realtime=True
+        )
         lang_code = STT_LANGUAGE_MAP[provider].get(language) if language else None
         if language and lang_code is None:
             logger.warning(
                 f"ElevenLabs STT language '{language}' not mapped. Falling back to auto-detection."
             )
-        from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTSettings
-        settings = ElevenLabsRealtimeSTTSettings(model=model, language_code=lang_code)
+        logger.info(
+            f"ElevenLabs Realtime STT: model={model}, sample_rate={sample_rate}, language_code={lang_code}"
+        )
         return ElevenLabsRealtimeSTTService(
             api_key=api_key,
             sample_rate=sample_rate,
-            settings=settings,
+            model=model,
+            params=ElevenLabsRealtimeSTTService.InputParams(language_code=lang_code),
         )
     
     if provider == "Deepgram":
