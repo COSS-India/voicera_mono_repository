@@ -247,6 +247,7 @@ export default function AssistantsPage() {
   const router = useRouter()
   const [agents, setAgents] = useState<Agent[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+  const [agentSortOrder, setAgentSortOrder] = useState<"newest" | "oldest">("newest")
   const [config, setConfig] = useState<AgentConfig>(defaultConfig)
   const [view, setView] = useState<"list" | "create">("list")
   const [createStep, setCreateStep] = useState(1)
@@ -337,6 +338,22 @@ export default function AssistantsPage() {
       return name.includes(query) || description.includes(query)
     }
   )
+
+  const sortedAgents = useMemo(() => {
+    const copy = [...filteredAgents]
+    /** Prefer created_at; fall back to updated_at for legacy rows without created_at. */
+    const sortTime = (a: Agent) =>
+      new Date(a.created_at || a.updated_at || 0).getTime()
+    copy.sort((a, b) => {
+      const diff =
+        agentSortOrder === "newest"
+          ? sortTime(b) - sortTime(a)
+          : sortTime(a) - sortTime(b)
+      if (diff !== 0) return diff
+      return a.agent_type.localeCompare(b.agent_type)
+    })
+    return copy
+  }, [filteredAgents, agentSortOrder])
 
   const viewConfig = (agent: Agent) => {
     // Use agent.id or agent._id (MongoDB) if available, otherwise construct a unique identifier
@@ -939,7 +956,21 @@ export default function AssistantsPage() {
               <p className="text-slate-500">Let&apos;s get your agents inline.</p>
             </div>
             <div className="flex items-center gap-3">
-              
+              <Select
+                value={agentSortOrder}
+                onValueChange={(v) => setAgentSortOrder(v as "newest" | "oldest")}
+              >
+                <SelectTrigger
+                  aria-label="Sort agents by creation date"
+                  className="h-10 w-[168px] rounded-lg border-slate-200 bg-white text-sm focus:ring-1 focus:ring-slate-200"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                </SelectContent>
+              </Select>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
@@ -974,7 +1005,7 @@ export default function AssistantsPage() {
             )}
 
             {/* Existing Assistant Cards */}
-            {!isLoadingAgents && filteredAgents.map((agent) => (
+            {!isLoadingAgents && sortedAgents.map((agent) => (
               <AgentCard
                 key={String(agent.id || agent.org_id + agent.agent_type + agent.created_at)}
                 agent={agent}

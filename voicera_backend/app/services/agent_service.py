@@ -40,12 +40,14 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
         if existing_agent_by_id:
             return {"status": "fail", "message": "Agent ID already exists for this organization"}
         
+        now_iso = datetime.now().isoformat()
         agent_doc = {
             "agent_type": agent_data.agent_type,
             "agent_id": agent_data.agent_id,
             "agent_config": agent_data.agent_config,
             "org_id": agent_data.org_id,
-            "updated_at": datetime.now().isoformat()
+            "created_at": now_iso,
+            "updated_at": now_iso,
         }
         
         if agent_data.agent_category:
@@ -143,7 +145,11 @@ def fetch_agents_of_org(org_id: str) -> List[Dict[str, Any]]:
     try:
         db = get_database()
         agent_table = db["AgentConfig"]
-        agents = list(agent_table.find({"org_id": org_id}))
+        agents = list(
+            agent_table.find({"org_id": org_id}).sort(
+                [("created_at", -1), ("updated_at", -1)]
+            )
+        )
         return agents
     except Exception as e:
         logger.error(f"Error fetching agents: {str(e)}")
@@ -204,7 +210,12 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
             update_doc["plivo_app_id"] = agent_data.plivo_app_id
         if agent_data.plivo_answer_url:
             update_doc["plivo_answer_url"] = agent_data.plivo_answer_url
-        
+
+        if existing_agent.get("created_at") is None:
+            update_doc["created_at"] = (
+                existing_agent.get("updated_at") or datetime.now().isoformat()
+            )
+
         result = agent_table.update_one(
             {"agent_type": agent_type, "org_id": org_id},
             {"$set": update_doc}
