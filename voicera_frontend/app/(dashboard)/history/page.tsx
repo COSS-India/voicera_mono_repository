@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { getMeetings, getMeetingDetails, type Meeting, type MeetingDetails } from "@/lib/api"
+import { maskPhoneLastDigits } from "@/lib/mask-phone"
 import { MeetingDetailSheet } from "@/components/history/meeting-detail-sheet"
 import {
   Calendar as CalendarIcon,
@@ -760,7 +761,7 @@ function HistoryPageContent() {
                               }}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
                             >
-                              {number}
+                              {maskPhoneLastDigits(number)}
                             </button>
                           ))
                         )}
@@ -872,7 +873,12 @@ function HistoryPageContent() {
                 className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1"
               >
                 <span className="text-sm text-slate-700">
-                  {getFilterLabel(filter.field)}: <span className="font-medium">{filter.value}</span>
+                  {getFilterLabel(filter.field)}:{" "}
+                  <span className="font-medium">
+                    {filter.field === "from_number"
+                      ? maskPhoneLastDigits(filter.value as string)
+                      : filter.value}
+                  </span>
                 </span>
                 <button
                   onClick={() => removeFilter(index)}
@@ -1068,7 +1074,7 @@ function HistoryPageContent() {
                                 }}
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 rounded"
                               >
-                                {number}
+                                {maskPhoneLastDigits(number)}
                               </button>
                             ))
                           )}
@@ -1265,7 +1271,11 @@ function HistoryPageContent() {
                       <div className="text-slate-900">{meeting.to_number || "-"}</div>
                     </div>
                     <div className="text-sm">
-                      <div className="text-slate-900">{meeting.from_number || "-"}</div>
+                      <div className="text-slate-900">
+                        {meeting.from_number
+                          ? maskPhoneLastDigits(meeting.from_number)
+                          : "-"}
+                      </div>
                     </div>
                     <div>
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[callStatus as keyof typeof statusColors]}`}>

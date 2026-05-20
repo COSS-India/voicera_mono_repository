@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { type Meeting, type MeetingDetails } from "@/lib/api"
+import { maskPhoneLastDigits } from "@/lib/mask-phone"
 import {
   ChevronLeft,
   Link2,
@@ -372,7 +373,12 @@ export function MeetingDetailSheet({
 
   // Get agent name or fallback to from_number
   const agentName = useMemo(() => {
-    return meeting?.agent_type || (meeting?.from_number ? `Call with ${meeting.from_number}` : "Call")
+    return (
+      meeting?.agent_type ||
+      (meeting?.from_number
+        ? `Call with ${maskPhoneLastDigits(meeting.from_number)}`
+        : "Call")
+    )
   }, [meeting?.agent_type, meeting?.from_number])
 
   return (
@@ -756,7 +762,9 @@ export function MeetingDetailSheet({
                         </div>
                         <div>
                           <div className="text-xs text-slate-500 font-medium">Caller</div>
-                          <div className="text-sm text-slate-900 font-mono">{meeting.from_number}</div>
+                          <div className="text-sm text-slate-900 font-mono">
+                            {maskPhoneLastDigits(meeting.from_number)}
+                          </div>
                         </div>
                       </div>
                     )}
