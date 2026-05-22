@@ -6,6 +6,7 @@ collection (models PlivoAuthId and PlivoAuthToken). API base URL remains from se
 """
 from typing import Dict, Any, Optional, Tuple
 import logging
+from urllib.parse import quote
 
 import httpx
 
@@ -132,7 +133,8 @@ async def link_number_to_application(org_id: str, phone_number: str, application
             }
         auth_id, auth_token = creds
 
-        url = f"{settings.PLIVO_API_BASE_URL}/Account/{auth_id}/Number/{phone_number}/"
+        encoded = quote(phone_number.strip(), safe="")
+        url = f"{settings.PLIVO_API_BASE_URL}/Account/{auth_id}/Number/{encoded}/"
         payload = {"app_id": application_id}
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -171,8 +173,9 @@ async def unlink_number_from_application(org_id: str, phone_number: str) -> Dict
             }
         auth_id, auth_token = creds
 
-        url = f"{settings.PLIVO_API_BASE_URL}/Account/{auth_id}/Number/{phone_number}/"
-        payload = {"app_id": None}
+        encoded = quote(phone_number.strip(), safe="")
+        url = f"{settings.PLIVO_API_BASE_URL}/Account/{auth_id}/Number/{encoded}/"
+        payload = {"app_id": ""}
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 url,

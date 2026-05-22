@@ -132,19 +132,20 @@ async def fetch_agent_config_from_backend(agent_id: str) -> dict:
         response.raise_for_status()
         
         agent_data = response.json()
-        # Extract agent_config from response
-        agent_config = agent_data.get("agent_config", {})
-        logger.info(f"📥 Agent config: {agent_config}")
-        
-        # Add other fields that might be needed
-        if "org_id" in agent_data:
-            agent_config["org_id"] = agent_data["org_id"]
-        if "agent_type" in agent_data:
-            agent_config["agent_type"] = agent_data["agent_type"]
-        if "greeting_message" in agent_data:
-            agent_config["greeting_message"] = agent_data["greeting_message"]
-            
-        logger.info(f"Agent config fetched successfully: {agent_id}")
+        agent_config = dict(agent_data.get("agent_config") or {})
+        for key in (
+            "org_id",
+            "agent_type",
+            "agent_id",
+            "greeting_message",
+            "telephony_provider",
+            "phone_number",
+        ):
+            if key in agent_data and agent_data[key] is not None:
+                agent_config[key] = agent_data[key]
+        logger.info(
+            f"Agent config fetched: {agent_id} provider={agent_config.get('telephony_provider')}"
+        )
         return agent_config
         
     except requests.exceptions.RequestException as e:

@@ -125,7 +125,12 @@ export function TestCallSheet({
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
-        throw new Error(errorData.error || `Request failed with status ${res.status}`)
+        const msg =
+          errorData.error ||
+          errorData.detail ||
+          errorData.message ||
+          `Request failed with status ${res.status}`
+        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg))
       }
 
       setSuccess(true)

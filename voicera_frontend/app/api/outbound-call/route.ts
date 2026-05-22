@@ -16,6 +16,10 @@ export async function POST(request: NextRequest) {
     const data = await response.json()
     return NextResponse.json(data, { status: response.status })
   } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const message =
+      error instanceof Error && error.message.includes("fetch")
+        ? `Cannot reach voice server at ${VOICE_SERVER_URL}`
+        : "Internal server error"
+    return NextResponse.json({ error: message }, { status: 503 })
   }
 }

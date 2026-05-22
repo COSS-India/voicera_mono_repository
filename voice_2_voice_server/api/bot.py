@@ -23,7 +23,6 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
-from pipecat.serializers.plivo import PlivoFrameSerializer
 from pipecat.runner.utils import parse_telephony_websocket
 from storage.minio_client import MinIOStorage
 from serializer.vobiz_serializer import VobizFrameSerializer
@@ -302,25 +301,17 @@ async def bot(
 
     normalized_provider = (provider or "vobiz").strip().lower()
     if normalized_provider == "plivo":
+        # Pipecat: parse_telephony_websocket reads Plivo start messages (streamId, callId)
         await websocket_client.accept()
         _, telephony_call_data = await parse_telephony_websocket(websocket_client)
-        stream_sid = (
-            stream_sid
-            or telephony_call_data.get("stream_id")
-            or telephony_call_data.get("streamId")
-            or "unknown"
-        )
-        call_sid = (
-            call_sid
-            or telephony_call_data.get("call_id")
-            or telephony_call_data.get("callId")
-            or "unknown"
-        )
-        serializer = PlivoFrameSerializer(
-            stream_id=stream_sid,
-            call_id=call_sid,
-            params=PlivoFrameSerializer.InputParams(
-                plivo_sample_rate=sample_rate,
+        stream_sid = stream_sid or telephony_call_data.get("stream_id") or "unknown"
+        call_sid = call_sid or telephony_call_data.get("call_id") or "unknown"
+        # Plivo media stream matches Vobiz (L16 @ 16k); native PlivoFrameSerializer is mulaw-only
+        serializer = VobizFrameSerializer(
+            stream_sid=stream_sid,
+            call_sid=call_sid,
+            params=VobizFrameSerializer.InputParams(
+                vobiz_sample_rate=sample_rate,
                 sample_rate=sample_rate,
                 auto_hang_up=False,
             ),

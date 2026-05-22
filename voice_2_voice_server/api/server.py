@@ -213,6 +213,7 @@ async def make_outbound_call_provider(
     if not agent_config:
         raise ValueError(f"Could not load agent config for agent_id={agent_id}")
     provider = (agent_config.get("telephony_provider") or "Vobiz").strip().lower()
+    logger.info(f"Outbound provider={provider} agent_id={agent_id}")
     if provider == "plivo":
         return await make_outbound_call_plivo(customer_number, agent_id, caller_id)
     return await make_outbound_call_vobiz(customer_number, agent_id, caller_id)
@@ -485,10 +486,10 @@ async def plivo_websocket_endpoint(websocket: WebSocket, agent_id: str):
     call_sid = None
     try:
         agent_config = await fetch_agent_config_from_backend(agent_id)
-        agent_type = agent_config.get("agent_type")
         if not agent_config:
             logger.error(f"❌ Failed to fetch agent config from backend: {agent_id}")
             return
+        agent_type = agent_config.get("agent_type")
 
         call_sid = await bot(
             websocket,
