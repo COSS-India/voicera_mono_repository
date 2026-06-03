@@ -59,12 +59,12 @@
 
 ---
 
-## Engineering placeholders (fill before publishing)
+## Engineering placeholders
 
-| Item | Value (TBD) |
-|------|-------------|
-| Minimum RAM (voice only, no local AI) | ___ GB |
-| Minimum RAM (with local AI4Bharat) | ___ GB |
-| GPU VRAM (STT) | ___ GB |
-| GPU VRAM (TTS) | ___ GB |
-| Recommended concurrent calls per deployment | ___ |
+| Item | Status |
+|------|--------|
+| Minimum RAM (voice only, no local AI) | Size with hosting partner / staging load test |
+| Minimum RAM (with local AI4Bharat) | Size with hosting partner / staging load test |
+| GPU VRAM (STT) | **Deferred** — [AI4Bharat STT](../services/ai4bharat-stt.md#gpu-vram) |
+| GPU VRAM (TTS) | **Deferred** — [AI4Bharat TTS](../services/ai4bharat-tts.md#gpu-vram) |
+| Recommended concurrent calls per deployment | Load-test on staging |

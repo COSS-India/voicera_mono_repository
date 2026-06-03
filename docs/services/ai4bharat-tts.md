@@ -20,7 +20,23 @@ Use `"bhb"` or `"bhili"` for Bhili.
 
 - Sample rate: **44100 Hz**
 - **Code:** `ai4bharat_tts_server/server.py`, `inference/runner.py`
-- **GPU** expected for production Parler inference
+
+### GPU / VRAM
+
+| | |
+|--|--|
+| **Production** | NVIDIA GPU **expected** for Parler TTS inference |
+| **Development** | CPU possible but not recommended for latency |
+| **Recommended GPUs** | **RTX 4000 series and newer** (see list below) |
+| **Pinned VRAM (GB)** | **Deferred** — depends on checkpoint and concurrency |
+
+**Hardware guidance:** GPUs at **RTX 4000 series and above** (NVIDIA Ada, Blackwell, and datacenter classes) generally run Parler TTS well for production. Examples that teams have used or sized for:
+
+RTX 5090, RTX 5080, RTX 5070 Ti, RTX 5070, RTX 5060 Ti, RTX 5060, RTX 4090, RTX 4080 Super, RTX 4080, RTX 4070 Ti Super, RTX 4070 Ti, RTX 4070 Super, RTX 4070, RTX 4060 Ti 16GB, RTX 4060 Ti, RTX 4060, RTX 6000 Ada, RTX 5000 Ada, RTX 4500 Ada, RTX 4000 Ada, L40S, L40, H100, H200.
+
+Older or low-VRAM cards may work for light dev loads but are not recommended for production latency and concurrency.
+
+**Until pinned GB figures are published:** VRAM still depends on your Parler weights, batching, and concurrent utterances — consult your hosting partner or observe `nvidia-smi` on staging. Reference GB benchmarks remain **deferred** (see [A5](../source-briefs/A5-ai4bharat-servers.md)).
 
 Voice server connects when agent uses `indic-parler-tts` — see `voice_2_voice_server/services/ai4bharat/`.
 

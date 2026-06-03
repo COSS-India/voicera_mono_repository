@@ -40,6 +40,12 @@ Full detail: [docs/services/ai4bharat-stt.md](../docs/services/ai4bharat-stt.md)
 
 Set `INDIC_NEMO_PATH`, optional `BHILI_NEMO_PATH`, `BHILI_ENABLE`, `HF_TOKEN`, `PORT` — see `.env.example`.
 
+## GPU / VRAM
+
+- **Production:** NVIDIA GPU strongly recommended (`cuda:0` when available).
+- **Development:** CPU mode is supported but slow.
+- **Pinned GB figures:** Not in repo yet — VRAM depends on your NeMo checkpoint files and batch settings. Size with your hosting partner or a staging `nvidia-smi` load test. See [docs/services/ai4bharat-stt.md](../docs/services/ai4bharat-stt.md#gpu-vram).
+
 ## Documentation
 
 - [AI4Bharat STT (MkDocs)](../docs/services/ai4bharat-stt.md)

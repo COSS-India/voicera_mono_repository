@@ -1,6 +1,8 @@
 # Brief: Dashboard walkthrough / screenshots (B3)
 
-**Review gap:** No screenshots or walkthrough of the frontend — what an "agent" means, how to create one, how to make a call.
+**Review gap (original):** No screenshots or walkthrough of the frontend — what an "agent" means, how to create one, how to make a call.
+
+**Merge status:** Written walkthrough is in [docs/guide/dashboard.md](../guide/dashboard.md). **Screenshots are explicitly deferred** until staging + test account are available; dashboard.md contains an acknowledgement callout and this brief remains the capture checklist.
 
 **Requires:** Staging environment + test user account for documentation writer.
 

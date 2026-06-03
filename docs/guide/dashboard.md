@@ -1,6 +1,22 @@
 # Dashboard walkthrough
 
-This guide explains the VoicERA web dashboard for operators. Screenshots should be captured on your **staging** environment (redact API keys and personal numbers).
+This guide explains the VoicERA web dashboard for operators.
+
+!!! note "Screenshots — pending (acknowledged for merge)"
+    **Illustrated screenshots are not in this document yet.** The written steps below are complete; visual captures require a **staging** deployment and a test operator account.
+
+    | Item | Status |
+    |------|--------|
+    | Written walkthrough | Done (this page) |
+    | Screenshot assets | **To be added** — blocked on staging access |
+    | Capture checklist | [Source brief B3](../source-briefs/B3-dashboard-walkthrough.md) (15 suggested screens) |
+    | Redaction | Blur API keys, tokens, and non-test phone numbers |
+
+    **Plan:** After merge to `main`, documentation will capture images from staging following the B3 table, store them under `docs/assets/dashboard/`, and embed them in the sections below. No separate issue tracker link in-repo; this callout is the reviewer acknowledgement.
+
+    Until then, operators should follow the step-by-step text; engineering can pair-review on staging if visuals are needed sooner.
+
+When screenshots are added, capture them on **staging** only (never production secrets).
 
 ## Login
 

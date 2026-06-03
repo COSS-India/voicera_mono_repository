@@ -6,8 +6,8 @@
 
 | Module | Folder | What it does | Run (Docker / make) | Existing doc |
 |--------|--------|--------------|---------------------|--------------|
-| Backend | `voicera_backend/` | REST API, MongoDB, MinIO, auth, agents, telephony APIs, campaigns, knowledge base | `backend` service; `make start-backend-services` | `voicera_backend/README.md` exists — expand, don't replace from scratch |
-| Frontend | `voicera_frontend/` | Next.js dashboard — agents, numbers, integrations, calls | `frontend` :3000; `make start-frontend` | Only default Next.js README — **replace entirely** |
+| Backend | `voicera_backend/` | REST API, MongoDB, MinIO, auth, agents, telephony APIs, campaigns, knowledge base | `backend` service; `make start-backend-services` | `voicera_backend/README.md` — short module README (MkDocs for depth) |
+| Frontend | `voicera_frontend/` | Next.js dashboard — agents, numbers, integrations, calls | `frontend` :3000; `make start-frontend` | `voicera_frontend/README.md` — module README (replaces create-next-app boilerplate) |
 | Voice server | `voice_2_voice_server/` | Real-time voice pipeline, telephony webhooks, WebSocket audio | `voice_server` :7860 | `voice_2_voice_server/README.md` exists — good base |
 | STT server | `ai4bharat_stt_server/` | Local Indic speech-to-text (NeMo) | Optional :8001 | **None** — create from this brief |
 | TTS server | `ai4bharat_tts_server/` | Local Indic text-to-speech (Parler, WebSocket) | Optional :8002 | **None** — create from this brief |

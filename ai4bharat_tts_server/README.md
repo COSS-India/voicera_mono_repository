@@ -31,6 +31,12 @@ WebSocket JSON per utterance (`prompt`, `description`, `language`); server strea
 
 Full detail: [docs/services/ai4bharat-tts.md](../docs/services/ai4bharat-tts.md)
 
+## GPU / VRAM
+
+- **Production:** NVIDIA GPU expected for Parler inference.
+- **Recommended:** **RTX 4000 series and newer** — e.g. RTX 5090–5060, RTX 4090–4060 (incl. 4060 Ti 16GB), RTX 6000/5000/4500/4000 Ada, L40S, L40, H100, H200. Full list: [docs/services/ai4bharat-tts.md#gpu-vram](../docs/services/ai4bharat-tts.md#gpu-vram).
+- **Pinned GB figures:** Deferred — VRAM depends on model weights and concurrent utterances; size on staging with `nvidia-smi`.
+
 ## Documentation
 
 - [AI4Bharat TTS (MkDocs)](../docs/services/ai4bharat-tts.md)

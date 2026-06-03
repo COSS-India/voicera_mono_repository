@@ -1,6 +1,8 @@
 # Brief: AI4Bharat STT/TTS servers (A5)
 
-**Review gap:** No model IDs, GPU VRAM requirements, or API spec for the STT/TTS servers in repository documentation.
+**Review gap (original):** No model IDs, GPU VRAM requirements, or API spec for the STT/TTS servers in repository documentation.
+
+**Merge status (VRAM):** API specs and env paths are documented in MkDocs and submodule READMEs. **Exact GPU VRAM (GB) is formally deferred** — checkpoints are customer-specific; engineering has not published reference benchmarks in this sprint. Operator-facing text in `docs/services/ai4bharat-*.md` states deferred status and hosting-partner sizing guidance.
 
 These servers are **optional**. The core VoicERA stack can run using cloud providers only.
 
@@ -41,9 +43,9 @@ On-premises Indic speech-to-text using NeMo ASR models.
 
 ### GPU / VRAM
 
-**Engineering action needed:** Measure VRAM for your deployed checkpoint files and add numbers to final docs.
+**Status: deferred for main merge.** NVIDIA GPU strongly recommended for production; CPU for development only. Pinning `__ GB` is a follow-up after benchmarking agreed checkpoint files on reference hardware.
 
-**Writer interim text:** "NVIDIA GPU strongly recommended for production; CPU mode is for development only."
+**Published interim text (MkDocs):** VRAM depends on checkpoint size and batch settings; consult your hosting partner or run staging load tests with `nvidia-smi`.
 
 ---
 
@@ -82,7 +84,9 @@ Use `"bhb"` or `"bhili"` for Bhili.
 
 ### GPU / VRAM
 
-GPU expected for production Parler inference. Document actual VRAM after benchmarking on target hardware.
+**Production:** NVIDIA GPU expected. **RTX 4000 series and newer** run well (RTX 50xx/40xx consumer, RTX Ada workstation, L40S/L40, H100/H200) — full list in [ai4bharat-tts.md](../services/ai4bharat-tts.md#gpu-vram).
+
+**Pinned VRAM (GB):** Still deferred; use hosting-partner / staging sizing in addition to the GPU class guidance above.
 
 ---
 

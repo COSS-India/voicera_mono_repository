@@ -23,7 +23,17 @@ Audio: base64 **16 kHz int16 PCM**. Batching: `MAX_BATCH_SIZE=16`, `BATCH_TIMEOU
 | `HF_TOKEN` | Optional HuggingFace token |
 | `PORT` | Default `8001` |
 
-**GPU:** NVIDIA strongly recommended for production; CPU for development only. Measure VRAM for your checkpoints on target hardware.
+### GPU / VRAM
+
+| | |
+|--|--|
+| **Production** | NVIDIA GPU **strongly recommended** |
+| **Development** | CPU fallback is supported but slow |
+| **Pinned VRAM (GB)** | **Deferred** — not benchmarked in this documentation pass |
+
+Exact VRAM depends on your **NeMo checkpoint file** (`INDIC_NEMO_PATH`, optional `BHILI_NEMO_PATH`), batch size (`MAX_BATCH_SIZE`), and whether both Indic and Bhili models are loaded. VoicERA does not ship a single reference checkpoint size for all deployments.
+
+**Until measured values are published:** size GPUs with your hosting partner using a staging load test (`nvidia-smi` while serving `/transcribe` at expected concurrency), or use cloud STT providers and omit this server. Engineering may add reference GB figures after benchmarking on agreed hardware; that work is **out of scope for the initial main merge** and tracked in [source brief A5](../source-briefs/A5-ai4bharat-servers.md).
 
 On **`dev`**, agents with language **`bhb`** and provider `indic-conformer-stt` use `/transcribe/bhili`.
 

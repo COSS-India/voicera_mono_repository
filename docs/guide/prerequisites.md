@@ -42,10 +42,10 @@ Use this checklist before deployment. Assign a **responsible party** (operator, 
 - [ ] At least one **test phone call** succeeded
 - [ ] [MIT license](../legal/license.md) notice included in distributions if required by policy
 
-## Sizing (engineering placeholders)
+## Sizing
 
 | Item | Guidance |
 |------|----------|
 | RAM (voice only, cloud AI) | Size with hosting partner for expected concurrent calls |
-| RAM + GPU (local AI4Bharat) | GPU strongly recommended; see [AI4Bharat STT](../services/ai4bharat-stt.md) |
+| RAM + GPU (local AI4Bharat) | GPU strongly recommended; pinned VRAM **deferred** — [STT](../services/ai4bharat-stt.md#gpu-vram), [TTS](../services/ai4bharat-tts.md#gpu-vram) |
 | Concurrent calls | Load-test on staging before production |
