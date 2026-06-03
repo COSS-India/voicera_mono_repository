@@ -8,17 +8,16 @@ export function CallLatencyListSkeleton() {
       {Array.from({ length: LIST_ROW_COUNT }).map((_, i) => (
         <div
           key={i}
-          className="grid grid-cols-[88px_minmax(0,1fr)_minmax(0,112px)_100px_64px_48px] gap-2 px-5 py-4 items-center"
+          className="flex items-center gap-4 px-5 py-4"
         >
-          <Skeleton className="h-7 w-[84px] rounded-full" />
-          <div className="space-y-1.5 min-w-0">
-            <Skeleton className="h-4 w-3/4 max-w-[140px]" />
-            <Skeleton className="h-3 w-1/2 max-w-[90px]" />
+          <Skeleton className="h-7 w-[84px] shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 basis-0 space-y-1.5">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
           </div>
-          <Skeleton className="h-3 w-full max-w-[100px]" />
-          <Skeleton className="h-3 w-full max-w-[88px]" />
-          <Skeleton className="h-3 w-10 ml-auto" />
-          <Skeleton className="h-3 w-6 ml-auto" />
+          <Skeleton className="h-3 min-w-0 flex-1 basis-0 max-w-[140px]" />
+          <Skeleton className="h-3 w-10 shrink-0" />
+          <Skeleton className="h-3 w-6 shrink-0" />
         </div>
       ))}
     </div>

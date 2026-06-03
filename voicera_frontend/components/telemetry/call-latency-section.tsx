@@ -19,15 +19,24 @@ import {
   Search,
   Volume2,
   X,
+  FileAudio,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MeetingDetailSheet } from "@/components/history/meeting-detail-sheet"
 import {
   CallLatencyDetailSkeleton,
   CallLatencyListSkeleton,
 } from "@/components/telemetry/telemetry-skeletons"
 import { cn } from "@/lib/utils"
-import { getMeeting, type CallLatencyMetrics, type Meeting } from "@/lib/api"
+import {
+  getMeeting,
+  getMeetingDetails,
+  type CallLatencyMetrics,
+  type Meeting,
+  type MeetingDetails,
+} from "@/lib/api"
 import { normalizeLatencyMetrics } from "@/lib/dedupe-latency-turns"
 import { buildMeetingsParams } from "@/lib/meetings-params"
 import { useMeetingsQuery } from "@/lib/queries/meetings"
@@ -58,6 +67,14 @@ function formatDuration(seconds: number | undefined): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
+const LIST_ROW_LAYOUT =
+  "flex items-center gap-4 px-5"
+const LIST_COL_CALL_TYPE = "w-[88px] shrink-0"
+const LIST_COL_ASSISTANT = "min-w-0 flex-1 basis-0"
+const LIST_COL_DATETIME = "min-w-0 flex-1 basis-0"
+const LIST_COL_DURATION = "w-14 shrink-0 text-right tabular-nums"
+const LIST_COL_TURNS = "w-11 shrink-0 text-right tabular-nums"
+
 function CallTypeBadge({ inbound }: { inbound?: boolean }) {
   const isInbound = inbound === true
   return (
@@ -72,14 +89,40 @@ function CallTypeBadge({ inbound }: { inbound?: boolean }) {
   )
 }
 
+function ViewCallButton({
+  onClick,
+  className,
+}: {
+  onClick: () => void
+  className?: string
+}) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      className={cn(
+        "gap-1.5 bg-slate-900 hover:bg-slate-800 text-white shadow-sm font-semibold",
+        className
+      )}
+      onClick={onClick}
+      aria-label="View transcript and recording"
+    >
+      <FileAudio className="h-4 w-4 shrink-0" />
+      View transcript
+    </Button>
+  )
+}
+
 function CallMetricsDetail({
   meeting,
   metrics,
   loading,
+  onOpenCallDetails,
 }: {
   meeting: Meeting
   metrics: CallLatencyMetrics | undefined
   loading: boolean
+  onOpenCallDetails: () => void
 }) {
   const chartData = useMemo(() => {
     if (!metrics?.turns?.length) return []
@@ -104,20 +147,28 @@ function CallMetricsDetail({
 
   if (!metrics?.turns?.length) {
     return (
-      <div className="flex flex-1 items-center justify-center py-16 text-sm text-slate-500 px-6 text-center">
-        No latency metrics stored for this call.
+      <div className="flex flex-1 flex-col items-center justify-center gap-5 py-16 px-6 text-center">
+        <p className="text-sm text-slate-500">No latency metrics stored for this call.</p>
+        <ViewCallButton
+          onClick={onOpenCallDetails}
+          className="h-10 px-5 text-sm"
+        />
       </div>
     )
   }
 
   return (
     <div className="flex-1 overflow-y-auto p-5 lg:p-6 space-y-5 bg-slate-50/50">
-      <div>
-        <h2 className="text-base font-semibold text-slate-900 truncate">
-          {meeting.agent_type || "Call"}
-        </h2>
-        <p className="text-xs text-slate-500 font-mono mt-1 break-all">{meeting.meeting_id}</p>
-        <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-600">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold text-slate-900 truncate">
+            {meeting.agent_type || "Call"}
+          </h2>
+          <p className="text-xs text-slate-500 font-mono mt-1 break-all">{meeting.meeting_id}</p>
+        </div>
+        <ViewCallButton onClick={onOpenCallDetails} className="shrink-0" />
+      </div>
+      <div className="flex flex-wrap gap-3 text-xs text-slate-600">
           <span className="flex items-center gap-1">
             <Clock className="h-3.5 w-3.5" />
             {formatDuration(meeting.duration)}
@@ -127,7 +178,6 @@ function CallMetricsDetail({
               {summary.turn_count} turn{summary.turn_count === 1 ? "" : "s"}
             </span>
           )}
-        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -242,6 +292,10 @@ export function CallLatencySection() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetMeeting, setSheetMeeting] = useState<Meeting | null>(null)
+  const [meetingDetails, setMeetingDetails] = useState<MeetingDetails | null>(null)
+  const [sheetLoading, setSheetLoading] = useState(false)
 
   const meetingsParams = useMemo(
     () =>
@@ -284,6 +338,21 @@ export function CallLatencySection() {
     void loadCallDetail(meeting)
   }
 
+  const openCallSheet = useCallback(async (meeting: Meeting) => {
+    setSheetMeeting(meeting)
+    setSheetOpen(true)
+    setSheetLoading(true)
+    setMeetingDetails(null)
+    try {
+      const details = await getMeetingDetails(meeting.meeting_id)
+      setMeetingDetails(details)
+    } catch {
+      setMeetingDetails(null)
+    } finally {
+      setSheetLoading(false)
+    }
+  }, [])
+
   const isLoadingList = isPending || isFetching
 
   useEffect(() => {
@@ -324,7 +393,7 @@ export function CallLatencySection() {
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Calls with latency data</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Search by assistant, call ID, or phone number
+                Select a row for latency metrics; open View transcript in the detail panel
               </p>
             </div>
             <div className="relative">
@@ -360,13 +429,17 @@ export function CallLatencySection() {
             )}
           </div>
 
-          <div className="grid grid-cols-[88px_minmax(0,1fr)_minmax(0,112px)_100px_64px_48px] gap-2 px-5 py-3 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
-            <div>Call Type</div>
-            <div>Assistant</div>
-            <div>Call ID</div>
-            <div>Date & Time</div>
-            <div className="text-right">Duration</div>
-            <div className="text-right">Turns</div>
+          <div
+            className={cn(
+              LIST_ROW_LAYOUT,
+              "py-3 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600"
+            )}
+          >
+            <div className={LIST_COL_CALL_TYPE}>Call Type</div>
+            <div className={LIST_COL_ASSISTANT}>Assistant</div>
+            <div className={LIST_COL_DATETIME}>Date & Time</div>
+            <div className={LIST_COL_DURATION}>Duration</div>
+            <div className={LIST_COL_TURNS}>Turns</div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -395,36 +468,32 @@ export function CallLatencySection() {
                     type="button"
                     onClick={() => handleCallClick(meeting)}
                     className={cn(
-                      "w-full grid grid-cols-[88px_minmax(0,1fr)_minmax(0,112px)_100px_64px_48px] gap-2 px-5 py-4 border-b border-slate-100 items-center text-left transition-colors hover:bg-slate-50",
+                      "w-full",
+                      LIST_ROW_LAYOUT,
+                      "py-4 border-b border-slate-100 text-left transition-colors hover:bg-slate-50",
                       isSelected && "bg-slate-100 hover:bg-slate-100"
                     )}
                   >
-                    <div>
+                    <div className={LIST_COL_CALL_TYPE}>
                       <CallTypeBadge inbound={meeting.inbound} />
                     </div>
-                    <div className="min-w-0">
+                    <div className={LIST_COL_ASSISTANT}>
                       <p className="text-sm font-medium text-slate-900 truncate">
                         {meeting.agent_type || "—"}
                       </p>
                       {avgLlm != null && (
-                        <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
+                        <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums truncate">
                           avg LLM {formatMs(avgLlm)}
                         </p>
                       )}
                     </div>
-                    <div
-                      className="min-w-0 text-[11px] text-slate-600 font-mono truncate"
-                      title={meeting.meeting_id}
-                    >
-                      {meeting.meeting_id || "—"}
-                    </div>
-                    <div className="text-xs text-slate-600 truncate">
+                    <div className={cn(LIST_COL_DATETIME, "text-xs text-slate-600 truncate")}>
                       {formatCallDate(meeting)}
                     </div>
-                    <div className="text-xs text-slate-600 text-right tabular-nums">
+                    <div className={cn(LIST_COL_DURATION, "text-xs text-slate-600")}>
                       {formatDuration(meeting.duration)}
                     </div>
-                    <div className="text-xs font-medium text-slate-900 text-right tabular-nums">
+                    <div className={cn(LIST_COL_TURNS, "text-xs font-medium text-slate-900")}>
                       {turnCount}
                     </div>
                   </button>
@@ -447,9 +516,18 @@ export function CallLatencySection() {
             meeting={selectedMeeting}
             metrics={latencyMetrics}
             loading={false}
+            onOpenCallDetails={() => void openCallSheet(selectedMeeting)}
           />
         ) : null}
       </div>
+
+      <MeetingDetailSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        meeting={sheetMeeting}
+        meetingDetails={meetingDetails}
+        isLoading={sheetLoading}
+      />
     </div>
   )
 }
