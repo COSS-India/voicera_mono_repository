@@ -42,6 +42,9 @@ class BhashiniTTSService(TTSService):
         self._play_steps_in_s = play_steps_in_s
         self._play_steps_in_s = play_steps_in_s
 
+    def can_generate_metrics(self) -> bool:
+        return True
+
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         if not text.strip():
             return
@@ -57,7 +60,9 @@ class BhashiniTTSService(TTSService):
                     "play_steps_in_s": self._play_steps_in_s,
                 }
 
+                await self.start_ttfb_metrics()
                 yield TTSStartedFrame()
+                first_audio = True
 
                 async with session.post(
                     self._server_url,
@@ -97,6 +102,9 @@ class BhashiniTTSService(TTSService):
 
                             if "audio" in data:
                                 audio_bytes = base64.b64decode(data["audio"])
+                                if first_audio and audio_bytes:
+                                    first_audio = False
+                                    await self.stop_ttfb_metrics()
                                 logger.info(f"Audio chunk sent to Telephony: {len(audio_bytes)} bytes")
                                 yield TTSAudioRawFrame(
                                     audio=audio_bytes,

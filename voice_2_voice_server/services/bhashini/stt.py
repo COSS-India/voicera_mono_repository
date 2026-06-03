@@ -156,7 +156,11 @@ class BhashiniSTTService(STTService):
         self._audio_buffer.clear()
 
         audio_b64 = self._pcm_to_wav_b64(chunks)
-        transcript = await self._transcribe(audio_b64)
+        await self.start_processing_metrics()
+        try:
+            transcript = await self._transcribe(audio_b64)
+        finally:
+            await self.stop_processing_metrics()
 
         if transcript:
             logger.info(f"Bhashini transcript: {transcript}")

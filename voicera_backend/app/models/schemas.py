@@ -126,7 +126,8 @@ class MeetingResponse(BaseModel):
     transcript_url: Optional[str] = None
     transcript_content: Optional[str] = None
     transcript: Optional[List[Dict[str, Any]]] = None
-    call_busy: Optional[bool] = None    
+    call_busy: Optional[bool] = None
+    latency_metrics: Optional[Dict[str, Any]] = None
 
 class MeetingUpdate(BaseModel):
     """Schema for updating a meeting (e.g., when call ends)."""
@@ -210,6 +211,7 @@ class CallRecordingCreate(BaseModel):
     call_duration: Optional[float] = None
     end_time_utc: Optional[str] = None
     org_id: Optional[str] = None
+    latency_metrics: Optional[Dict[str, Any]] = None
 
 class CallRecordingResponse(BaseModel):
     """Schema for call recording response."""

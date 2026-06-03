@@ -180,6 +180,8 @@ class KenpathLLM(OpenAILLMService):
         # Start the timer task
         timer_task = asyncio.create_task(hold_message_timer())
 
+        await self.start_ttfb_metrics()
+
         try:
             first_chunk = True
             chunk_count = 0
@@ -196,6 +198,7 @@ class KenpathLLM(OpenAILLMService):
                     elapsed = time.perf_counter() - start_time
                     logger.info(f"🚀 First chunk received at {elapsed:.2f}s")
                     first_chunk_arrived.set()
+                    await self.stop_ttfb_metrics()
 
                 await self.push_frame(LLMTextFrame(text=chunk))
                 chunk_count += 1
