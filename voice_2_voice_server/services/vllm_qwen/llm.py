@@ -9,15 +9,19 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from openai.types.chat import ChatCompletionChunk
 from pipecat.frames.frames import Frame, LLMFullResponseStartFrame, LLMTextFrame
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.processors.frame_processor import FrameDirection
+from pipecat.adapters.services.open_ai_adapter import OpenAILLMInvocationParams
 from pipecat.services.openai.base_llm import BaseOpenAILLMService
 from pipecat.services.openai.llm import OpenAILLMService
 
 # OpenAI-compatible base URL. Must include /v1 — the AsyncOpenAI client appends
 # /chat/completions under this. Local vLLM often uses another port (e.g. 8003);
 # set VLLM_BASE_URL in the environment to override without code changes.
-VLLM_BASE_URL = "http://localhost:8003/v1"
+VLLM_BASE_URL = "http://100.64.1.16:8003/v1"
 
 # vLLM does not validate keys; a placeholder satisfies the OpenAI client.
 VLLM_API_KEY = "EMPTY"
@@ -27,6 +31,10 @@ VLLM_MODEL = "Qwen/Qwen3-8B"
 
 _NO_THINK_SUFFIX = "/no_think"
 
+# Pipecat merges InputParams.extra into create() kwargs; the OpenAI client only accepts
+# standard fields there. vLLM extensions must be sent via extra_body instead.
+_VLLM_EXTRA_BODY_KEYS = frozenset({"chat_template_kwargs", "top_k", "repetition_penalty"})
+
 
 def ensure_no_think_suffix(prompt: str) -> str:
     """Ensure the system prompt ends with /no_think for Qwen3 voice use.
@@ -34,8 +42,9 @@ def ensure_no_think_suffix(prompt: str) -> str:
     Without this, Qwen3 may spend 100–300 hidden "thinking" tokens before the
     first spoken token, adding 1–3s latency (bad for telephony).
 
-    The API may still return a separate reasoning field; with thinking disabled
-    it should be empty. Pipecat streams only ``delta.content`` to TTS anyway.
+    Pipecat streams ``delta.content`` to TTS. When vLLM has thinking disabled,
+    the answer may arrive on ``delta.reasoning`` instead; see
+    ``VllmQwenVoiceLLMService._normalize_qwen_chunk``.
     """
     text = (prompt or "").rstrip()
     if text.endswith(_NO_THINK_SUFFIX):
@@ -63,14 +72,20 @@ VOICE_LLM_PARAMS = BaseOpenAILLMService.InputParams(
     presence_penalty=0.0,
     # Keeps answers short enough for voice; avoids long monologues and reduces latency.
     max_tokens=200,
-    # vLLM-specific fields are passed through as extra body values.
+    # vLLM-specific fields; VllmQwenVoiceLLMService moves these into extra_body.
     extra={
         "top_k": 20,
         "repetition_penalty": 1.0,
-        # Enforce no-thinking mode at request level for telephony.
+        # Telephony default: no thinking tokens. Stream normalizer maps delta.reasoning
+        # into delta.content when this is False (vLLM quirk).
         "chat_template_kwargs": {"enable_thinking": False},
     },
 )
+
+
+def _enable_thinking_from_extra(extra: dict[str, Any] | None) -> bool:
+    chat_template_kwargs = (extra or {}).get("chat_template_kwargs") or {}
+    return bool(chat_template_kwargs.get("enable_thinking", False))
 
 
 class VllmQwenVoiceLLMService(OpenAILLMService):
@@ -78,11 +93,79 @@ class VllmQwenVoiceLLMService(OpenAILLMService):
 
     Qwen/vLLM sometimes prefixes assistant content with blank lines; stripping avoids
     awkward pauses or empty audio at the start of playback.
+
+    When ``enable_thinking`` is False, vLLM often streams the spoken answer on
+    ``delta.reasoning`` with an empty ``delta.content``. Pipecat only forwards
+    ``content`` to TTS, so this service copies ``reasoning`` into ``content`` for
+    that mode only (never while thinking is enabled, to avoid TTS of chain-of-thought).
     """
 
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self._strip_voice_prefix = False
+        self._enable_thinking = _enable_thinking_from_extra(self._settings.get("extra"))
+
+    def _refresh_enable_thinking(self) -> None:
+        self._enable_thinking = _enable_thinking_from_extra(self._settings.get("extra"))
+
+    def build_chat_completion_params(
+        self, params_from_context: OpenAILLMInvocationParams
+    ) -> dict:
+        params = super().build_chat_completion_params(params_from_context)
+        vllm_extra: dict[str, Any] = {}
+        for key in _VLLM_EXTRA_BODY_KEYS:
+            if key in params:
+                vllm_extra[key] = params.pop(key)
+        if not vllm_extra:
+            return params
+        existing = params.get("extra_body")
+        if isinstance(existing, dict):
+            merged = {**existing, **vllm_extra}
+        else:
+            merged = vllm_extra
+        params["extra_body"] = merged
+        return params
+
+    @staticmethod
+    def _reasoning_delta_text(delta: Any) -> str | None:
+        for attr in ("reasoning", "reasoning_content"):
+            value = getattr(delta, attr, None)
+            if value:
+                return value
+        return None
+
+    def _normalize_qwen_chunk(self, chunk: ChatCompletionChunk) -> ChatCompletionChunk:
+        """When thinking is off, map vLLM ``delta.reasoning`` into ``delta.content`` for TTS."""
+        if self._enable_thinking or not chunk.choices:
+            return chunk
+        choice = chunk.choices[0]
+        delta = choice.delta
+        if not delta:
+            return chunk
+        content = delta.content or ""
+        if content.strip():
+            return chunk
+        reasoning = self._reasoning_delta_text(delta)
+        if not reasoning or not reasoning.strip():
+            return chunk
+        new_delta = delta.model_copy(update={"content": reasoning})
+        new_choice = choice.model_copy(update={"delta": new_delta})
+        return chunk.model_copy(update={"choices": [new_choice, *chunk.choices[1:]]})
+
+    async def _normalize_qwen_stream(self, stream: Any):
+        self._refresh_enable_thinking()
+        async for chunk in stream:
+            yield self._normalize_qwen_chunk(chunk)
+
+    async def _stream_chat_completions_specific_context(
+        self, context: OpenAILLMContext
+    ) -> Any:
+        chunks = await super()._stream_chat_completions_specific_context(context)
+        return self._normalize_qwen_stream(chunks)
+
+    async def _stream_chat_completions_universal_context(self, context: LLMContext) -> Any:
+        chunks = await super()._stream_chat_completions_universal_context(context)
+        return self._normalize_qwen_stream(chunks)
 
     async def push_frame(self, frame: Frame, direction: FrameDirection = FrameDirection.DOWNSTREAM):
         if isinstance(frame, LLMFullResponseStartFrame):

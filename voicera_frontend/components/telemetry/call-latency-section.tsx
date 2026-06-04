@@ -20,6 +20,7 @@ import {
   Volume2,
   X,
   FileAudio,
+  Download,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -67,6 +68,72 @@ function formatDuration(seconds: number | undefined): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
+function escapeCsvCell(value: string | number | null | undefined): string {
+  if (value == null) return ""
+  const s = String(value)
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+    return `"${s.replace(/"/g, '""')}"`
+  }
+  return s
+}
+
+function downloadCallLatencyCsv(meeting: Meeting, metrics: CallLatencyMetrics) {
+  const headers = [
+    "meeting_id",
+    "agent_type",
+    "call_type",
+    "call_date",
+    "duration_sec",
+    "turn_index",
+    "user_text",
+    "stt_ms",
+    "llm_ttfb_ms",
+    "tts_first_chunk_ms",
+    "avg_stt_ms",
+    "avg_llm_ttfb_ms",
+    "avg_tts_first_chunk_ms",
+    "turn_count",
+  ]
+  const summary = metrics.summary
+  const callDate = formatCallDate(meeting)
+  const callType = meeting.inbound === true ? "Inbound" : "Outbound"
+  const dataRows = metrics.turns.map((turn) =>
+    [
+      meeting.meeting_id,
+      meeting.agent_type ?? "",
+      callType,
+      callDate,
+      meeting.duration ?? "",
+      turn.turn_index,
+      turn.user_text_preview ?? "",
+      turn.stt_ms ?? "",
+      turn.llm_ttfb_ms ?? "",
+      turn.tts_first_chunk_ms ?? "",
+      summary?.avg_stt_ms ?? "",
+      summary?.avg_llm_ttfb_ms ?? "",
+      summary?.avg_tts_first_chunk_ms ?? "",
+      summary?.turn_count ?? metrics.turns.length,
+    ]
+      .map(escapeCsvCell)
+      .join(",")
+  )
+
+  const csvContent = [headers.join(","), ...dataRows].join("\n")
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+  const link = document.createElement("a")
+  const url = URL.createObjectURL(blob)
+  link.setAttribute("href", url)
+  link.setAttribute(
+    "download",
+    `call_latency_${meeting.meeting_id}_${format(new Date(), "yyyy-MM-dd")}.csv`
+  )
+  link.style.visibility = "hidden"
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 const LIST_ROW_LAYOUT =
   "flex items-center gap-4 px-5"
 const LIST_COL_CALL_TYPE = "w-[88px] shrink-0"
@@ -89,26 +156,70 @@ function CallTypeBadge({ inbound }: { inbound?: boolean }) {
   )
 }
 
+/** Figma-style motion: ~400ms spatial ease-out; label fades in slightly after width starts */
+const COMPACT_ACTION_BUTTON_MOTION =
+  "transition-[padding,background-color,border-color] duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:px-3"
+
+const BUTTON_HOVER_LABEL_CLASS = cn(
+  "inline-block max-w-0 overflow-hidden opacity-0 whitespace-nowrap",
+  "transition-[max-width,margin-left] duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+  "transition-opacity duration-[300ms] ease-out delay-0",
+  "group-hover:max-w-[11rem] group-hover:opacity-100 group-hover:ml-1.5 group-hover:delay-100",
+  "motion-reduce:transition-none motion-reduce:max-w-[11rem] motion-reduce:opacity-100 motion-reduce:ml-1.5"
+)
+
 function ViewCallButton({
   onClick,
   className,
+  compact = false,
 }: {
   onClick: () => void
   className?: string
+  /** Icon only until hover; label expands on hover */
+  compact?: boolean
 }) {
   return (
     <Button
       type="button"
       size="sm"
       className={cn(
-        "gap-1.5 bg-slate-900 hover:bg-slate-800 text-white shadow-sm font-semibold",
+        "bg-slate-900 hover:bg-slate-800 text-white shadow-sm font-semibold shrink-0",
+        compact ? cn("group gap-0 px-2.5", COMPACT_ACTION_BUTTON_MOTION) : "gap-1.5",
         className
       )}
       onClick={onClick}
       aria-label="View transcript and recording"
     >
       <FileAudio className="h-4 w-4 shrink-0" />
-      View transcript
+      {compact ? (
+        <span className={BUTTON_HOVER_LABEL_CLASS}>View transcript</span>
+      ) : (
+        "View transcript"
+      )}
+    </Button>
+  )
+}
+
+function DownloadLatencyCsvButton({
+  meeting,
+  metrics,
+  className,
+}: {
+  meeting: Meeting
+  metrics: CallLatencyMetrics
+  className?: string
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className={cn("group gap-0 px-2.5 shrink-0", COMPACT_ACTION_BUTTON_MOTION, className)}
+      onClick={() => downloadCallLatencyCsv(meeting, metrics)}
+      aria-label="Download call latency data as CSV"
+    >
+      <Download className="h-4 w-4 shrink-0" />
+      <span className={BUTTON_HOVER_LABEL_CLASS}>Download CSV</span>
     </Button>
   )
 }
@@ -169,21 +280,13 @@ function CallMetricsDetail({
           <h2 className="text-base font-semibold text-slate-900 truncate">
             {meeting.agent_type || "Call"}
           </h2>
-          <p className="text-xs text-slate-500 font-mono mt-1 break-all">{meeting.meeting_id}</p>
         </div>
-        <ViewCallButton onClick={onOpenCallDetails} className="shrink-0" />
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <ViewCallButton onClick={onOpenCallDetails} compact />
+          <DownloadLatencyCsvButton meeting={meeting} metrics={metrics} />
+        </div>
       </div>
-      <div className="flex flex-wrap gap-3 text-xs text-slate-600">
-          <span className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" />
-            {formatDuration(meeting.duration)}
-          </span>
-          {summary?.turn_count != null && (
-            <span>
-              {summary.turn_count} turn{summary.turn_count === 1 ? "" : "s"}
-            </span>
-          )}
-      </div>
+     
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {summaryItems.map(({ label, labelTitle, value, icon: Icon }) => (
