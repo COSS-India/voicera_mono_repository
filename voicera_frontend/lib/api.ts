@@ -786,6 +786,29 @@ export async function getAnalytics(params?: {
   return response.json()
 }
 
+export interface CallLatencyTurn {
+  turn_index: number
+  user_text_preview?: string | null
+  stt_ms?: number | null
+  llm_ttfb_ms?: number | null
+  tts_first_chunk_ms?: number | null
+}
+
+export interface CallLatencySummary {
+  turn_count?: number
+  avg_stt_ms?: number
+  avg_llm_ttfb_ms?: number
+  avg_tts_first_chunk_ms?: number
+  max_stt_ms?: number
+  max_llm_ttfb_ms?: number
+  max_tts_first_chunk_ms?: number
+}
+
+export interface CallLatencyMetrics {
+  turns: CallLatencyTurn[]
+  summary?: CallLatencySummary
+}
+
 export interface Meeting {
   id?: string
   _id?: string
@@ -806,6 +829,7 @@ export interface Meeting {
   transcript?: TranscriptMessage[]  // Parsed transcript from backend
   duration?: number
   call_busy?: boolean
+  latency_metrics?: CallLatencyMetrics
 }
 
 export interface TranscriptMessage {

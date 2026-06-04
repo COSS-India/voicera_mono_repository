@@ -81,7 +81,8 @@ class IndicConformerRESTSTTService(STTService):
     async def _transcribe_buffer(self) -> str:
         if not self._audio_buffer or len(self._audio_buffer) < 3200:
             return ""
-        
+
+        await self.start_processing_metrics()
         try:
             audio_b64 = base64.b64encode(self._audio_buffer).decode('utf-8')
             lid = self._language_id
@@ -100,6 +101,8 @@ class IndicConformerRESTSTTService(STTService):
         except Exception as e:
             logger.error(f"Transcription error: {e}")
             return ""
+        finally:
+            await self.stop_processing_metrics()
 
     def _check_stopping_state(self) -> bool:
         if self._vad_analyzer is None:

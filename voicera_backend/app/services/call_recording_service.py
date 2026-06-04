@@ -46,7 +46,10 @@ def save_call_recording(recording_data: CallRecordingCreate) -> Dict[str, Any]:
         
         if recording_data.org_id:
             update_doc["org_id"] = recording_data.org_id
-        
+
+        if recording_data.latency_metrics:
+            update_doc["latency_metrics"] = recording_data.latency_metrics
+
         # Update or insert meeting record
         # Use call_sid as meeting_id for lookup
         result = meeting_table.update_one(

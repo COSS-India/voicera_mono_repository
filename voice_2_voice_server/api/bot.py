@@ -38,6 +38,7 @@ from services.audio.greeting_interruption_filter import GreetingInterruptionFilt
 from services.audio.marathi_idle_prompt_filter import MarathiIdlePromptFilter
 from services.vllm_qwen import ensure_no_think_suffix
 from .call_recording_utils import submit_call_recording
+from services.metrics import CallMetricsObserver
 
 
 
@@ -138,7 +139,7 @@ async def run_bot(
     vad_analyzer: Any = None,
     vistaar_session_id: Optional[str] = None,
     sample_rate: Optional[int] = None,
-) -> None:
+) -> Optional[CallMetricsObserver]:
     """Run the voice bot pipeline with the given configuration.
     
     Args:
@@ -233,10 +234,17 @@ async def run_bot(
         ])
 
         pipeline = Pipeline(pipeline_processors)
-        
+
+        metrics_observer = CallMetricsObserver(
+            stt_processor_name=stt.name,
+            llm_processor_name=llm.name,
+            tts_processor_name=tts.name,
+        )
+
         task = PipelineTask(
             pipeline,
-            params=PipelineParams(allow_interruptions=True),
+            params=PipelineParams(allow_interruptions=True, enable_metrics=True),
+            observers=[metrics_observer],
         )
 
         @transport.event_handler("on_client_connected")
@@ -257,7 +265,8 @@ async def run_bot(
         
         runner = PipelineRunner(handle_sigint=handle_sigint)
         await runner.run(task)
-        
+        return metrics_observer
+
     except ServiceCreationError as e:
         logger.error(f"Service creation failed: {e}")
         raise
@@ -402,8 +411,9 @@ async def bot(
                 except Exception as callback_error:
                     logger.debug(f"Transcript callback failed: {callback_error}")
     
+    metrics_observer = None
     try:
-        await run_bot(
+        metrics_observer = await run_bot(
             transport,
             agent_config,
             audiobuffer,
@@ -439,12 +449,14 @@ async def bot(
         else:
             logger.warning(f"No transcript data to save for {call_sid}")
         
+        latency_metrics = metrics_observer.to_dict() if metrics_observer else None
         await submit_call_recording(
             call_sid=call_sid,
             agent_type=agent_type,
             agent_config=agent_config,
             storage=storage,
-            call_start_time=call_start_time
+            call_start_time=call_start_time,
+            latency_metrics=latency_metrics,
         )
     return call_sid
 
@@ -531,8 +543,12 @@ async def ubona_bot(
             ts = f"[{message.timestamp}] " if message.timestamp else ""
             call_data["transcript_lines"].append(f"{ts}{message.role}: {message.content}")
 
+    metrics_observer = None
     try:
-        await run_bot(transport, agent_config, audiobuffer, transcript, vad_analyzer=vad_analyzer, vistaar_session_id=call_id)
+        metrics_observer = await run_bot(
+            transport, agent_config, audiobuffer, transcript,
+            vad_analyzer=vad_analyzer, vistaar_session_id=call_id,
+        )
     finally:
         logger.info(f"Saving call data for {call_id}...")
         if call_data["audio_chunks"] and call_data["audio_sample_rate"]:
@@ -549,4 +565,12 @@ async def ubona_bot(
             except Exception as e:
                 logger.error(f"Failed to save transcript: {e}")
 
-        await submit_call_recording(call_sid=call_id, agent_type=agent_type, agent_config=agent_config, storage=storage, call_start_time=call_start_time)
+        latency_metrics = metrics_observer.to_dict() if metrics_observer else None
+        await submit_call_recording(
+            call_sid=call_id,
+            agent_type=agent_type,
+            agent_config=agent_config,
+            storage=storage,
+            call_start_time=call_start_time,
+            latency_metrics=latency_metrics,
+        )

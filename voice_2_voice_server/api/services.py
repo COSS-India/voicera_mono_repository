@@ -235,7 +235,8 @@ def create_llm_service(
 
         extra_args = dict(args.get("extra") or {})
         chat_template_kwargs = dict(extra_args.get("chat_template_kwargs") or {})
-        chat_template_kwargs["enable_thinking"] = False
+        if "enable_thinking" not in chat_template_kwargs:
+            chat_template_kwargs["enable_thinking"] = False
         extra_args["chat_template_kwargs"] = chat_template_kwargs
         extra_args["top_k"] = int(args.get("top_k", extra_args.get("top_k", 20)))
         extra_args["repetition_penalty"] = float(

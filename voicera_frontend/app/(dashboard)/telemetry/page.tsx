@@ -1,11 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Activity, Cpu, Loader2 } from "lucide-react"
+import { Activity, Cpu } from "lucide-react"
+import { GpuTelemetrySkeleton } from "@/components/telemetry/telemetry-skeletons"
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts"
 import { fetchApiRoute } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CallLatencySection } from "@/components/telemetry/call-latency-section"
 
 interface GpuProcess {
   pid: number | null
@@ -107,14 +110,28 @@ export default function TelemetryPage() {
 
       <main className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="mx-auto max-w-7xl space-y-4">
-          {loading && (
-            <Card>
-              <CardContent className="py-10 flex items-center justify-center gap-2 text-slate-600">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading GPU telemetry...
-              </CardContent>
-            </Card>
-          )}
+          <Tabs defaultValue="calls" className="space-y-4">
+            <TabsList className="bg-white border border-slate-200 h-10 p-1 rounded-lg">
+              <TabsTrigger
+                value="calls"
+                className="text-sm px-4 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-md"
+              >
+                Call latency
+              </TabsTrigger>
+              <TabsTrigger
+                value="gpu"
+                className="text-sm px-4 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-md"
+              >
+                GPU
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="calls" className="mt-0 focus-visible:outline-none -mx-1">
+              <CallLatencySection />
+            </TabsContent>
+
+            <TabsContent value="gpu" className="mt-0 space-y-4 focus-visible:outline-none">
+          {loading && <GpuTelemetrySkeleton cardCount={2} />}
 
           {!loading && error && (
             <Card className="border-red-200">
@@ -235,6 +252,8 @@ export default function TelemetryPage() {
               })}
             </div>
           )}
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>

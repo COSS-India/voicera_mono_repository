@@ -253,7 +253,9 @@ export default function AssistantsPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState("")
-  const [agentSortOrder, setAgentSortOrder] = useState<"newest" | "oldest">("newest")
+  const [agentSortOrder, setAgentSortOrder] = useState<
+    "newest" | "oldest" | "active-first" | "inactive-first"
+  >("newest")
   const [config, setConfig] = useState<AgentConfig>(defaultConfig)
   const [view, setView] = useState<"list" | "create">("list")
   const [createStep, setCreateStep] = useState(1)
@@ -332,10 +334,29 @@ export default function AssistantsPage() {
 
   const sortedAgents = useMemo(() => {
     const copy = [...filteredAgents]
+    const isAgentActive = (agent: Agent) => Boolean(agent.phone_number?.trim())
     /** Prefer created_at; fall back to updated_at for legacy rows without created_at. */
     const sortTime = (a: Agent) =>
       new Date(a.created_at || a.updated_at || 0).getTime()
+
     copy.sort((a, b) => {
+      if (agentSortOrder === "active-first" || agentSortOrder === "inactive-first") {
+        const aActive = isAgentActive(a)
+        const bActive = isAgentActive(b)
+        if (aActive !== bActive) {
+          return agentSortOrder === "active-first"
+            ? aActive
+              ? -1
+              : 1
+            : aActive
+              ? 1
+              : -1
+        }
+        const timeDiff = sortTime(b) - sortTime(a)
+        if (timeDiff !== 0) return timeDiff
+        return a.agent_type.localeCompare(b.agent_type)
+      }
+
       const diff =
         agentSortOrder === "newest"
           ? sortTime(b) - sortTime(a)
@@ -966,17 +987,23 @@ export default function AssistantsPage() {
               </Button>
               <Select
                 value={agentSortOrder}
-                onValueChange={(v) => setAgentSortOrder(v as "newest" | "oldest")}
+                onValueChange={(v) =>
+                  setAgentSortOrder(
+                    v as "newest" | "oldest" | "active-first" | "inactive-first"
+                  )
+                }
               >
                 <SelectTrigger
-                  aria-label="Sort agents by creation date"
-                  className="h-10 w-[168px] rounded-lg border-slate-200 bg-white text-sm focus:ring-1 focus:ring-slate-200"
+                  aria-label="Sort agents"
+                  className="h-10 w-[180px] rounded-lg border-slate-200 bg-white text-sm focus:ring-1 focus:ring-slate-200"
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="newest">Newest first</SelectItem>
                   <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="active-first">Active first</SelectItem>
+                  <SelectItem value="inactive-first">Inactive first</SelectItem>
                 </SelectContent>
               </Select>
               <div className="relative">

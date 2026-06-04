@@ -61,6 +61,9 @@ class IndicParlerRESTTTSService(TTSService):
         self._session = aiohttp.ClientSession(connector=connector, timeout=timeout)
         await super().start(frame)
 
+    def can_generate_metrics(self) -> bool:
+        return True
+
     async def stop(self, frame: Frame):
         logger.info("Stopping IndicParler TTS service")
         if self._session:
@@ -81,7 +84,9 @@ class IndicParlerRESTTTSService(TTSService):
             )
             should_close = True
 
+        await self.start_ttfb_metrics()
         yield TTSStartedFrame()
+        first_audio = True
 
         try:
             async with session.ws_connect(self._ws_url, autoping=True) as ws:
@@ -120,6 +125,9 @@ class IndicParlerRESTTTSService(TTSService):
                     elif msg.type == aiohttp.WSMsgType.BINARY:
                         if not msg.data:
                             continue
+                        if first_audio:
+                            first_audio = False
+                            await self.stop_ttfb_metrics()
                         f32 = np.frombuffer(msg.data, dtype=np.float32)
                         if f32.size == 0:
                             continue
