@@ -100,7 +100,7 @@ def inference_worker(
 async def handle_client(
     websocket: websockets.ServerProtocol,
     prefill_q_default: queue.Queue,
-    prefill_q_bhili: queue.Queue,
+    prefill_q_bhili: queue.Queue | None,
 ) -> None:
     try:
         raw = await websocket.recv()
@@ -119,7 +119,10 @@ async def handle_client(
     out_q: queue.Queue = queue.Queue()
     pid = uuid.uuid4().hex[:8]
     req = TTSRequest(prompt=prompt, description=description, pid=pid)
-    target_q = prefill_q_bhili if _is_bhili_language(language) else prefill_q_default
+    if prefill_q_bhili is not None and _is_bhili_language(language):
+        target_q = prefill_q_bhili
+    else:
+        target_q = prefill_q_default
     target_q.put((req, out_q))
 
     await websocket.send(
@@ -150,13 +153,12 @@ async def main_async(
     host: str,
     port: int,
     checkpoint_path_default: str,
-    checkpoint_path_bhili: str,
+    checkpoint_path_bhili: str | None,
     decode_every: int,
+    bhili_enable: bool,
 ) -> None:
     runner_default = ParlerTTSModelRunner(checkpoint_path_default, play_steps=decode_every)
-    runner_bhili = ParlerTTSModelRunner(checkpoint_path_bhili, play_steps=decode_every)
     prefill_q_default: queue.Queue = queue.Queue()
-    prefill_q_bhili: queue.Queue = queue.Queue()
     stop_evt = threading.Event()
 
     thread_default = threading.Thread(
@@ -164,13 +166,19 @@ async def main_async(
         args=(runner_default, prefill_q_default, stop_evt, decode_every),
         daemon=True,
     )
-    thread_bhili = threading.Thread(
-        target=inference_worker,
-        args=(runner_bhili, prefill_q_bhili, stop_evt, decode_every),
-        daemon=True,
-    )
     thread_default.start()
-    thread_bhili.start()
+
+    if bhili_enable:
+        runner_bhili = ParlerTTSModelRunner(checkpoint_path_bhili, play_steps=decode_every)
+        prefill_q_bhili: queue.Queue | None = queue.Queue()
+        thread_bhili = threading.Thread(
+            target=inference_worker,
+            args=(runner_bhili, prefill_q_bhili, stop_evt, decode_every),
+            daemon=True,
+        )
+        thread_bhili.start()
+    else:
+        prefill_q_bhili = None
 
     async with websockets.serve(
         lambda ws: handle_client(ws, prefill_q_default, prefill_q_bhili),
@@ -181,20 +189,17 @@ async def main_async(
         print(
             f"TTS WebSocket server ws://{host}:{port} "
             f"(default_checkpoints={checkpoint_path_default}, "
-            f"bhili_checkpoints={checkpoint_path_bhili}, decode_every={decode_every})"
+            + (f"bhili_checkpoints={checkpoint_path_bhili}, " if bhili_enable else "bhili=disabled, ")
+            + f"decode_every={decode_every})"
         )
         await asyncio.Future()
 
 
 def main() -> None:
     load_dotenv(os.path.join(here, ".env"))
+    bhili_enable = os.environ.get("BHILI_ENABLE", "yes").strip().lower() != "no"
     checkpoint_path_bhili = os.environ.get("CHECKPOINT_PATH", "").strip()
     checkpoint_path_default = os.environ.get("CHECKPOINT_PATH_DEFAULT", "").strip()
-    if not checkpoint_path_bhili:
-        raise SystemExit(
-            "CHECKPOINT_PATH must be set in .env (same directory as server.py). "
-            "No default or CLI override is used."
-        )
     if not checkpoint_path_default:
         raise SystemExit(
             "CHECKPOINT_PATH_DEFAULT must be set in .env (same directory as server.py). "
@@ -205,11 +210,17 @@ def main() -> None:
             f"Default checkpoint folder not found: {checkpoint_path_default}. "
             "Set CHECKPOINT_PATH_DEFAULT in .env to a valid checkpoint directory."
         )
-    if not os.path.isdir(checkpoint_path_bhili):
-        raise SystemExit(
-            f"Bhili checkpoint folder not found: {checkpoint_path_bhili}. "
-            "Set CHECKPOINT_PATH in .env to a valid checkpoint directory."
-        )
+    if bhili_enable:
+        if not checkpoint_path_bhili:
+            raise SystemExit(
+                "CHECKPOINT_PATH must be set in .env (same directory as server.py). "
+                "No default or CLI override is used."
+            )
+        if not os.path.isdir(checkpoint_path_bhili):
+            raise SystemExit(
+                f"Bhili checkpoint folder not found: {checkpoint_path_bhili}. "
+                "Set CHECKPOINT_PATH in .env to a valid checkpoint directory."
+            )
 
     parser = argparse.ArgumentParser(description="Parler TTS WebSocket server (continuous batching)")
     parser.add_argument("--host", default="0.0.0.0")
@@ -232,8 +243,9 @@ def main() -> None:
             args.host,
             args.port,
             checkpoint_path_default,
-            checkpoint_path_bhili,
+            checkpoint_path_bhili if bhili_enable else None,
             args.decode_every,
+            bhili_enable,
         ),
     )
 

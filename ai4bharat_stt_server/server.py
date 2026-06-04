@@ -48,7 +48,7 @@ MAX_BATCH_SIZE = 16
 BATCH_TIMEOUT = 0.100  # 100 ms
 
 # Set to "yes" or "no"
-BHILI_ENABLE = "yes"
+BHILI_ENABLE = "no"
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 main_model = None
@@ -80,8 +80,10 @@ def _required_model_path(env_var_name: str) -> Path:
 
 def load_main_model():
     model_path = _required_model_path("INDIC_NEMO_PATH")
-
-    model = nemo_asr.models.ASRModel.restore_from(restore_path=str(model_path))
+    model = nemo_asr.models.ASRModel.restore_from(
+        restore_path=str(model_path),
+        map_location=torch.device(device),   # <-- add this
+    )
     model = model.to(device)
     model.freeze()
     model.cur_decoder = "rnnt"
@@ -90,8 +92,14 @@ def load_main_model():
 
 def load_bhili_model():
     model_path = _required_model_path("BHILI_NEMO_PATH")
-
-    return EncDecHybridRNNTCTCBPEModel.restore_from(str(model_path)).to(device).eval()
+    return (
+        EncDecHybridRNNTCTCBPEModel.restore_from(
+            str(model_path),
+            map_location=torch.device(device),   # <-- add this
+        )
+        .to(device)
+        .eval()
+    )
 
 
 def _decode_audio_b64(audio_b64: str) -> np.ndarray:
