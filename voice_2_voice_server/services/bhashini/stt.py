@@ -430,6 +430,7 @@ class BhashiniSTTService(STTService):
                         )
                     if self._final_transcript_event:
                         self._final_transcript_event.set()
+                    await self.stop_processing_metrics()
                     await self.push_frame(
                         TranscriptionFrame(
                             text=text,
@@ -507,6 +508,7 @@ class BhashiniSTTService(STTService):
                             stage="final_transcript_fallback",
                             details={"text_preview": self._latest_transcript_text[:80]},
                         )
+                    await self.stop_processing_metrics()
                     await self.push_frame(
                         TranscriptionFrame(
                             text=self._latest_transcript_text,
@@ -524,6 +526,7 @@ class BhashiniSTTService(STTService):
                 return "START_FAILED"
             self._segment_active = True
             self._speech_started_at = time.monotonic()
+            await self.start_processing_metrics()
             if pre_roll_bytes:
                 logger.debug("Sending pre-roll buffer to Bhashini | bytes={}", len(pre_roll_bytes))
                 await self._send_audio(pre_roll_bytes)
