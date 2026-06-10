@@ -1,8 +1,17 @@
 from loguru import logger
-from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.services.openai.llm import (
+    OpenAILLMService,
+    OpenAIAssistantContextAggregator,
+    OpenAIContextAggregatorPair,
+)
 from pipecat.frames.frames import LLMTextFrame, TTSSpeakFrame
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response import (
+    LLMAssistantAggregatorParams,
+    LLMUserAggregatorParams,
+)
+from services.bhashini.stt import BhashiniKenpathUserContextAggregator
 import aiohttp
 import asyncio
 import codecs
@@ -68,6 +77,7 @@ class KenpathLLM(OpenAILLMService):
         super().__init__(**kwargs)
         self.response_timeout = 0.3  # seconds
         self._vistaar_session_id = vistaar_session_id
+        self._bhashini_fast_turn = False
 
         # JWT config
         self._private_key = Path(os.environ["KENPATH_JWT_PRIVATE_KEY_PATH"]).read_text()
@@ -114,6 +124,36 @@ class KenpathLLM(OpenAILLMService):
             )
         if self._vistaar_session_id:
             logger.info(f"📞 Vistaar session ID for this call: {self._vistaar_session_id}")
+
+    def enable_bhashini_fast_turn(self) -> None:
+        """Use Bhashini final transcript as the sole LLM turn trigger (Bhashini+Kenpath only)."""
+        self._bhashini_fast_turn = True
+        self._user_aggregator_params = LLMUserAggregatorParams(
+            aggregation_timeout=0.05
+        )
+        logger.info(
+            "Kenpath: enabled fast turn — LLM starts on Bhashini final transcript"
+        )
+
+    def create_context_aggregator(
+        self,
+        context: OpenAILLMContext,
+        *,
+        user_params: LLMUserAggregatorParams = LLMUserAggregatorParams(),
+        assistant_params: LLMAssistantAggregatorParams = LLMAssistantAggregatorParams(),
+    ) -> OpenAIContextAggregatorPair:
+        if self._bhashini_fast_turn:
+            context.set_llm_adapter(self.get_llm_adapter())
+            user = BhashiniKenpathUserContextAggregator(context, params=user_params)
+            assistant = OpenAIAssistantContextAggregator(
+                context, params=assistant_params
+            )
+            return OpenAIContextAggregatorPair(_user=user, _assistant=assistant)
+        return super().create_context_aggregator(
+            context,
+            user_params=user_params,
+            assistant_params=assistant_params,
+        )
 
     def _generate_jwt(self) -> str:
         """Generate a fresh JWT token (local operation, ~microseconds)."""

@@ -406,19 +406,22 @@ def create_stt_service(
             raise ServiceCreationError(f"Unknown ai4bharat STT model: {model}. Expected 'indic-conformer-stt'")
     
     elif provider == "Bhashini":
-        if org_id:
+        # WebSocket streaming always uses the grpc service ID; agent/UI model names
+        # (e.g. conformer-multilingual-asr) are REST-only and cause INVALID_SERVICE_TASK.
+        api_key = (
+            os.getenv("BHASHINI_API_KEY")
+
+        )
+        if not api_key and org_id:
             api_key = fetch_integration_key(org_id, "Bhashini")
-            if not api_key:
-                raise ServiceCreationError(
-                    "Bhashini API key must be configured in Integrations for this organization."
-                )
-        else:
-            api_key = os.getenv("BHASHINI_API_KEY")
         return BhashiniSTTService(
             api_key=api_key,
             language=STT_LANGUAGE_MAP[provider][language],
-            service_id=args.get("model", "bhashini/ai4bharat/conformer-multilingual-asr"),
+            service_id="bhashini/ai4b/indic-conformer/grpc",
             sample_rate=sample_rate,
+            input_sample_rate=sample_rate,
+            suppress_vad_frames=(vad_analyzer is not None),
+            
         )
     
     elif provider == "Sarvam":

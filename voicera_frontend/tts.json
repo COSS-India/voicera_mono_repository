@@ -276,7 +276,7 @@
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Sanjay", "Sunita", "Isha"],
+            "voices": ["Divya", "Sanjay", "Sunita", "Isha","Radha"],
             "recommended_voices": ["Divya", "Sanjay"]
           }
         }

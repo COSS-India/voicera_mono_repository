@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package tts;
+
+service TTSService {
+  rpc Synthesize (SynthesizeRequest) returns (stream SynthesizeResponse);
+}
+
+message SynthesizeRequest {
+  string prompt      = 1;
+  string description = 2;
+  string language    = 3;
+}
+
+message SynthesizeResponse {
+  oneof payload {
+    MetaFrame  meta  = 1;
+    AudioChunk audio = 2;
+    DoneFrame  done  = 3;
+  }
+}
+
+message MetaFrame {
+  string pid         = 1;
+  int32  sample_rate = 2;
+  string dtype       = 3;
+  int32  channels    = 4;
+}
+
+message AudioChunk {
+  bytes pcm_data = 1;
+}
+
+message DoneFrame {
+  string pid = 1;
+}
