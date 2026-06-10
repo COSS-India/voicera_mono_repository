@@ -440,7 +440,14 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
         logger.info(f"📞 Call started: call_sid={call_sid}, stream_sid={stream_sid}")
         logger.debug(f"📋 Start info: {start_info}")
 
-        await bot(websocket, stream_sid, call_sid, agent_type, agent_config)
+        await bot(
+            websocket,
+            stream_sid,
+            call_sid,
+            agent_type,
+            agent_config,
+            provider="vobiz",
+        )
 
     except FileNotFoundError as e:
         logger.error(f"❌ {e}")
@@ -555,6 +562,7 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
             call_sid,
             agent_type,
             agent_config,
+            provider="browser",
             transcript_callback=send_transcript,
             sample_rate=16000,
         )

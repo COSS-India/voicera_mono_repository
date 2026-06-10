@@ -204,7 +204,7 @@ class CallLogResponse(BaseModel):
 class CallRecordingCreate(BaseModel):
     """Schema for creating/updating call recording data."""
     call_sid: str
-    recording_url: str
+    recording_url: Optional[str] = None
     transcript_url: str
     transcript_content: Optional[str] = None
     agent_type: str

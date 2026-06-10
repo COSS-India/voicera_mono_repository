@@ -38,6 +38,7 @@ from services.audio.greeting_interruption_filter import GreetingInterruptionFilt
 from services.audio.marathi_idle_prompt_filter import MarathiIdlePromptFilter
 from services.vllm_qwen import ensure_no_think_suffix
 from .call_recording_utils import submit_call_recording
+from .vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
 from services.metrics import CallMetricsObserver
 
 
@@ -133,12 +134,13 @@ def patch_immediate_first_chunk(transport):
 async def run_bot(
     transport: FastAPIWebsocketTransport,
     agent_config: dict,
-    audiobuffer: AudioBufferProcessor,
     transcript: TranscriptProcessor,
+    audiobuffer: Optional[AudioBufferProcessor] = None,
     handle_sigint: bool = False,
     vad_analyzer: Any = None,
     vistaar_session_id: Optional[str] = None,
     sample_rate: Optional[int] = None,
+    on_client_connected_hook: Optional[Callable[[], Awaitable[None]]] = None,
 ) -> Optional[CallMetricsObserver]:
     """Run the voice bot pipeline with the given configuration.
     
@@ -226,9 +228,10 @@ async def run_bot(
         ]
         if marathi_idle_prompt_filter:
             pipeline_processors.append(marathi_idle_prompt_filter)
+        pipeline_processors.append(transcript.assistant())
+        if audiobuffer is not None:
+            pipeline_processors.append(audiobuffer)
         pipeline_processors.extend([
-            transcript.assistant(),
-            audiobuffer,
             transport.output(),
             context_aggregator.assistant(),
         ])
@@ -250,7 +253,10 @@ async def run_bot(
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info("Client connected")
-            await audiobuffer.start_recording()
+            if audiobuffer is not None:
+                await audiobuffer.start_recording()
+            if on_client_connected_hook is not None:
+                await on_client_connected_hook()
             greeting = agent_config.get("greeting_message", '')
             if len(greeting.strip()) > 1:
                 logger.info(f"greeting: {greeting}")
@@ -371,28 +377,42 @@ async def bot(
     # Optimized first audio chunk sending
     patch_immediate_first_chunk(transport)
     
-    # Create audio buffer processor
-    audiobuffer = AudioBufferProcessor()
-    
+    use_vobiz_native_recording = normalized_provider == "vobiz"
+    audiobuffer = None if use_vobiz_native_recording else AudioBufferProcessor()
+
     # Accumulate audio chunks and transcript lines in memory (deferred storage)
-    # Using a dict to avoid nonlocal issues
     call_data = {
         "audio_chunks": [],
         "audio_sample_rate": None,
         "audio_num_channels": None,
-        "transcript_lines": []
+        "transcript_lines": [],
+        "vobiz_recording_id": None,
     }
-    
-    @audiobuffer.event_handler("on_audio_data")
-    async def on_audio_data(buffer, audio, sample_rate, num_channels):
-        # Accumulate audio chunks in memory (no I/O during call)
-        call_data["audio_chunks"].append(audio)
-        # Store sample rate and channels from first chunk (should be constant)
-        if call_data["audio_sample_rate"] is None:
-            call_data["audio_sample_rate"] = sample_rate
-            call_data["audio_num_channels"] = num_channels
-        total_bytes = sum(len(c) for c in call_data["audio_chunks"])
-        logger.debug(f"Accumulated audio chunk: {len(audio)} bytes (total: {total_bytes} bytes)")
+
+    if audiobuffer is not None:
+        @audiobuffer.event_handler("on_audio_data")
+        async def on_audio_data(buffer, audio, sample_rate, num_channels):
+            call_data["audio_chunks"].append(audio)
+            if call_data["audio_sample_rate"] is None:
+                call_data["audio_sample_rate"] = sample_rate
+                call_data["audio_num_channels"] = num_channels
+            total_bytes = sum(len(c) for c in call_data["audio_chunks"])
+            logger.debug(f"Accumulated audio chunk: {len(audio)} bytes (total: {total_bytes} bytes)")
+
+    on_client_connected_hook = None
+    if use_vobiz_native_recording:
+        org_id = agent_config.get("org_id")
+
+        async def start_vobiz_recording():
+            if not org_id:
+                logger.warning(f"No org_id for Vobiz recording on call {call_sid}")
+                return
+            recording_id = await start_vobiz_call_recording(
+                call_sid, org_id, session_timeout
+            )
+            call_data["vobiz_recording_id"] = recording_id
+
+        on_client_connected_hook = start_vobiz_recording
     
     # Create transcript processor
     transcript = TranscriptProcessor()
@@ -416,25 +436,45 @@ async def bot(
         metrics_observer = await run_bot(
             transport,
             agent_config,
-            audiobuffer,
             transcript,
+            audiobuffer=audiobuffer,
             handle_sigint=False,
             vad_analyzer=vad_analyzer,
             vistaar_session_id=call_sid,
             sample_rate=sample_rate,
+            on_client_connected_hook=on_client_connected_hook,
         )
     finally:
         logger.info(f"Saving call data for {call_sid}...")
-        if call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:
+        recording_url = None
+        if use_vobiz_native_recording:
+            recording_id = call_data.get("vobiz_recording_id")
+            org_id = agent_config.get("org_id")
+            if recording_id and org_id:
+                try:
+                    audio_bytes = await wait_and_download_vobiz_recording(
+                        recording_id, org_id
+                    )
+                    if audio_bytes:
+                        await storage.save_recording_bytes(call_sid, audio_bytes, "mp3")
+                        recording_url = f"minio://recordings/{call_sid}.mp3"
+                    else:
+                        logger.warning(f"Vobiz recording download failed for {call_sid}")
+                except Exception as e:
+                    logger.error(f"Failed to ingest Vobiz recording for {call_sid}: {e}")
+            else:
+                logger.warning(f"No Vobiz recording_id to fetch for {call_sid}")
+        elif call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:
             try:
                 await storage.save_recording_from_chunks(
-                    call_sid, 
-                    call_data["audio_chunks"], 
-                    call_data["audio_sample_rate"], 
-                    call_data["audio_num_channels"]
+                    call_sid,
+                    call_data["audio_chunks"],
+                    call_data["audio_sample_rate"],
+                    call_data["audio_num_channels"],
                 )
                 total_bytes = sum(len(c) for c in call_data["audio_chunks"])
                 logger.info(f" Saved {len(call_data['audio_chunks'])} audio chunks ({total_bytes} bytes)")
+                recording_url = f"minio://recordings/{call_sid}.wav"
             except Exception as e:
                 logger.error(f"Failed to save audio recording: {e}")
         else:
@@ -457,6 +497,8 @@ async def bot(
             storage=storage,
             call_start_time=call_start_time,
             latency_metrics=latency_metrics,
+            recording_url=recording_url,
+            omit_recording_url=use_vobiz_native_recording and not recording_url,
         )
     return call_sid
 
@@ -546,8 +588,12 @@ async def ubona_bot(
     metrics_observer = None
     try:
         metrics_observer = await run_bot(
-            transport, agent_config, audiobuffer, transcript,
-            vad_analyzer=vad_analyzer, vistaar_session_id=call_id,
+            transport,
+            agent_config,
+            transcript,
+            audiobuffer=audiobuffer,
+            vad_analyzer=vad_analyzer,
+            vistaar_session_id=call_id,
         )
     finally:
         logger.info(f"Saving call data for {call_id}...")

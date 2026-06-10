@@ -106,6 +106,34 @@ class MinIOStorage:
         logger.info(f"Saved recording: minio://recordings/{object_name}")
         return object_name
 
+    async def save_recording_bytes(
+        self,
+        call_sid: str,
+        audio_bytes: bytes,
+        extension: str = "mp3",
+    ) -> str:
+        """Save raw audio bytes to MinIO without WAV conversion."""
+        content_types = {
+            "mp3": "audio/mpeg",
+            "wav": "audio/wav",
+            "m4a": "audio/mp4",
+        }
+        ext = extension.lstrip(".")
+        object_name = f"{call_sid}.{ext}"
+        data_buffer = io.BytesIO(audio_bytes)
+        content_type = content_types.get(ext, "application/octet-stream")
+
+        await asyncio.to_thread(
+            self.client.put_object,
+            bucket_name="recordings",
+            object_name=object_name,
+            data=data_buffer,
+            length=len(audio_bytes),
+            content_type=content_type,
+        )
+        logger.info(f"Saved recording: minio://recordings/{object_name}")
+        return object_name
+
     async def append_transcript(self, call_sid: str, line: str) -> str:
         """Append line to transcript file."""
         object_name = f"{call_sid}.txt"

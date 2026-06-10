@@ -29,10 +29,12 @@ def save_call_recording(recording_data: CallRecordingCreate) -> Dict[str, Any]:
         
         # Build update document
         update_doc = {
-            "recording_url": recording_data.recording_url,
             "transcript_url": recording_data.transcript_url,
             "agent_type": recording_data.agent_type,
         }
+
+        if recording_data.recording_url:
+            update_doc["recording_url"] = recording_data.recording_url
         
         # Add optional fields if provided
         if recording_data.transcript_content:
