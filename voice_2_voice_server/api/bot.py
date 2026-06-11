@@ -44,6 +44,7 @@ from .services import (
 )
 from services.audio.greeting_interruption_filter import create_greeting_filters
 from services.audio.marathi_idle_prompt_filter import MarathiIdlePromptFilter
+from services.call_goodbye import GoodbyeHangupProcessor
 from services.vllm_qwen import ensure_no_think_suffix
 from .call_recording_utils import submit_call_recording
 from .vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
@@ -281,8 +282,22 @@ async def run_bot(
             or language_normalized == "mr"
             or language_normalized.startswith("mr-")
         )
+        task_ref: dict[str, Optional[PipelineTask]] = {"task": None}
+
+        async def schedule_call_end() -> None:
+            pipeline_task = task_ref["task"]
+            if pipeline_task is not None:
+                await pipeline_task.stop_when_done()
+
+        goodbye_processor = GoodbyeHangupProcessor(schedule_call_end)
+
         marathi_idle_prompt_filter = (
-            MarathiIdlePromptFilter(timeout_secs=10.0) if marathi_idle_prompt_enabled else None
+            MarathiIdlePromptFilter(
+                timeout_secs=10.0,
+                suppress_idle_when=goodbye_processor.should_suppress_idle,
+            )
+            if marathi_idle_prompt_enabled
+            else None
         )
         if marathi_idle_prompt_enabled:
             logger.info("Marathi idle prompt enabled (10s silence after bot speech)")
@@ -295,6 +310,7 @@ async def run_bot(
             transcript.user(),
             context_aggregator.user(),
             llm,
+            goodbye_processor,
             tts,
             greeting_completer,
         ]
@@ -321,6 +337,7 @@ async def run_bot(
             params=PipelineParams(allow_interruptions=True, enable_metrics=True),
             observers=[metrics_observer],
         )
+        task_ref["task"] = task
 
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):

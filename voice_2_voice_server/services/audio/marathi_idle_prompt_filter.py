@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Callable, Optional
 
 from loguru import logger
 from pipecat.frames.frames import (
@@ -19,11 +19,17 @@ class MarathiIdlePromptFilter(FrameProcessor):
 
     IDLE_PROMPT_TEXT = "हॅलो, तुम्ही अजून कॉलवर आहात का"
 
-    def __init__(self, timeout_secs: float = 10.0, **kwargs):
+    def __init__(
+        self,
+        timeout_secs: float = 10.0,
+        suppress_idle_when: Optional[Callable[[], bool]] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self._timeout_secs = timeout_secs
         self._idle_task: Optional[asyncio.Task] = None
         self._ignore_next_bot_stop = False
+        self._suppress_idle_when = suppress_idle_when
 
     def _cancel_idle_timer(self) -> None:
         if self._idle_task and not self._idle_task.done():
@@ -65,6 +71,8 @@ class MarathiIdlePromptFilter(FrameProcessor):
         elif isinstance(frame, BotStoppedSpeakingFrame):
             if self._ignore_next_bot_stop:
                 self._ignore_next_bot_stop = False
+            elif self._suppress_idle_when and self._suppress_idle_when():
+                self._cancel_idle_timer()
             else:
                 self._schedule_idle_timer()
 
