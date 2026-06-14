@@ -9,7 +9,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.services.openai.llm import OpenAILLMService
 
-from api.backend_utils import fetch_knowledge_chunks
+from utils.backend_utils import fetch_knowledge_chunks
 
 
 class OpenAIKnowledgeLLMService(OpenAILLMService):

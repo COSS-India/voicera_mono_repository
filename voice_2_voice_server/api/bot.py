@@ -1,6 +1,5 @@
 """Voice bot pipeline implementation using Pipecat."""
 
-import os
 import json
 import time
 import traceback
@@ -8,16 +7,7 @@ import traceback
 from loguru import logger
 from dotenv import load_dotenv
 
-from pipecat.frames.frames import (
-    InterruptionFrame,
-    InterimTranscriptionFrame,
-    TranscriptionFrame,
-    TTSSpeakFrame,
-    TTSStartedFrame,
-    UserStartedSpeakingFrame,
-    UserStoppedSpeakingFrame,
-)
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -26,7 +16,6 @@ from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.utils.text.base_text_aggregator import BaseTextAggregator, Aggregation, AggregationType
 from typing import Any, Optional, Callable, Awaitable
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
@@ -35,21 +24,35 @@ from pipecat.transports.websocket.fastapi import (
 from pipecat.runner.utils import parse_telephony_websocket
 from storage.minio_client import MinIOStorage
 from serializer.vobiz_serializer import VobizFrameSerializer
-from serializer.ubona_serializer import UbonaFrameSerializer
 from .services import (
     create_llm_service,
     create_stt_service,
     create_tts_service,
     ServiceCreationError,
 )
-from services.audio.greeting_interruption_filter import create_greeting_filters
-from services.audio.user_online_detection_filter import UserOnlineDetectionFilter
-from services.call_goodbye import GoodbyeHangupProcessor
-from services.call_management import UserSilenceHangupProcessor
+from utils.audio.greeting_interruption_filter import create_greeting_filters
+from utils.audio.user_online_detection_filter import UserOnlineDetectionFilter
+from utils.call_goodbye import GoodbyeHangupProcessor
+from utils.call_management import UserSilenceHangupProcessor
 from services.vllm_qwen import ensure_no_think_suffix
-from .call_recording_utils import submit_call_recording
-from .vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
-from services.metrics import CallMetricsObserver
+from utils.bot_utils import (
+    BargeInInterruptionProcessor,
+    FastPunctuationAggregator,
+    get_call_timeout_seconds,
+    get_hold_message_timeout_seconds,
+    get_hold_messages,
+    get_ignore_user_speech_before_greeting,
+    get_interruption_min_words,
+    get_sample_rate,
+    get_user_online_detection_enabled,
+    get_user_online_detection_message,
+    get_user_online_detection_seconds,
+    get_user_silence_hangup_seconds,
+    patch_immediate_first_chunk,
+)
+from utils.call_recording_utils import submit_call_recording
+from utils.vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
+from utils.metrics import CallMetricsObserver
 
 
 
@@ -78,220 +81,6 @@ try:
 except Exception as e:
     logger.warning(f"Failed to patch SOXRStreamAudioResampler: {e}")
 
-
-
-def _get_sample_rate() -> int:
-    """Get the audio sample rate from environment."""
-    return int(os.getenv("SAMPLE_RATE", "8000"))
-
-
-def _get_ignore_user_speech_before_greeting(agent_config: dict) -> bool:
-    """Default True for agents created before this setting existed."""
-    raw = agent_config.get("ignore_user_speech_before_greeting")
-    if raw is None:
-        return True
-    return bool(raw)
-
-
-def _get_interruption_min_words(agent_config: dict) -> int:
-    """Default 1 word for agents created before this setting existed."""
-    raw = agent_config.get("interruption_min_words")
-    if raw is None:
-        return 1
-    try:
-        return max(1, int(raw))
-    except (TypeError, ValueError):
-        return 1
-
-
-def _get_call_timeout_seconds(agent_config: dict) -> int:
-    """Default 600s (10 min), falling back to legacy session_timeout_minutes."""
-    raw = agent_config.get("call_timeout_seconds")
-    if raw is not None:
-        try:
-            return max(60, int(raw))
-        except (TypeError, ValueError):
-            pass
-    try:
-        minutes = int(agent_config.get("session_timeout_minutes", 10))
-        return max(60, minutes * 60)
-    except (TypeError, ValueError):
-        return 600
-
-
-def _get_user_silence_hangup_seconds(agent_config: dict) -> int:
-    """Default 0 (disabled) for agents created before this setting existed."""
-    raw = agent_config.get("user_silence_hangup_seconds")
-    if raw is None:
-        return 0
-    try:
-        return max(0, int(raw))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _get_hold_messages(agent_config: dict) -> list[str]:
-    """Hold messages from agent config; empty list disables hold audio."""
-    raw = agent_config.get("hold_messages")
-    if not isinstance(raw, list):
-        return []
-    return [str(msg).strip() for msg in raw if str(msg).strip()]
-
-
-def _get_hold_message_timeout_seconds(agent_config: dict) -> float:
-    """Seconds to wait for first LLM chunk before playing a hold message."""
-    raw = agent_config.get("hold_message_timeout_seconds")
-    if raw is None:
-        return 0.3
-    try:
-        return max(0.05, float(raw))
-    except (TypeError, ValueError):
-        return 0.3
-
-
-def _get_user_online_detection_enabled(agent_config: dict) -> bool:
-    """Whether to prompt the caller after silence following bot speech."""
-    return bool(agent_config.get("user_online_detection_enabled"))
-
-
-def _get_user_online_detection_message(agent_config: dict) -> str:
-    """Prompt played when the user stays silent after bot speech."""
-    raw = agent_config.get("user_online_detection_message")
-    if raw is None:
-        return ""
-    return str(raw).strip()
-
-
-def _get_user_online_detection_seconds(agent_config: dict) -> float:
-    """Seconds of user silence after bot speech before playing the prompt."""
-    raw = agent_config.get("user_online_detection_seconds")
-    if raw is None:
-        return 10.0
-    try:
-        return max(1.0, float(raw))
-    except (TypeError, ValueError):
-        return 10.0
-
-
-class FastPunctuationAggregator(BaseTextAggregator):
-    """Fast aggregator that sends text immediately on punctuation - no lookahead/NLTK."""
-    
-    def __init__(self):
-        self._text = ""
-    
-    @property
-    def text(self):
-        return Aggregation(text=self._text.strip(), type=AggregationType.SENTENCE)
-    
-    async def aggregate(self, text: str):
-        for char in text:
-            self._text += char
-            if char in '.!?,':
-                if self._text.strip():
-                    yield Aggregation(self._text.strip(), AggregationType.SENTENCE)
-                    self._text = ""
-    
-    async def flush(self):
-        if self._text.strip():
-            result = self._text.strip()
-            self._text = ""
-            return Aggregation(result, AggregationType.SENTENCE)
-        return None
-    
-    async def handle_interruption(self):
-        self._text = ""
-    
-    async def reset(self):
-        self._text = ""
-
-
-class BargeInInterruptionProcessor(FrameProcessor):
-    """Smart barge-in: interrupt bot only on real human speech, never on noise.
-
-    Three-layer noise filter
-    ────────────────────────
-    Layer 1 — SileroVAD (neural, transport level)
-        Runs a trained speech/non-speech classifier on every 30 ms audio window.
-        confidence=0.7 means the audio must be 70%+ speech-like before
-        UserStartedSpeakingFrame is emitted.
-        • Cough   → typically scores 0.1–0.3  → SILENT, no frame ✓
-        • Dog bark → typically scores 0.1–0.25 → SILENT, no frame ✓
-        • Background noise → scores ~0.0       → SILENT, no frame ✓
-        • Human speech     → scores 0.8–1.0    → UserStartedSpeakingFrame ✓
-
-    Layer 2 — Speaking guard (_user_speaking flag)
-        Only armed when UserStartedSpeakingFrame is seen (Silero approved).
-
-    Layer 3 — Transcript gate + minimum word count
-        Requires at least ``min_words`` spoken words before emitting InterruptionFrame.
-        A loud cough slipping Silero typically produces garbage with too few words.
-    """
-
-    def __init__(self, min_words: int = 1, **kwargs):
-        super().__init__(**kwargs)
-        self._min_words = max(1, min_words)
-        self._user_speaking: bool = False
-        self._interrupted: bool = False
-
-    def _word_count(self, text: str) -> int:
-        return len(text.split()) if text else 0
-
-    async def process_frame(self, frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-
-        if isinstance(frame, UserStartedSpeakingFrame):
-            self._user_speaking = True
-            self._interrupted = False
-            logger.debug("Silero: speech detected — armed, waiting for transcript")
-
-        elif isinstance(frame, UserStoppedSpeakingFrame):
-            if self._user_speaking and not self._interrupted:
-                logger.debug("Silero: speech ended with no valid transcript — no barge-in")
-            self._user_speaking = False
-            self._interrupted = False
-
-        elif isinstance(frame, (InterimTranscriptionFrame, TranscriptionFrame)):
-            text = frame.text.strip()
-            if (
-                self._user_speaking
-                and not self._interrupted
-                and self._word_count(text) >= self._min_words
-            ):
-                self._interrupted = True
-                logger.debug(
-                    "Barge-in confirmed (Silero + {} words in '{}') — interrupting bot",
-                    self._word_count(text),
-                    text[:80],
-                )
-                await self.push_frame(InterruptionFrame(), direction)
-
-        await self.push_frame(frame, direction)
-
-
-def patch_immediate_first_chunk(transport):
-    """Patch transport to send first audio chunk immediately with zero delay."""
-    output = transport.output()
-    output._send_interval = 0
-    output._first_chunk_sent = False
-    
-    _orig_write = output.write_audio_frame
-    async def _write_immediate(frame):
-        if not output._first_chunk_sent:
-            output._first_chunk_sent = True
-            output._next_send_time = time.monotonic() - 0.001
-            logger.info(f"🚀 Sending first chunk immediately: {len(frame.audio)} bytes (bypassing queue)")
-        await _orig_write(frame)
-    output.write_audio_frame = _write_immediate
-    
-    _orig_process = output.process_frame
-    async def _reset_on_tts(frame, direction):
-        if isinstance(frame, TTSStartedFrame):
-            output._first_chunk_sent = False
-            logger.debug(f"🔄 Reset first_chunk_sent flag for new TTS response")
-        await _orig_process(frame, direction)
-    output.process_frame = _reset_on_tts
-
-
 async def run_bot(
     transport: FastAPIWebsocketTransport,
     agent_config: dict,
@@ -313,7 +102,7 @@ async def run_bot(
         handle_sigint: Whether to handle SIGINT for graceful shutdown
     """
     start_time = time.monotonic()
-    sample_rate = sample_rate or _get_sample_rate()
+    sample_rate = sample_rate or get_sample_rate()
     
     logger.debug(f"Agent config: {json.dumps(agent_config, indent=2, default=str)}")
     
@@ -345,8 +134,8 @@ async def run_bot(
             vistaar_session_id=vistaar_session_id,
             language=agent_config.get("language"),
             org_id=org_id,
-            hold_messages=_get_hold_messages(agent_config),
-            hold_message_timeout_seconds=_get_hold_message_timeout_seconds(
+            hold_messages=get_hold_messages(agent_config),
+            hold_message_timeout_seconds=get_hold_message_timeout_seconds(
                 agent_config
             ),
         )
@@ -376,8 +165,8 @@ async def run_bot(
             context_aggregator = llm.create_context_aggregator(context)
         
         _, greeting_blocker, greeting_completer = create_greeting_filters()
-        ignore_user_speech_before_greeting = _get_ignore_user_speech_before_greeting(agent_config)
-        interruption_min_words = _get_interruption_min_words(agent_config)
+        ignore_user_speech_before_greeting = get_ignore_user_speech_before_greeting(agent_config)
+        interruption_min_words = get_interruption_min_words(agent_config)
         logger.info(
             "Interruption settings | ignore_before_greeting={} min_words={}",
             ignore_user_speech_before_greeting,
@@ -392,12 +181,12 @@ async def run_bot(
 
         goodbye_processor = GoodbyeHangupProcessor(schedule_call_end)
 
-        user_online_detection_message = _get_user_online_detection_message(agent_config)
+        user_online_detection_message = get_user_online_detection_message(agent_config)
         user_online_detection_enabled = (
-            _get_user_online_detection_enabled(agent_config)
+            get_user_online_detection_enabled(agent_config)
             and bool(user_online_detection_message)
         )
-        user_online_detection_seconds = _get_user_online_detection_seconds(agent_config)
+        user_online_detection_seconds = get_user_online_detection_seconds(agent_config)
         user_online_detection_filter = (
             UserOnlineDetectionFilter(
                 prompt_text=user_online_detection_message,
@@ -413,7 +202,7 @@ async def run_bot(
                 user_online_detection_seconds,
             )
 
-        user_silence_hangup_secs = _get_user_silence_hangup_seconds(agent_config)
+        user_silence_hangup_secs = get_user_silence_hangup_seconds(agent_config)
         user_silence_hangup_filter = (
             UserSilenceHangupProcessor(
                 timeout_secs=float(user_silence_hangup_secs),
@@ -515,8 +304,8 @@ async def bot(
     sample_rate: Optional[int] = None,
 ) -> str:
     """Main bot entry point - sets up transport and runs the pipeline."""
-    sample_rate = sample_rate or _get_sample_rate()
-    session_timeout = _get_call_timeout_seconds(agent_config)
+    sample_rate = sample_rate or get_sample_rate()
+    session_timeout = get_call_timeout_seconds(agent_config)
 
     import time
     original_send = websocket_client.send_text
@@ -535,12 +324,11 @@ async def bot(
 
     normalized_provider = (provider or "vobiz").strip().lower()
     if normalized_provider == "plivo":
-        # Pipecat: parse_telephony_websocket reads Plivo start messages (streamId, callId)
         await websocket_client.accept()
         _, telephony_call_data = await parse_telephony_websocket(websocket_client)
         stream_sid = stream_sid or telephony_call_data.get("stream_id") or "unknown"
         call_sid = call_sid or telephony_call_data.get("call_id") or "unknown"
-        # Plivo media stream matches Vobiz (L16 @ 16k); native PlivoFrameSerializer is mulaw-only
+     
         serializer = VobizFrameSerializer(
             stream_sid=stream_sid,
             call_sid=call_sid,
@@ -566,9 +354,7 @@ async def bot(
     stt_provider_name = str((agent_config.get("stt_model") or {}).get("name") or "").strip().lower()
 
     if stt_provider_name == "bhashini":
-        # Use tighter Silero params for Bhashini: higher confidence rejects coughs/barks.
-        # Bhashini's internal energy VAD still manages WebSocket open/close timing
-        # but will NOT emit duplicate speaking frames when vad_analyzer is provided.
+       
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=sample_rate,
             params=VADParams(
@@ -741,122 +527,3 @@ async def bot(
             omit_recording_url=use_vobiz_native_recording and not recording_url,
         )
     return call_sid
-
-async def ubona_bot(
-    websocket_client,
-    stream_id: str,
-    call_id: str,
-    agent_type: str,
-    agent_config: dict
-) -> None:
-    """Ubona bot entry point - sets up transport and runs the pipeline."""
-    sample_rate = 8000  # Ubona only supports 8kHz PCMU
-    session_timeout = _get_call_timeout_seconds(agent_config)
-
-    call_start_time = time.monotonic()
-    storage = MinIOStorage.from_env()
-
-    serializer = UbonaFrameSerializer(
-        stream_id=stream_id,
-        call_id=call_id,
-        params=UbonaFrameSerializer.InputParams(sample_rate=sample_rate),
-    )
-
-    vad_analyzer = SileroVADAnalyzer(
-        sample_rate=sample_rate,
-        params=VADParams(stop_secs=0.2, min_volume=0.5, confidence=0.4, start_secs=0.1),
-    )
-    vad_analyzer._smoothing_factor = 0.1
-
-    import pipecat.transports.base_input
-    pipecat.transports.base_input.AUDIO_INPUT_TIMEOUT_SECS = 0.1
-    import pipecat.transports.base_output
-    pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
-
-    # Wrapper to handle ping/pong inline
-    class PingPongWrapper:
-        def __init__(self, ws):
-            self._ws = ws
-        async def receive_text(self):
-            while True:
-                data = await self._ws.receive_text()
-                try:
-                    msg = json.loads(data)
-                    if msg.get("event") == "ping":
-                        # Spec: pong must contain the same ts as ping for round-trip
-                        ping_ts = msg.get("ts", int(time.time() * 1000))
-                        await self._ws.send_text(json.dumps({"event": "pong", "ts": ping_ts}))
-                        continue
-                except:
-                    pass
-                return data
-        def __getattr__(self, name):
-            return getattr(self._ws, name)
-
-    transport = FastAPIWebsocketTransport(
-        websocket=PingPongWrapper(websocket_client),
-        params=FastAPIWebsocketParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            add_wav_header=False,
-            vad_analyzer=vad_analyzer,
-            serializer=serializer,
-            audio_in_passthrough=True,
-            session_timeout=session_timeout,
-            audio_out_10ms_chunks=2,
-        ),
-    )
-
-    patch_immediate_first_chunk(transport)
-
-    audiobuffer = AudioBufferProcessor()
-    transcript = TranscriptProcessor()
-    call_data = {"audio_chunks": [], "audio_sample_rate": None, "audio_num_channels": None, "transcript_lines": []}
-
-    @audiobuffer.event_handler("on_audio_data")
-    async def on_audio_data(buffer, audio, sample_rate, num_channels):
-        call_data["audio_chunks"].append(audio)
-        if call_data["audio_sample_rate"] is None:
-            call_data["audio_sample_rate"], call_data["audio_num_channels"] = sample_rate, num_channels
-
-    @transcript.event_handler("on_transcript_update")
-    async def on_transcript_update(processor, frame):
-        for message in frame.messages:
-            ts = f"[{message.timestamp}] " if message.timestamp else ""
-            call_data["transcript_lines"].append(f"{ts}{message.role}: {message.content}")
-
-    metrics_observer = None
-    try:
-        metrics_observer = await run_bot(
-            transport,
-            agent_config,
-            transcript,
-            audiobuffer=audiobuffer,
-            vad_analyzer=vad_analyzer,
-            vistaar_session_id=call_id,
-        )
-    finally:
-        logger.info(f"Saving call data for {call_id}...")
-        if call_data["audio_chunks"] and call_data["audio_sample_rate"]:
-            try:
-                await storage.save_recording_from_chunks(call_id, call_data["audio_chunks"], call_data["audio_sample_rate"], call_data["audio_num_channels"])
-                logger.info(f"Saved {len(call_data['audio_chunks'])} audio chunks")
-            except Exception as e:
-                logger.error(f"Failed to save audio: {e}")
-
-        if call_data["transcript_lines"]:
-            try:
-                await storage.save_transcript_from_lines(call_id, call_data["transcript_lines"])
-                logger.info(f"Saved {len(call_data['transcript_lines'])} transcript lines")
-            except Exception as e:
-                logger.error(f"Failed to save transcript: {e}")
-
-        latency_metrics = metrics_observer.to_dict() if metrics_observer else None
-        await submit_call_recording(
-            call_sid=call_id,
-            agent_type=agent_type,
-            agent_config=agent_config,
-            storage=storage,
-            call_start_time=call_start_time,
-            latency_metrics=latency_metrics,
-        )

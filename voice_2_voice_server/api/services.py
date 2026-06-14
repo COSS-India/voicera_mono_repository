@@ -36,7 +36,7 @@ from config import get_llm_model
 from config.stt_mappings import STT_LANGUAGE_MAP
 from config.tts_mappings import TTS_LANGUAGE_MAP
 
-from .backend_utils import fetch_integration_key
+from utils.backend_utils import fetch_integration_key
 
 
 class ServiceCreationError(Exception):
