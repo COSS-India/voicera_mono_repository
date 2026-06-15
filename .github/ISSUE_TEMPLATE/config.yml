@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & discussions
+    url: https://github.com/COSS-India/voicera_mono_repository/discussions
+    about: Ask questions, share ideas, and show what you've built with VoicERA
+  - name: 📖 Documentation
+    url: https://github.com/COSS-India/voicera_mono_repository/tree/main/docs
+    about: Browse the MkDocs documentation site in the repo
+  - name: 🔒 Security vulnerability
+    url: https://github.com/COSS-India/voicera_mono_repository/blob/main/SECURITY.md
+    about: Report security issues privately — do not open a public issue
