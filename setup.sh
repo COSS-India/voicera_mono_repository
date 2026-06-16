@@ -75,8 +75,25 @@ echo ""
 [ -z "${VOBIZ_AUTH_ID/PLACEHOLDER/}" ] && read -r -p "  Vobiz Auth ID [enter to skip]: " _vid && [ -n "$_vid" ] && VOBIZ_AUTH_ID="$_vid"
 [ -z "${VOBIZ_AUTH_TOKEN/PLACEHOLDER/}" ] && read -r -p "  Vobiz Auth Token [enter to skip]: " _vtk && [ -n "$_vtk" ] && VOBIZ_AUTH_TOKEN="$_vtk"
 
+# ── Domain check ─────────────────────────────────────────────────────────────
+echo ""
+echo -e "\033[2m  ─────────────────────────────────────────────────────\033[0m"
+CUSTOM_V2V_DOMAIN=""
+CUSTOM_APP_DOMAIN=""
+read -r -p "  Do you have a domain already forwarding port 7860 (V2V)? [yes/no, default: no]: " _has_v2v_domain
+if [ "$_has_v2v_domain" = "yes" ] || [ "$_has_v2v_domain" = "y" ]; then
+  read -r -p "  Enter V2V domain (e.g. https://v2v.example.com): " CUSTOM_V2V_DOMAIN
+fi
+read -r -p "  Do you have a domain already forwarding port 3000 (App)? [yes/no, default: no]: " _has_app_domain
+if [ "$_has_app_domain" = "yes" ] || [ "$_has_app_domain" = "y" ]; then
+  read -r -p "  Enter App domain (e.g. https://app.example.com): " CUSTOM_APP_DOMAIN
+fi
+echo ""
+
 echo ""
 echo -e "  STT: ${ENABLE_STT}  |  TTS: ${ENABLE_TTS}  |  LLM: ${ENABLE_LLM}"
+[ -n "$CUSTOM_V2V_DOMAIN" ] && echo -e "  V2V domain: ${CUSTOM_V2V_DOMAIN}" || echo -e "  V2V tunnel: ngrok (auto)"
+[ -n "$CUSTOM_APP_DOMAIN" ] && echo -e "  App domain: ${CUSTOM_APP_DOMAIN}" || echo -e "  App tunnel: Cloudflare (auto)"
 read -r -p "  Proceed? [Y/n]: " _ok
 [ "$_ok" = "n" ] && exit 0
 
@@ -166,7 +183,7 @@ set -e
 sudo ln -sf "$PY312" /usr/local/bin/python3.12 2>/dev/null || true
 ok "Python 3.12: $PY312"
 
-# ngrok + cloudflared
+# ngrok + cloudflared (install unconditionally; only used as fallback if no custom domain)
 ngrok config add-authtoken "$NGROK_TOKEN" 2>/dev/null || true
 if ! command -v ngrok &>/dev/null; then
   curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
@@ -296,7 +313,7 @@ SECRET_KEY=$SECRET_KEY
 MAILTRAP_API_TOKEN=placeholder
 MAILTRAP_FROM_EMAIL=noreply@voicera.com
 MAILTRAP_FROM_NAME=Voicera
-FRONTEND_URL=https://PENDING
+FRONTEND_URL=${CUSTOM_APP_DOMAIN:-https://PENDING}
 INTERNAL_API_KEY=$INTERNAL_KEY
 MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
@@ -325,6 +342,8 @@ STT_DIR="$REPO_DIR/ai4bharat_stt_server"
 TTS_DIR="$REPO_DIR/ai4bharat_tts_server"
 V2V_DIR="$REPO_DIR/voice_2_voice_server"
 HF_TOKEN="$HF_TOKEN"
+CUSTOM_V2V_DOMAIN="$CUSTOM_V2V_DOMAIN"
+CUSTOM_APP_DOMAIN="$CUSTOM_APP_DOMAIN"
 ls /dev/nvidia0 2>/dev/null || { sudo modprobe nvidia; sudo modprobe nvidia-uvm; }
 pgrep -x mongod &>/dev/null || sudo systemctl start mongod
 tmux kill-session -t voicera 2>/dev/null || true
@@ -350,12 +369,18 @@ STARTEOF
 cat >> "$HOME/start_voicera.sh" << 'STARTEOF'
 tmux new-window -t voicera -n v2v
 tmux send-keys -t voicera:v2v "cd $V2V_DIR && source venv/bin/activate && python3 main.py" Enter
-tmux new-window -t voicera -n ngrok
-tmux send-keys -t voicera:ngrok 'ngrok http 7860' Enter
+# Start ngrok for V2V only if no custom domain was provided
+if [ -z "$CUSTOM_V2V_DOMAIN" ]; then
+  tmux new-window -t voicera -n ngrok
+  tmux send-keys -t voicera:ngrok 'ngrok http 7860' Enter
+fi
 tmux new-window -t voicera -n frontend
 tmux send-keys -t voicera:frontend "cd \$REPO_DIR/voicera_frontend && npx next dev --port 3000" Enter
-tmux new-window -t voicera -n cloudflare
-tmux send-keys -t voicera:cloudflare 'cloudflared tunnel --url http://localhost:3000 --logfile /tmp/cf.log' Enter
+# Start Cloudflare tunnel for App only if no custom domain was provided
+if [ -z "$CUSTOM_APP_DOMAIN" ]; then
+  tmux new-window -t voicera -n cloudflare
+  tmux send-keys -t voicera:cloudflare 'cloudflared tunnel --url http://localhost:3000 --logfile /tmp/cf.log' Enter
+fi
 # Wait for services to come up (STT loads 2.4GB model — takes 2-3 min)
 echo "  Waiting for services to start (up to 3 min)..."
 for i in $(seq 1 18); do
@@ -371,6 +396,10 @@ STARTEOF
 chmod +x "$HOME/start_voicera.sh"
 
 # V2V + frontend .env
+# Determine the V2V public URL: prefer custom domain, fall back to PENDING (ngrok resolves at runtime)
+V2V_PUBLIC_URL="${CUSTOM_V2V_DOMAIN:-https://PENDING}"
+V2V_PUBLIC_WSS=$(echo "$V2V_PUBLIC_URL" | sed 's|^https://|wss://|; s|^http://|ws://|')
+
 cat > "$V2V_DIR/.env" << ENVEOF
 VOBIZ_AUTH_ID=$VOBIZ_AUTH_ID
 VOBIZ_AUTH_TOKEN=$VOBIZ_AUTH_TOKEN
@@ -378,8 +407,8 @@ VOBIZ_API_BASE=https://api.vobiz.in/v1
 VOBIZ_CALLER_ID=+91XXXXXXXXXX
 PLIVO_AUTH_ID=PLACEHOLDER
 PLIVO_AUTH_TOKEN=PLACEHOLDER
-JOHNAIC_SERVER_URL=https://PENDING
-JOHNAIC_WEBSOCKET_URL=wss://PENDING
+JOHNAIC_SERVER_URL=$V2V_PUBLIC_URL
+JOHNAIC_WEBSOCKET_URL=$V2V_PUBLIC_WSS
 VOICERA_BACKEND_URL=http://localhost:8000
 INTERNAL_API_KEY=$INTERNAL_KEY
 MINIO_ENDPOINT=localhost:9000
@@ -393,7 +422,8 @@ OPENAI_API_KEY=$OPENAI_API_KEY
 XAI_API_KEY=$XAI_API_KEY
 ENVEOF
 
-echo 'NEXT_PUBLIC_JOHNAIC_SERVER_URL="https://PENDING"' > "$REPO_DIR/voicera_frontend/.env.local"
+APP_PUBLIC_URL="${CUSTOM_APP_DOMAIN:-https://PENDING}"
+echo "NEXT_PUBLIC_JOHNAIC_SERVER_URL=\"$APP_PUBLIC_URL\"" > "$REPO_DIR/voicera_frontend/.env.local"
 
 bash "$HOME/start_voicera.sh"
 
@@ -423,20 +453,31 @@ for i in $(seq 1 12); do
 done
 ss -tlnp | grep -q ':3000' && ok "Frontend ready on :3000" || ok "WARNING: Frontend may still be starting"
 
-# Only start Cloudflare tunnel AFTER frontend is confirmed up
-pkill cloudflared 2>/dev/null; sleep 1
-tmux send-keys -t voicera:cloudflare "cloudflared tunnel --url http://localhost:3000 --logfile /tmp/cf.log" Enter
-sleep 12
-CF_URL=$(grep -o 'https://[^ |]*\.trycloudflare\.com' /tmp/cf.log 2>/dev/null | tail -1 || echo "")
-[ -n "$CF_URL" ] && sed -i "s|https://PENDING|$CF_URL|g" "$BACKEND_DIR/.env" 2>/dev/null || true
+# Resolve tunnel URLs for services without a custom domain
+NGROK_URL=""
+CF_URL=""
+
+if [ -z "$CUSTOM_V2V_DOMAIN" ]; then
+  # Only start ngrok and wait for its URL if no custom V2V domain
+  sleep 5
+  NGROK_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["tunnels"][0]["public_url"])' 2>/dev/null || echo "")
+fi
+
+if [ -z "$CUSTOM_APP_DOMAIN" ]; then
+  # Only start Cloudflare tunnel AFTER frontend is confirmed up
+  pkill cloudflared 2>/dev/null; sleep 1
+  tmux send-keys -t voicera:cloudflare "cloudflared tunnel --url http://localhost:3000 --logfile /tmp/cf.log" Enter
+  sleep 12
+  CF_URL=$(grep -o 'https://[^ |]*\.trycloudflare\.com' /tmp/cf.log 2>/dev/null | tail -1 || echo "")
+  [ -n "$CF_URL" ] && sed -i "s|https://PENDING|$CF_URL|g" "$BACKEND_DIR/.env" 2>/dev/null || true
+fi
 
 echo ""
-echo -e "[1;36m  ══════════════════════════════════════[0m"
-echo -e "[1;32m         ✓  VoicEra is Live![0m"
-echo -e "[1;36m  ══════════════════════════════════════[0m"
-NGROK_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["tunnels"][0]["public_url"])' 2>/dev/null || echo "")
-[ -n "$NGROK_URL" ] && echo -e "[0m  V2V    (ngrok):  $NGROK_URL[0m"
-[ -n "$CF_URL"   ] && echo -e "[0m  App    (CF):     $CF_URL[0m"
+echo -e "[1;36m  ══════════════════════════════════════[0m"
+echo -e "[1;32m         ✓  VoicEra is Live![0m"
+echo -e "[1;36m  ══════════════════════════════════════[0m"
+[ -n "$CUSTOM_V2V_DOMAIN" ] && echo -e "[0m  V2V    (custom):  $CUSTOM_V2V_DOMAIN[0m" || { [ -n "$NGROK_URL" ] && echo -e "[0m  V2V    (ngrok):   $NGROK_URL[0m"; }
+[ -n "$CUSTOM_APP_DOMAIN" ] && echo -e "[0m  App    (custom):  $CUSTOM_APP_DOMAIN[0m" || { [ -n "$CF_URL"    ] && echo -e "[0m  App    (CF):      $CF_URL[0m"; }
 echo ""
 curl -s http://localhost:8001/health 2>/dev/null | python3 -c 'import sys,json;d=json.load(sys.stdin);s=d.get("status","?");m=d.get("main_loaded","?");print("  STT  : "+str(s)+" | model="+str(m))' 2>/dev/null || echo "  STT  : loading..."
 curl -s http://localhost:7860/health 2>/dev/null | python3 -c 'import sys,json;d=json.load(sys.stdin);print("  V2V  : "+str(d.get("status","?")))' 2>/dev/null || echo "  V2V  : loading..."
