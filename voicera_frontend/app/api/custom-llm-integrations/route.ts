@@ -1,0 +1,74 @@
+import { NextRequest, NextResponse } from "next/server"
+
+import { SERVER_API_URL } from "@/lib/api-config"
+const API_BASE_URL = SERVER_API_URL
+
+export async function GET(request: NextRequest) {
+  try {
+    const authHeader = request.headers.get("Authorization")
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: "Authorization header is required" },
+        { status: 401 }
+      )
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/v1/custom-llm-integrations`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: authHeader,
+      },
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      return NextResponse.json(data, { status: response.status })
+    }
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error("Error fetching custom LLM integrations:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const authHeader = request.headers.get("Authorization")
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: "Authorization header is required" },
+        { status: 401 }
+      )
+    }
+
+    const body = await request.json()
+    if (!body.org_id || !body.name || !body.base_url || !body.api_key || !body.model) {
+      return NextResponse.json(
+        { error: "org_id, name, base_url, api_key, and model are required" },
+        { status: 400 }
+      )
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/v1/custom-llm-integrations`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: authHeader,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      return NextResponse.json(data, { status: response.status })
+    }
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error("Error creating custom LLM integration:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
