@@ -1,10 +1,10 @@
-# VoiceERA Documentation
+# VoicEra Documentation
 
-Welcome to the VoiceERA documentation! This is your comprehensive guide to understanding, deploying, and developing with the VoiceERA platform.
+Welcome to the VoicEra documentation! This is your comprehensive guide to understanding, deploying, and developing with the VoicEra platform.
 
-## What is VoiceERA?
+## What is VoicEra?
 
-VoiceERA is a **complete voice AI platform** with telephony integration, featuring:
+VoicEra is a **complete voice AI platform** with telephony integration, featuring:
 
 - 🎤 **Real-time Speech-to-Text (STT)** - Convert spoken words to text
 - 🔊 **Text-to-Speech (TTS)** - Convert text back to natural-sounding speech
@@ -41,22 +41,22 @@ Integration with multiple AI providers:
 ### Operators and programme managers
 Plain-language guides (no Docker required):
 
-- **[Overview](guide/overview.md)** - What VoicERA is and how calls work
+- **[Overview](guide/overview.md)** - What VoicEra is and how calls work
 - **[Prerequisites checklist](guide/prerequisites.md)** - Before you deploy
 - **[Dashboard walkthrough](guide/dashboard.md)** - Agents, Integrations, Test on Browser
 - **[Verify it works](guide/verification.md)** - Health checks without jargon
 - **[FAQ](guide/faq.md)** - Common questions (Vobiz in Integrations, JOHNAIC URLs, etc.)
 
-### New to VoiceERA (technical)?
+### New to VoicEra (technical)?
 Start here to get up and running:
 
 - **[Installation](getting-started/installation.md)** - Set up your development environment
-- **[Quick Start](getting-started/quickstart.md)** - Get VoiceERA running in minutes
+- **[Quick Start](getting-started/quickstart.md)** - Get VoicEra running in minutes
 - **[Configuration](getting-started/configuration.md)** - Configure services and environment
 - **[Deployment walkthrough](guide/deployment-walkthrough.md)** - Step-by-step Docker deploy
 
 ### For Developers
-Extend and customize VoiceERA:
+Extend and customize VoicEra:
 
 - **[Local Development](development/local-setup.md)** - Set up development environment
 - **[REST API](api/rest-api.md)** - REST API documentation
@@ -71,7 +71,7 @@ Extend and customize VoiceERA:
 - **[Knowledge Base (RAG)](services/knowledge-base.md)** - PDF upload and agent retrieval
 
 ### For Operations & DevOps
-Deploy and manage VoiceERA:
+Deploy and manage VoicEra:
 
 - **[Docker Deployment](deployment/docker.md)** - Docker & Docker Compose setup
 - **[Production Deployment](deployment/production.md)** - Production-grade deployment
@@ -80,7 +80,7 @@ Deploy and manage VoiceERA:
 - **[Operations guide](guide/operations.md)** - Dashboard vs hosting partner tasks
 
 ### Understanding the System
-Learn how VoiceERA works:
+Learn how VoicEra works:
 
 - **[System Overview](architecture/overview.md)** - High-level architecture
 - **[System Design](architecture/system-design.md)** - Detailed system design
@@ -110,7 +110,7 @@ Before you begin, ensure you have:
 
 ## Next Steps
 
-1. **[Install VoiceERA](getting-started/installation.md)** - Get your environment ready
+1. **[Install VoicEra](getting-started/installation.md)** - Get your environment ready
 2. **[Run Quick Start](getting-started/quickstart.md)** - Launch all services
 3. **[Explore Architecture](architecture/overview.md)** - Understand the system
 
@@ -122,7 +122,7 @@ Before you begin, ensure you have:
 
 ---
 
-**Version:** 1.0.0  
-**Last Updated:** January 2026
+**Version:** 1.0.1  
+**Last Updated:** June 2026
 
 

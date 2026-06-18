@@ -1,6 +1,6 @@
 # Dashboard walkthrough
 
-This guide explains the VoicERA web dashboard for operators.
+This guide explains the VoicEra web dashboard for operators.
 
 ## Login
 

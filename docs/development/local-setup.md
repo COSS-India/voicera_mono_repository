@@ -1,6 +1,6 @@
 # Local Development Setup
 
-Complete guide for setting up VoiceERA for local development.
+Complete guide for setting up VoicEra for local development.
 
 ## Development Environment
 

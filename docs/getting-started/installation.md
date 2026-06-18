@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide will help you install and set up VoiceERA on your system.
+This guide will help you install and set up VoicEra on your system.
 
 ## System Requirements
 

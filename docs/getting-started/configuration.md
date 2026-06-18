@@ -1,10 +1,10 @@
 # Configuration Guide
 
-Comprehensive guide to configuring VoiceERA services.
+Comprehensive guide to configuring VoicEra services.
 
 ## Configuration Overview
 
-VoiceERA uses environment variables for configuration. Each service has its own `.env` file:
+VoicEra uses environment variables for configuration. Each service has its own `.env` file:
 
 - `voicera_backend/.env` - Backend API configuration
 - `voice_2_voice_server/.env` - Voice server & AI provider keys
@@ -64,7 +64,7 @@ CORS_ORIGINS=["http://localhost:3000","https://yourdomain.com"]
 
 ```env
 # Backend API
-API_TITLE=VoiceERA API
+API_TITLE=VoicEra API
 API_VERSION=1.0.0
 LOG_LEVEL=INFO                   # DEBUG, INFO, WARNING, ERROR
 
@@ -207,7 +207,7 @@ NEXT_PUBLIC_AUTH_ENABLED=true
 NEXT_PUBLIC_JWT_STORAGE_KEY=voicera_token
 
 # Application
-NEXT_PUBLIC_APP_NAME=VoiceERA
+NEXT_PUBLIC_APP_NAME=VoicEra
 NEXT_PUBLIC_APP_VERSION=1.0.0
 NEXT_PUBLIC_LOG_LEVEL=info                  # debug, info, warn, error
 

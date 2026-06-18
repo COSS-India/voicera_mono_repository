@@ -1,10 +1,10 @@
 # Frontend Service
 
-Comprehensive documentation for the VoiceERA Frontend service.
+Comprehensive documentation for the VoicEra Frontend service.
 
 ## Overview
 
-The Frontend is the user-facing web interface for VoiceERA, built with **Next.js 16+**, **React 18+**, and **TailwindCSS 4+**.
+The Frontend is the user-facing web interface for VoicEra, built with **Next.js 16+**, **React 18+**, and **TailwindCSS 4+**.
 
 **Key Responsibilities:**
 - User authentication & account management
@@ -515,7 +515,7 @@ NEXT_PUBLIC_AUTH_ENABLED=true
 NEXT_PUBLIC_JWT_STORAGE_KEY=voicera_token
 
 # Application
-NEXT_PUBLIC_APP_NAME=VoiceERA
+NEXT_PUBLIC_APP_NAME=VoicEra
 NEXT_PUBLIC_APP_VERSION=1.0.0
 NEXT_PUBLIC_LOG_LEVEL=info
 

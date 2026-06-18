@@ -1,4 +1,4 @@
-# VoicERA backend
+# VoicEra Backend
 
 **FastAPI REST API** for the platform: auth, agents, telephony (Vobiz/Plivo), campaigns, meetings, integrations, knowledge base (RAG), and call recordings. Persists data in **MongoDB**; object storage via **MinIO**.
 

@@ -1,10 +1,10 @@
 # Data Flow Through the System
 
-This document explains how data moves through VoiceERA during various operations.
+This document explains how data moves through VoicEra during various operations.
 
 ## Voice Call Data Flow
 
-The most complex and important flow in VoiceERA.
+The most complex and important flow in VoicEra.
 
 ### Complete Voice Call Sequence
 

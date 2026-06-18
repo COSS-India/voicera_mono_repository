@@ -1,6 +1,6 @@
 # Environment Variables Reference
 
-Complete reference for all environment variables used in VoiceERA services.
+Complete reference for all environment variables used in VoicEra services.
 
 ## Table of Contents
 
@@ -68,7 +68,7 @@ CORS_MAX_AGE=3600
 
 ```env
 # API Settings
-API_TITLE=VoiceERA API
+API_TITLE=VoicEra API
 API_VERSION=1.0.0
 API_DESCRIPTION=Voice AI Platform with Telephony Integration
 API_DOCS_ENABLED=true            # /docs endpoint
@@ -282,7 +282,7 @@ NEXT_PUBLIC_LOGIN_URL=/login
 
 ```env
 # App Info
-NEXT_PUBLIC_APP_NAME=VoiceERA
+NEXT_PUBLIC_APP_NAME=VoicEra
 NEXT_PUBLIC_APP_VERSION=1.0.0
 NEXT_PUBLIC_APP_ENVIRONMENT=development  # development, staging, production
 

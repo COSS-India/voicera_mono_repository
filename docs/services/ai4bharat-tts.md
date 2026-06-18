@@ -172,7 +172,7 @@ Telugu (te):
 And so on for other languages...
 ```
 
-## Integration with VoiceERA
+## Integration with VoicEra
 
 ### Configuration
 
@@ -373,4 +373,4 @@ services:
 
 - **[STT Service](ai4bharat-stt.md)** - Speech-to-Text documentation
 - **[Configuration](../getting-started/configuration.md)** - Full configuration guide
-- **[Quick Start](../getting-started/quickstart.md)** - Get VoiceERA running
+- **[Quick Start](../getting-started/quickstart.md)** - Get VoicEra running

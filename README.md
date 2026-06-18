@@ -1,4 +1,4 @@
-# VoicERA Mono Repository
+# VoicEra Mono Repository
 
 A complete voice AI building block with telephony integration, featuring real-time speech-to-text, text-to-speech, and LLM-powered conversational agents.
 
@@ -6,7 +6,7 @@ A complete voice AI building block with telephony integration, featuring real-ti
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         VoicERA_mono_repository                  │
+│                         VoicEra_mono_repository                  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
@@ -14,21 +14,21 @@ A complete voice AI building block with telephony integration, featuring real-ti
 │  │   (Next.js)  │◄──►│  (FastAPI)   │◄──►│  (Pipecat)   │       │
 │  │   :3000      │    │   :8000      │    │   :7860      │       │
 │  └──────────────┘    └──────────────┘    └──────────────┘       │
-│                             │                   │                │
-│                             ▼                   ▼                │
+│                             │                   │               │
+│                             ▼                   ▼               │
 │                      ┌──────────────┐    ┌──────────────┐       │
 │                      │   MongoDB    │    │    MinIO     │       │
 │                      │   :27017     │    │  :9000/:9001 │       │
 │                      └──────────────┘    └──────────────┘       │
-│                                                                  │
+│                                                                 │
 │  ┌──────────────────────────────────────────────────────┐       │
-│  │            Optional: Local AI4Bharat Servers          │       │
+│  │            Optional: Local AI4Bharat Servers         │       │
 │  │  ┌──────────────┐              ┌──────────────┐      │       │
 │  │  │  STT Server  │              │  TTS Server  │      │       │
 │  │  │   :8001      │              │   :8002      │      │       │
 │  │  └──────────────┘              └──────────────┘      │       │
 │  └──────────────────────────────────────────────────────┘       │
-│                                                                  │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -150,7 +150,7 @@ SECRET_KEY=your-secret-key      # Generate: python -c "import secrets; print(sec
 # Email (Mailtrap)
 MAILTRAP_API_TOKEN=your-mailtrap-token
 MAILTRAP_FROM_EMAIL=noreply@voicera.com
-MAILTRAP_FROM_NAME=VoicERA
+MAILTRAP_FROM_NAME=VoicEra
 FRONTEND_URL=http://localhost:3000
 
 # Internal API (service-to-service auth)

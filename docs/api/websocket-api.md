@@ -1,6 +1,6 @@
 # WebSocket API Documentation
 
-Real-time communication protocol for VoiceERA Voice Server.
+Real-time communication protocol for VoicEra Voice Server.
 
 ## Connection
 

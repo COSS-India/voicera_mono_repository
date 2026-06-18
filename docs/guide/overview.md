@@ -1,10 +1,10 @@
-# VoicERA overview (plain language)
+# VoicEra overview (plain language)
 
 This page is for programme managers, district IT officers, and operators who do not need Docker or Python details. For technical setup, see [Prerequisites](prerequisites.md) and [Deployment walkthrough](deployment-walkthrough.md).
 
 ## In one sentence
 
-VoicERA is a platform to run **AI phone agents** that can answer or make phone calls in Indian languages, with a **web dashboard** to configure agents and view call history and recordings.
+VoicEra is a platform to run **AI phone agents** that can answer or make phone calls in Indian languages, with a **web dashboard** to configure agents and view call history and recordings.
 
 ## What problem it solves
 
@@ -15,7 +15,7 @@ Government departments and partners need phone lines that can:
 - Log who called and what was said
 - Optionally place outbound calls (campaigns)
 
-VoicERA provides the software stack. A **telephony provider** (typically **Vobiz**) connects real phone numbers to the system.
+VoicEra provides the software stack. A **telephony provider** (typically **Vobiz**) connects real phone numbers to the system.
 
 ## Main parts
 

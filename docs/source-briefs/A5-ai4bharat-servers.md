@@ -4,7 +4,7 @@
 
 **Merge status (VRAM):** API specs and env paths are documented in MkDocs and submodule READMEs. **Exact GPU VRAM (GB) is formally deferred** — checkpoints are customer-specific; engineering has not published reference benchmarks in this sprint. Operator-facing text in `docs/services/ai4bharat-*.md` states deferred status and hosting-partner sizing guidance.
 
-These servers are **optional**. The core VoicERA stack can run using cloud providers only.
+These servers are **optional**. The core VoicEra stack can run using cloud providers only.
 
 ---
 

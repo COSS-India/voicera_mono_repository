@@ -1,10 +1,10 @@
 # System Architecture Overview
 
-This document provides a high-level overview of the VoiceERA system architecture using the C4 Model for system design.
+This document provides a high-level overview of the VoicEra system architecture using the C4 Model for system design.
 
 ## System Context (Level 1)
 
-The "10,000-foot view" showing VoiceERA's interactions with users and external systems.
+The "10,000-foot view" showing VoicEra's interactions with users and external systems.
 
 ### Overview
 
@@ -214,4 +214,4 @@ Audio Processing
 
 - **[System Design Details](system-design.md)** - Deep dive into each component
 - **[Data Flow](data-flow.md)** - How data moves through the system
-- **[Quick Start](../getting-started/quickstart.md)** - Start using VoiceERA
+- **[Quick Start](../getting-started/quickstart.md)** - Start using VoicEra

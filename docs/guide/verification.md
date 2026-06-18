@@ -1,4 +1,4 @@
-# How to verify VoicERA is working
+# How to verify VoicEra is working
 
 For operators and programme managers after deployment.
 

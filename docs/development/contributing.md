@@ -1,6 +1,6 @@
-# Contributing to VoiceERA
+# Contributing to VoicEra
 
-Guidelines for contributing to VoiceERA.
+Guidelines for contributing to VoicEra.
 
 ## Code of Conduct
 
@@ -536,7 +536,7 @@ git push origin v1.2.3
 
 ## Thank You!
 
-Thank you for contributing to VoiceERA! Your efforts help make this project better for everyone.
+Thank you for contributing to VoicEra! Your efforts help make this project better for everyone.
 
 ---
 

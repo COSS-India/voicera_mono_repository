@@ -6,9 +6,9 @@
 
 ---
 
-## VoicERA in one sentence
+## VoicEra in one sentence
 
-VoicERA is a platform to run **AI phone agents** that can answer or make phone calls in Indian languages, with a **web dashboard** to configure agents and view call history and recordings.
+VoicEra is a platform to run **AI phone agents** that can answer or make phone calls in Indian languages, with a **web dashboard** to configure agents and view call history and recordings in almost zero cost.
 
 ---
 
@@ -21,7 +21,7 @@ Government departments and partners need phone lines that can:
 - Log who called and what was said
 - Optionally place outbound calls (campaigns)
 
-VoicERA provides the software stack; a **telephony provider** (Vobiz or Plivo) connects real phone numbers to the system.
+VoicEra provides the software stack; a **telephony provider** (Vobiz or Plivo) connects real phone numbers to the system.
 
 ---
 

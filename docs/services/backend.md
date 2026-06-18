@@ -1,10 +1,10 @@
 # Backend API Service
 
-Comprehensive documentation for the VoiceERA Backend API service.
+Comprehensive documentation for the VoicEra Backend API service.
 
 ## Overview
 
-The Backend API is the central orchestrator for the VoiceERA platform, built with **FastAPI** and **Python 3.10+**.
+The Backend API is the central orchestrator for the VoicEra platform, built with **FastAPI** and **Python 3.10+**.
 
 **Key Responsibilities:**
 - User authentication & authorization
@@ -410,7 +410,7 @@ JWT_EXPIRATION_HOURS=24
 CORS_ORIGINS=["http://localhost:3000","https://yourdomain.com"]
 
 # API
-API_TITLE=VoiceERA API
+API_TITLE=VoicEra API
 API_VERSION=1.0.0
 LOG_LEVEL=INFO
 DEBUG=False

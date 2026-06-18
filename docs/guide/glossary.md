@@ -11,7 +11,7 @@ Plain-language definitions for operators and non-technical readers.
 | **Batch / campaign** | Outbound calling to many numbers from an uploaded list, using an agent. |
 | **Bhashini** | Government cloud speech API; optional STT/TTS when configured in Integrations. |
 | **Bhili (`bhb`)** | Language code for Voice Bhili; uses dedicated STT route `/transcribe/bhili` when using local AI4Bharat STT. |
-| **Dashboard** | The VoicERA website where staff manage agents and view calls. |
+| **Dashboard** | The VoicEra website where staff manage agents and view calls. |
 | **Integration** | Saved API credentials per organization (telephony and AI keys). |
 | **LLM** | Large language model — generates what the agent should say. |
 | **Meeting** | A record of one call session (times, metadata). |
@@ -26,7 +26,7 @@ Plain-language definitions for operators and non-technical readers.
 | **Test on Browser** | Talk to an agent via mic/speakers without a phone call. |
 | **Transcript** | Text of what was said when logging is enabled. |
 | **Voice server** | Runs the live conversation during each call. |
-| **Vobiz** | Telephony provider linking Indian numbers to VoicERA. |
+| **Vobiz** | Telephony provider linking Indian numbers to VoicEra. |
 | **WebSocket** | Live two-way audio streaming during a call. |
 | **Webhook** | HTTP callback from the phone company on call events. |
 

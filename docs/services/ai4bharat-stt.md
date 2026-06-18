@@ -1,6 +1,6 @@
 # AI4Bharat STT Service
 
-Optional on-premises **Indic speech-to-text** (NeMo). The core VoicERA stack can run with cloud STT only.
+Optional on-premises **Indic speech-to-text** (NeMo). The core VoicEra stack can run with cloud STT only.
 
 ## HTTP API (port 8001)
 
@@ -31,7 +31,7 @@ Audio: base64 **16 kHz int16 PCM**. Batching: `MAX_BATCH_SIZE=16`, `BATCH_TIMEOU
 | **Development** | CPU fallback is supported but slow |
 | **Pinned VRAM (GB)** | **Deferred** — not benchmarked in this documentation pass |
 
-Exact VRAM depends on your **NeMo checkpoint file** (`INDIC_NEMO_PATH`, optional `BHILI_NEMO_PATH`), batch size (`MAX_BATCH_SIZE`), and whether both Indic and Bhili models are loaded. VoicERA does not ship a single reference checkpoint size for all deployments.
+Exact VRAM depends on your **NeMo checkpoint file** (`INDIC_NEMO_PATH`, optional `BHILI_NEMO_PATH`), batch size (`MAX_BATCH_SIZE`), and whether both Indic and Bhili models are loaded. VoicEra does not ship a single reference checkpoint size for all deployments.
 
 **Until measured values are published:** size GPUs with your hosting partner using a staging load test (`nvidia-smi` while serving `/transcribe` at expected concurrency), or use cloud STT providers and omit this server. Engineering may add reference GB figures after benchmarking on agreed hardware; that work is **out of scope for the initial main merge** and tracked in [source brief A5](../source-briefs/A5-ai4bharat-servers.md).
 
@@ -146,7 +146,7 @@ LOG_LEVEL=INFO
 GET /health
 ```
 
-## Integration with VoiceERA
+## Integration with VoicEra
 
 ### Configuration
 
@@ -233,4 +233,4 @@ python download_models.py
 
 - **[TTS Service](ai4bharat-tts.md)** - Text-to-Speech documentation
 - **[Configuration](../getting-started/configuration.md)** - Full configuration guide
-- **[Quick Start](../getting-started/quickstart.md)** - Get VoiceERA running
+- **[Quick Start](../getting-started/quickstart.md)** - Get VoicEra running

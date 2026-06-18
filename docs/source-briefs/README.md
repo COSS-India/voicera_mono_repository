@@ -1,6 +1,6 @@
 # Documentation Source Briefs
 
-One file per item from the VoicERA documentation review. Each brief gives the documentation writer (or AI) factual context from the codebase — not final polished copy.
+One file per item from the VoicEra documentation review. Each brief gives the documentation writer (or AI) factual context from the codebase.
 
 ## How to use
 

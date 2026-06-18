@@ -1,4 +1,4 @@
-# VoicERA frontend
+# VoicEra Frontend
 
 **Next.js dashboard** for operators: sign-in, **Assistants** (agents), **Integrations**, **Phone numbers**, **Meetings** / call history, browser voice test, campaigns/batches (when enabled), and telemetry views.
 

@@ -1,6 +1,6 @@
 # Docker & Docker Compose Deployment
 
-Complete guide to deploying VoiceERA using Docker and Docker Compose.
+Complete guide to deploying VoicEra using Docker and Docker Compose.
 
 ## Overview
 

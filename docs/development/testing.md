@@ -1,10 +1,10 @@
 # Testing Guide
 
-Complete testing guide for VoiceERA development.
+Complete testing guide for VoicEra development.
 
 ## Testing Overview
 
-VoiceERA uses automated testing across all services:
+VoicEra uses automated testing across all services:
 
 - **Backend**: Unit tests, integration tests, API tests
 - **Frontend**: Component tests, integration tests, E2E tests
@@ -397,7 +397,7 @@ import pytest
 from locust import HttpUser, task
 
 class VoiceERAUser(HttpUser):
-    """Simulated VoiceERA user"""
+    """Simulated VoicEra user"""
     
     @task(3)
     def list_agents(self):

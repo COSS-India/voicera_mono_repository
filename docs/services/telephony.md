@@ -1,6 +1,6 @@
 # Telephony (Vobiz)
 
-How phone calls connect to VoicERA through **Vobiz**.
+How phone calls connect to VoicEra through **Vobiz**.
 
 ## Credentials: Integrations, not `.env`
 

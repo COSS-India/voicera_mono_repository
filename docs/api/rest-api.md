@@ -1,6 +1,6 @@
 # REST API Documentation
 
-Complete REST API reference for VoiceERA Backend.
+Complete REST API reference for VoicEra Backend.
 
 ## Base URL
 

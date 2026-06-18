@@ -1,10 +1,10 @@
 # Voice Server Service
 
-Comprehensive documentation for the VoiceERA Voice Server service.
+Comprehensive documentation for the VoicEra Voice Server service.
 
 ## Overview
 
-The Voice Server is the real-time voice processing engine for VoiceERA, built with **Pipecat** and **Python 3.10+**.
+The Voice Server is the real-time voice processing engine for VoicEra, built with **Pipecat** and **Python 3.10+**.
 
 **Key Responsibilities:**
 - Establish WebSocket connections with clients

@@ -1,6 +1,6 @@
 # Production Deployment
 
-Guidelines and best practices for deploying VoiceERA to production.
+Guidelines and best practices for deploying VoicEra to production.
 
 ## Pre-Deployment Checklist
 

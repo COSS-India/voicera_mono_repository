@@ -1,4 +1,4 @@
-# VoiceERA Quick Reference
+# VoicEra Quick Reference
 
 Quick reference for common tasks and commands.
 

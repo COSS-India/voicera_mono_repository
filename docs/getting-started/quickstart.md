@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get VoiceERA up and running in 5 minutes!
+Get VoicEra up and running in 5 minutes!
 
 ## Prerequisites Checklist
 

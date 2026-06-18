@@ -1,6 +1,6 @@
 # Deployment walkthrough
 
-Step-by-step guide for a **hosting partner** deploying VoicERA with Docker. Operators should complete the [Prerequisites](prerequisites.md) checklist first.
+Step-by-step guide for a **hosting partner** deploying VoicEra with Docker. Operators should complete the [Prerequisites](prerequisites.md) checklist first.
 
 Each step includes: **what you do**, **what it means**, and **success looks like**.
 
