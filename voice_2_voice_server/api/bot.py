@@ -34,11 +34,13 @@ from utils.audio.greeting_interruption_filter import create_greeting_filters
 from utils.audio.user_online_detection_filter import UserOnlineDetectionFilter
 from utils.call_goodbye import GoodbyeHangupProcessor
 from utils.call_management import UserSilenceHangupProcessor
+from utils.pipelines import run_alert_bot
 from services.vllm_qwen import ensure_no_think_suffix
 from utils.bot_utils import (
     BargeInInterruptionProcessor,
     FastPunctuationAggregator,
     get_call_timeout_seconds,
+    get_alert_call_timeout_seconds,
     get_hold_message_timeout_seconds,
     get_hold_messages,
     get_ignore_user_speech_before_greeting,
@@ -48,6 +50,7 @@ from utils.bot_utils import (
     get_user_online_detection_message,
     get_user_online_detection_seconds,
     get_user_silence_hangup_seconds,
+    is_non_conversational,
     patch_immediate_first_chunk,
 )
 from utils.call_recording_utils import submit_call_recording
@@ -81,6 +84,7 @@ try:
 except Exception as e:
     logger.warning(f"Failed to patch SOXRStreamAudioResampler: {e}")
 
+
 async def run_bot(
     transport: FastAPIWebsocketTransport,
     agent_config: dict,
@@ -105,6 +109,17 @@ async def run_bot(
     sample_rate = sample_rate or get_sample_rate()
     
     logger.debug(f"Agent config: {json.dumps(agent_config, indent=2, default=str)}")
+
+    if is_non_conversational(agent_config):
+        return await run_alert_bot(
+            transport,
+            agent_config,
+            transcript,
+            audiobuffer=audiobuffer,
+            handle_sigint=handle_sigint,
+            sample_rate=sample_rate,
+            on_client_connected_hook=on_client_connected_hook,
+        )
     
     try:
         llm_config = dict(agent_config.get("llm_model", {}) or {})
@@ -305,7 +320,11 @@ async def bot(
 ) -> str:
     """Main bot entry point - sets up transport and runs the pipeline."""
     sample_rate = sample_rate or get_sample_rate()
-    session_timeout = get_call_timeout_seconds(agent_config)
+    session_timeout = (
+        get_alert_call_timeout_seconds(agent_config)
+        if is_non_conversational(agent_config)
+        else get_call_timeout_seconds(agent_config)
+    )
 
     import time
     original_send = websocket_client.send_text

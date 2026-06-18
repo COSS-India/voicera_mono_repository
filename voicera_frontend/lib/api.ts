@@ -362,8 +362,11 @@ export interface Agent {
   plivo_answer_url?: string
 }
 
+export type InteractionMode = "conversational" | "non_conversational"
+
 export interface AgentConfig {
-  system_prompt: string
+  interaction_mode?: InteractionMode
+  system_prompt?: string
   greeting_message: string
   ignore_user_speech_before_greeting?: boolean
   interruption_min_words?: number
@@ -374,17 +377,18 @@ export interface AgentConfig {
   user_online_detection_enabled?: boolean
   user_online_detection_message?: string
   user_online_detection_seconds?: number
-  session_timeout_minutes: number
+  session_timeout_minutes?: number
   language: string
   knowledge_base_enabled?: boolean
   knowledge_document_ids?: string[]
   knowledge_top_k?: number
-  llm_model: {
+  llm_model?: {
     name: string
     model?: string
     vistaar_environment?: "prod" | "dev"
+    custom_llm_id?: string
   }
-  stt_model: {
+  stt_model?: {
     name: string
     model?: string
     keywords?: string

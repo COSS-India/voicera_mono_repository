@@ -44,6 +44,7 @@ export function AgentCard({
 }: AgentCardProps) {
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
+  const isAlertAgent = agent.agent_config?.interaction_mode === "non_conversational"
 
   const isConnected = Boolean(agent?.phone_number)
 
@@ -134,9 +135,16 @@ export function AgentCard({
 
       <div className="mt-4 space-y-4">
         <div>
-          <h3 className="line-clamp-1 text-[17px] font-medium text-slate-900">
-            {displayName}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="line-clamp-1 text-[17px] font-medium text-slate-900">
+              {displayName}
+            </h3>
+            {isAlertAgent && (
+              <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                Alert
+              </span>
+            )}
+          </div>
           <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-slate-500">
             {description}
           </p>

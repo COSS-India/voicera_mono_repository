@@ -25,6 +25,22 @@ def get_sample_rate() -> int:
     return int(os.getenv("SAMPLE_RATE", "8000"))
 
 
+def is_non_conversational(agent_config: dict) -> bool:
+    """True for one-way alert agents (TTS only, no STT/LLM)."""
+    return agent_config.get("interaction_mode") == "non_conversational"
+
+
+def get_alert_call_timeout_seconds(agent_config: dict) -> int:
+    """Safety timeout for non-conversational alert calls (default 120s)."""
+    raw = agent_config.get("call_timeout_seconds")
+    if raw is not None:
+        try:
+            return max(60, int(raw))
+        except (TypeError, ValueError):
+            pass
+    return 120
+
+
 def get_ignore_user_speech_before_greeting(agent_config: dict) -> bool:
     """Default True for agents created before this setting existed."""
     raw = agent_config.get("ignore_user_speech_before_greeting")

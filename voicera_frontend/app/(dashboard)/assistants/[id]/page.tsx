@@ -39,7 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument } from "@/lib/api"
+import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
 
 // Import JSON data
 import sttData from "@/stt.json"
@@ -195,13 +195,23 @@ const llmProviders = {
   },
 }
 
-const editWizardSteps = [
-  { id: 1, title: "Agent", subtitle: "Name & Prompt", icon: FileText },
-  { id: 2, title: "LLM", subtitle: "Model Config", icon: Settings },
-  { id: 3, title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
-  { id: 4, title: "Telephony", subtitle: "Provider Info", icon: Phone },
-  { id: 5, title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
-]
+const editWizardStepMeta: Record<
+  "agent" | "llm" | "audio" | "telephony" | "call_mgmt",
+  { title: string; subtitle: string; icon: typeof FileText }
+> = {
+  agent: { title: "Agent", subtitle: "Name & Prompt", icon: FileText },
+  llm: { title: "LLM", subtitle: "Model Config", icon: Settings },
+  audio: { title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
+  telephony: { title: "Telephony", subtitle: "Provider Info", icon: Phone },
+  call_mgmt: { title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
+}
+
+function getEditWizardStepKeys(mode: InteractionMode): Array<keyof typeof editWizardStepMeta> {
+  if (mode === "non_conversational") {
+    return ["agent", "audio", "telephony"]
+  }
+  return ["agent", "llm", "audio", "telephony", "call_mgmt"]
+}
 
 const formatDurationSeconds = (seconds: number) => {
   if (seconds <= 0) return "Disabled"
@@ -262,11 +272,30 @@ export default function AgentDetailPage() {
   const [ttsVoice, setTtsVoice] = useState("")
   const [ttsDescription, setTtsDescription] = useState("")
   const [speed, setSpeed] = useState(1.0)
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>("conversational")
 
   // Collapsible states
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(true)
   const [languageOpen, setLanguageOpen] = useState(false)
   const [editStep, setEditStep] = useState(1)
+
+  const activeEditWizardSteps = useMemo(() => {
+    const keys = getEditWizardStepKeys(interactionMode)
+    return keys.map((key, index) => ({
+      id: index + 1,
+      key,
+      ...editWizardStepMeta[key],
+      subtitle:
+        key === "agent" && interactionMode === "non_conversational"
+          ? "Name & Alert"
+          : key === "audio" && interactionMode === "non_conversational"
+            ? "TTS"
+            : editWizardStepMeta[key].subtitle,
+    }))
+  }, [interactionMode])
+
+  const editWizardSteps = activeEditWizardSteps
+  const currentEditStepKey = activeEditWizardSteps[editStep - 1]?.key
 
   // Track if we're in the initial data loading phase to prevent validation from clearing values
   const isInitialLoadRef = useRef(true)
@@ -441,6 +470,7 @@ export default function AgentDetailPage() {
     setTtsVoice("")
     setTtsDescription("")
     setSpeed(1.0)
+    setInteractionMode("conversational")
     setOriginalConfig(null)
     setHasChanges(false)
     setShowSuccess(false)
@@ -491,6 +521,12 @@ export default function AgentDetailPage() {
           console.log("Full agent data received:", JSON.stringify(agentData, null, 2))
           setAgent(agentData)
           setAgentType(agentData.agent_type || "")
+
+          const loadedInteractionMode: InteractionMode =
+            agentData.agent_config?.interaction_mode === "non_conversational"
+              ? "non_conversational"
+              : "conversational"
+          setInteractionMode(loadedInteractionMode)
 
           setSystemPrompt(agentData.agent_config?.system_prompt || "")
           setGreetingMessage(agentData.agent_config?.greeting_message || "")
@@ -729,8 +765,28 @@ export default function AgentDetailPage() {
     const languageName = language || ""
 
     // Build current config with same structure as original
-    const currentConfig: any = {
+    const currentConfig: any =
+      interactionMode === "non_conversational"
+        ? {
+            interaction_mode: "non_conversational",
+            language: languageName || "",
+            greeting_message: greetingMessage || "",
+            tts_model: {
+              name: ttsProvider || "",
+              ...(ttsModel && { model: ttsModel }),
+              language: languageName || "",
+              ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && ttsVoice && { voice_id: ttsVoice }),
+              speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
+              speed: speed || 1.0,
+              ...(agent.agent_config?.tts_model?.description && { description: agent.agent_config.tts_model.description }),
+              ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
+              ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
+              ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
+            },
+          }
+        : {
       language: languageName || "", // Include top-level language field
+      interaction_mode: "conversational",
       system_prompt: systemPrompt || "",
       greeting_message: greetingMessage || "",
       ignore_user_speech_before_greeting: ignoreUserSpeechBeforeGreeting,
@@ -796,7 +852,7 @@ export default function AgentDetailPage() {
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
     const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, language, llmProvider, llmModel, customLlmId, kenpathEnvironment, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, language, llmProvider, llmModel, customLlmId, kenpathEnvironment, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -824,8 +880,32 @@ export default function AgentDetailPage() {
         agent_id: agentIdSlug,
         original_agent_type: originalAgentType,
         agent_category: (agent as any).agent_category || "voicera_telephony",
-        agent_config: {
+        agent_config:
+          interactionMode === "non_conversational"
+            ? {
+                interaction_mode: "non_conversational",
+                language: languageName,
+                greeting_message: greetingMessage,
+                tts_model: {
+                  name: getProviderOfficialName(ttsProvider),
+                  ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && {
+                    args: {
+                      ...(ttsModel && { model: ttsModel }),
+                      ...(ttsVoice && { voice_id: ttsVoice }),
+                    },
+                  }),
+                  ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsProvider !== "elevenlabs" && ttsModel && { model: ttsModel }),
+                  speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
+                  speed: speed,
+                  ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && ttsDescription && { description: ttsDescription }),
+                  ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
+                  ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
+                  ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
+                },
+              }
+            : {
           ...agent.agent_config,
+          interaction_mode: "conversational",
           language: languageName, // Update the top-level language field
           system_prompt: systemPrompt,
           greeting_message: greetingMessage,
@@ -932,6 +1012,12 @@ export default function AgentDetailPage() {
     router.push("/assistants")
   }
 
+  useEffect(() => {
+    if (editStep > activeEditWizardSteps.length) {
+      setEditStep(activeEditWizardSteps.length)
+    }
+  }, [editStep, activeEditWizardSteps.length])
+
   const handleNextStep = () => {
     setEditStep((prev) => Math.min(prev + 1, editWizardSteps.length))
   }
@@ -1034,6 +1120,19 @@ export default function AgentDetailPage() {
         {/* Step Content */}
         <main className="flex-1 overflow-auto p-6 sm:p-8">
           <div className="w-full max-w-4xl mx-auto">
+            <div className="mb-4">
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                  interactionMode === "non_conversational"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                {interactionMode === "non_conversational"
+                  ? "Alert (Non-conversational)"
+                  : "Conversational"}
+              </span>
+            </div>
         {/* Configure Layout */}
         <div className="space-y-4">
 
@@ -1042,7 +1141,7 @@ export default function AgentDetailPage() {
             {/* Left Column - Settings */}
             <div className="space-y-6">
             {/* LLM Settings */}
-            <div className={`bg-white rounded-xl border border-slate-200 overflow-hidden ${editStep === 2 ? "" : "hidden"}`}>
+            <div className={`bg-white rounded-xl border border-slate-200 overflow-hidden ${currentEditStepKey === "llm" ? "" : "hidden"}`}>
               <button
                 onClick={() => setLlmSettingsOpen(!llmSettingsOpen)}
                 className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
@@ -1288,7 +1387,7 @@ export default function AgentDetailPage() {
             </div>
 
             {/* Audio Settings */}
-            <div className={`${editStep === 3 ? "space-y-4" : "hidden"}`}>
+            <div className={`${currentEditStepKey === "audio" ? "space-y-4" : "hidden"}`}>
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-4 flex items-center gap-2">
                   <Languages className="h-5 w-5 text-slate-400" />
@@ -1385,6 +1484,7 @@ export default function AgentDetailPage() {
                 </div>
               </div>
 
+              {interactionMode !== "non_conversational" && (
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-5 flex items-center gap-2">
                   <Mic className="h-5 w-5 text-slate-400" />
@@ -1438,6 +1538,7 @@ export default function AgentDetailPage() {
                   </div>
                 </div>
               </div>
+              )}
 
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-5 flex items-center gap-2">
@@ -1559,7 +1660,7 @@ export default function AgentDetailPage() {
 
           {/* Right Column - Agent configuration */}
           <div className="space-y-6">
-            <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${editStep === 1 ? "" : "hidden"}`}>
+            <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${currentEditStepKey === "agent" ? "" : "hidden"}`}>
               <h2 className="text-lg font-semibold text-slate-900 mb-4">
                 Agent configuration
               </h2>
@@ -1579,17 +1680,29 @@ export default function AgentDetailPage() {
 
                 <div>
                   <label className="text-sm font-medium text-slate-700 mb-2 block">
-                    Greeting Message
+                    {interactionMode === "non_conversational" ? "Alert Message" : "Greeting Message"}
                   </label>
-                  <Input
-                    value={greetingMessage}
-                    onChange={(e) => setGreetingMessage(e.target.value)}
-                    className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                    placeholder="Hello from Framewise"
-                  />
+                  {interactionMode === "non_conversational" ? (
+                    <Textarea
+                      value={greetingMessage}
+                      onChange={(e) => setGreetingMessage(e.target.value)}
+                      className="min-h-[120px] border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                      placeholder="Your payment is due tomorrow."
+                    />
+                  ) : (
+                    <Input
+                      value={greetingMessage}
+                      onChange={(e) => setGreetingMessage(e.target.value)}
+                      className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                      placeholder="Hello from Framewise"
+                    />
+                  )}
                   <p className="text-xs text-slate-500 mt-1">
-                    This will be the initial message from the agent. You can use variables here using {"{variable_name}"}
+                    {interactionMode === "non_conversational"
+                      ? "This message will be spoken on the call and the call will end when finished."
+                      : `This will be the initial message from the agent. You can use variables here using {"{variable_name}"}`}
                   </p>
+                  {interactionMode !== "non_conversational" && (
                   <div className="flex items-center justify-between gap-4 pt-3">
                     <div>
                       <p className="text-sm font-semibold text-slate-800">
@@ -1617,8 +1730,10 @@ export default function AgentDetailPage() {
                       <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
                     </label>
                   </div>
+                  )}
                 </div>
 
+                {interactionMode !== "non_conversational" && (
                 <div>
                   <label className="text-sm font-medium text-slate-700 mb-2 block">
                     System Prompt
@@ -1630,11 +1745,12 @@ export default function AgentDetailPage() {
                     placeholder="Enter the system prompt for your assistant..."
                   />
                 </div>
+                )}
               </div>
 
 
             </div>
-            <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${editStep === 4 ? "" : "hidden"}`}>
+            <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${currentEditStepKey === "telephony" ? "" : "hidden"}`}>
               <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
                 <Phone size={20} className="text-blue-500" />
                 Telephony Info
@@ -1680,7 +1796,7 @@ export default function AgentDetailPage() {
                 </div>
               </div>
             </div>
-            <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${editStep === 5 ? "" : "hidden"}`}>
+            <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${currentEditStepKey === "call_mgmt" ? "" : "hidden"}`}>
               <h2 className="text-lg font-semibold text-slate-900 mb-1 flex items-center gap-2">
                 <Timer size={20} className="text-blue-500" />
                 Call Management
