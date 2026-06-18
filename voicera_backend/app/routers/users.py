@@ -57,6 +57,7 @@ async def get_current_user_info(current_user: Dict[str, Any] = Depends(get_curre
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
+    user["is_owner"] = not user.get("is_member", False)
     return user
 
 

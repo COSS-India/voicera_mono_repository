@@ -21,7 +21,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react"
-import { getOrgId, getOrgMembers, deleteMember, getCurrentUser, getStoredEmail, Member, User } from "@/lib/api"
+import { getOrgId, getOrgMembers, deleteMember, transferOwnership, getCurrentUser, getStoredEmail, Member, User } from "@/lib/api"
 import { MemberCard } from "@/components/members/member-card"
 
 /** Generate a UUID v4; uses crypto.randomUUID when available, else a fallback. */
@@ -49,6 +49,7 @@ export default function MembersPage() {
   const [inviteLink, setInviteLink] = useState("")
   const [copied, setCopied] = useState(false)
   const [deletingMember, setDeletingMember] = useState<string | null>(null)
+  const [transferringMember, setTransferringMember] = useState<string | null>(null)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -95,6 +96,8 @@ export default function MembersPage() {
   const isCurrentUser = (email: string) => {
     return currentUser?.email === email || getStoredEmail() === email
   }
+
+  const canManageMembers = currentUser?.is_owner === true
 
   // All members are now returned from the backend (including owner)
   // Sort to put owner first
@@ -164,6 +167,22 @@ export default function MembersPage() {
       alert(error instanceof Error ? error.message : "Failed to delete member")
     } finally {
       setDeletingMember(null)
+    }
+  }
+
+  const handleTransferOwnership = async (member: Member) => {
+    const orgId = getOrgId()
+    if (!orgId) return
+
+    try {
+      setTransferringMember(member.email)
+      await transferOwnership(member.email, orgId)
+      await fetchData()
+    } catch (error) {
+      console.error("Error transferring ownership:", error)
+      alert(error instanceof Error ? error.message : "Failed to transfer ownership")
+    } finally {
+      setTransferringMember(null)
     }
   }
 
@@ -241,8 +260,11 @@ export default function MembersPage() {
                   key={member.email}
                   member={member}
                   isCurrentUser={isCurrentUser(member.email)}
+                  canManageMembers={canManageMembers}
                   isDeleting={deletingMember === member.email}
+                  isTransferring={transferringMember === member.email}
                   onDelete={openDeleteModal}
+                  onTransferOwnership={handleTransferOwnership}
                 />
               ))}
             </div>

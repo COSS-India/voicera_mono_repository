@@ -333,6 +333,7 @@ export interface User {
   org_id: string
   company_name: string
   created_at: string
+  is_owner?: boolean
 }
 
 export interface LoginResponse {
@@ -1581,6 +1582,29 @@ export async function deleteMember(email: string, orgId: string): Promise<{ stat
     throw new Error(error.detail || error.error || "Failed to delete member")
   }
   
+  return response.json()
+}
+
+/**
+ * Transfer organization ownership to another member (owner only)
+ */
+export async function transferOwnership(
+  email: string,
+  orgId: string
+): Promise<{ status: string; message: string }> {
+  const response = await fetchWithAuth(`/api/v1/members/transfer-ownership`, {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      org_id: orgId,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.error || "Failed to transfer ownership")
+  }
+
   return response.json()
 }
 
