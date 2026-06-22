@@ -633,10 +633,14 @@ def create_tts_service(
     elif provider == "Bhashini":
         speaker = tts_config.get("speaker") or args.get("speaker")
         description = tts_config.get("description") or args.get("description")
+        lang_code = (
+            TTS_LANGUAGE_MAP[provider].get(language, language) if language else "hi"
+        )
         return BhashiniTTSService(
             speaker=speaker,
             description=description,
-            sample_rate=44100
+            language=lang_code,
+            sample_rate=44100,
         )
     
     elif provider == "Sarvam":

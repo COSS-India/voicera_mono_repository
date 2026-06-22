@@ -52,6 +52,13 @@ class BhashiniTTSService(TTSService):
         self._play_steps_in_s = play_steps_in_s
         self._language = language
 
+        logger.info(
+            "Bhashini TTS initialized | function_id={} language={} speaker={}",
+            self._function_id,
+            self._language,
+            self._speaker,
+        )
+
     def _full_description(self) -> str:
         if self._speaker:
             return f"{self._speaker} {self._description}"
