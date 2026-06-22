@@ -463,7 +463,6 @@ def create_stt_service(
         if lang_code == "bhb":
             model = args.get("model") or stt_config.get("model") or "asr_streaming"
             return BhashiniBhiliSTTService(
-                api_key=api_key or "",
                 model=model,
                 language=lang_code,
                 sample_rate=sample_rate,

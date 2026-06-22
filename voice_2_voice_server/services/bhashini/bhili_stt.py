@@ -116,40 +116,22 @@ class BhashiniBhiliSTTService(STTService):
                 "Install with: pip install tritonclient[grpc]"
             )
 
-        self._api_key = (
-            api_key.strip()
-            or os.getenv("BHASHINI_BHILI_STT_AUTH_TOKEN", "").strip()
-            or os.getenv("BHASHINI_STT_AUTH_TOKEN", "").strip()
-            or os.getenv("BHASHINI_API_KEY", "").strip()
-            or os.getenv("NVCF_API_KEY", "").strip()
-        )
+        self._api_key = api_key.strip() or os.getenv("BHASHINI_BHILI_STT_AUTH_TOKEN", "").strip()
         if not self._api_key:
             raise ValueError(
-                "BhashiniBhiliSTTService requires BHASHINI_BHILI_STT_AUTH_TOKEN "
-                "(or BHASHINI_API_KEY / NVCF_API_KEY) in .env."
+                "BhashiniBhiliSTTService requires BHASHINI_BHILI_STT_AUTH_TOKEN in .env."
             )
 
         self._function_id = (
-            function_id.strip()
-            or os.getenv("BHASHINI_BHILI_STT_FUNCTION_ID", "").strip()
-            or os.getenv("BHASHINI_STT_FUNCTION_ID", "").strip()
+            function_id.strip() or os.getenv("BHASHINI_BHILI_STT_FUNCTION_ID", "").strip()
         )
         if not self._function_id:
             raise ValueError(
-                "BhashiniBhiliSTTService requires BHASHINI_BHILI_STT_FUNCTION_ID "
-                "(or BHASHINI_STT_FUNCTION_ID) in .env."
+                "BhashiniBhiliSTTService requires BHASHINI_BHILI_STT_FUNCTION_ID in .env."
             )
 
-        self._function_version_id = (
-            function_version_id.strip()
-            or os.getenv("BHASHINI_BHILI_STT_FUNCTION_VERSION_ID", "").strip()
-            or os.getenv("BHASHINI_STT_FUNCTION_VERSION_ID", "").strip()
-        )
-        self._grpc_host = (
-            grpc_host.strip()
-            or os.getenv("BHASHINI_BHILI_STT_GRPC_URL", DEFAULT_GRPC_HOST).strip()
-            or os.getenv("BHASHINI_STT_GRPC_URL", DEFAULT_GRPC_HOST).strip()
-        )
+        self._function_version_id = function_version_id.strip()
+        self._grpc_host = grpc_host.strip() or DEFAULT_GRPC_HOST
         self._model = model
         self._language = language
         self._sample_rate = sample_rate
@@ -184,6 +166,8 @@ class BhashiniBhiliSTTService(STTService):
         self._latest_transcript_text = ""
         self._segment_active = False
         self._closed = False
+        self._stream_broken = False
+        self._stream_lock: Optional[asyncio.Lock] = None
         self._segment_started_at: Optional[float] = None
         self._speech_started_at: Optional[float] = None
         self._first_transcript_at: Optional[float] = None
@@ -253,9 +237,49 @@ class BhashiniBhiliSTTService(STTService):
         if self._loop and self._result_queue is not None:
             self._loop.call_soon_threadsafe(self._result_queue.put_nowait, (result, error))
 
+    def _stream_lock_or_create(self) -> asyncio.Lock:
+        if self._stream_lock is None:
+            self._stream_lock = asyncio.Lock()
+        return self._stream_lock
+
+    async def _tear_down_stream(self, *, cancel_receiver: bool = True) -> None:
+        """Stop the active gRPC stream and reset segment state."""
+        self._closed = True
+        self._segment_active = False
+        self._stream_broken = True
+
+        client = self._client
+        self._client = None
+
+        if client:
+            try:
+                await asyncio.to_thread(client.stop_stream)
+            except Exception:
+                pass
+
+        receiver = self._receiver_task
+        self._receiver_task = None
+        if cancel_receiver and receiver is not None and receiver is not asyncio.current_task():
+            receiver.cancel()
+            try:
+                await receiver
+            except BaseException:
+                pass
+
+        self._result_queue = None
+        self._loop = None
+
     async def _open_stream(self) -> bool:
-        if self._client or self._disabled:
-            return self._client is not None
+        if self._disabled:
+            return False
+        if self._client and not self._stream_broken:
+            return True
+
+        async with self._stream_lock_or_create():
+            if self._client and not self._stream_broken:
+                return True
+            if self._client:
+                await self._tear_down_stream(cancel_receiver=True)
 
         self._loop = asyncio.get_running_loop()
         self._result_queue = asyncio.Queue()
@@ -268,6 +292,7 @@ class BhashiniBhiliSTTService(STTService):
         self._segment_started_at = time.monotonic()
         self._speech_started_at = None
         self._closed = False
+        self._stream_broken = False
 
         try:
             self._client = grpcclient.InferenceServerClient(url=self._grpc_host, ssl=True)
@@ -283,10 +308,10 @@ class BhashiniBhiliSTTService(STTService):
             )
             return True
         except Exception as exc:
-            self._disabled = True
             self._client = None
+            await self._tear_down_stream(cancel_receiver=False)
             logger.error(
-                "Bhashini Bhili gRPC setup failed; disabling STT for this call: {}",
+                "Bhashini Bhili gRPC setup failed for segment: {}",
                 exc,
             )
             return False
@@ -364,9 +389,10 @@ class BhashiniBhiliSTTService(STTService):
             if not self._closed:
                 logger.error("Bhashini Bhili gRPC receive loop failed: {}", exc)
                 await self.push_frame(ErrorFrame(f"Bhashini Bhili receive loop failed: {exc}"))
+                await self._tear_down_stream(cancel_receiver=False)
 
     async def _send_chunk(self, audio_chunk: bytes, *, is_final: bool) -> None:
-        if not self._client:
+        if self._stream_broken or not self._client:
             raise RuntimeError("Bhashini Bhili gRPC stream is not connected")
 
         chunk = await self._prepare_audio(audio_chunk)
@@ -382,33 +408,27 @@ class BhashiniBhiliSTTService(STTService):
             hotwords=[],
         )
         self._pending_responses += 1
-        await asyncio.to_thread(
-            self._client.async_stream_infer,
-            model_name=self._model,
-            model_version="1",
-            inputs=inputs,
-            request_id=f"{self._session_id}-c{self._chunk_seq}",
-        )
+        try:
+            async with self._stream_lock_or_create():
+                if self._stream_broken or not self._client:
+                    raise RuntimeError("Bhashini Bhili gRPC stream is not connected")
+                await asyncio.to_thread(
+                    self._client.async_stream_infer,
+                    model_name=self._model,
+                    model_version="1",
+                    inputs=inputs,
+                    request_id=f"{self._session_id}-c{self._chunk_seq}",
+                )
+        except Exception as exc:
+            if "no longer in valid state" in str(exc).lower():
+                await self._tear_down_stream(cancel_receiver=True)
+            raise
 
     async def _close_stream(self) -> None:
-        self._closed = True
-        if self._receiver_task:
-            self._receiver_task.cancel()
-            try:
-                await self._receiver_task
-            except BaseException:
-                pass
-            self._receiver_task = None
-
-        if self._client:
-            try:
-                await asyncio.to_thread(self._client.stop_stream)
-            except Exception:
-                pass
-            self._client = None
-
-        self._result_queue = None
-        self._loop = None
+        async with self._stream_lock_or_create():
+            await self._tear_down_stream(cancel_receiver=True)
+        self._stream_broken = False
+        self._closed = False
 
     async def _finalize_segment(self) -> None:
         if not self._segment_active or not self._client:
@@ -456,6 +476,7 @@ class BhashiniBhiliSTTService(STTService):
         if state == "START":
             logger.debug("Bhashini Bhili VAD detected speech start")
             if not await self._open_stream():
+                self._vad = VADProcessor(chunk_ms=self._chunk_ms)
                 return "START_FAILED"
             self._segment_active = True
             self._speech_started_at = time.monotonic()
@@ -466,16 +487,17 @@ class BhashiniBhiliSTTService(STTService):
             await self._send_chunk(audio_chunk, is_final=False)
             return "START"
 
-        if state == "CONTINUE" and self._segment_active:
+        if state == "CONTINUE" and self._segment_active and not self._stream_broken:
             await self._send_chunk(audio_chunk, is_final=False)
             return "CONTINUE"
 
         if state == "STOP":
             logger.debug("Bhashini Bhili VAD detected speech stop")
-            if self._segment_active:
+            if self._segment_active and self._client and not self._stream_broken:
                 await self._send_chunk(audio_chunk, is_final=True)
             await self._finalize_segment()
             await self._close_stream()
+            self._vad = VADProcessor(chunk_ms=self._chunk_ms)
             return "STOP"
 
         return state
@@ -544,6 +566,11 @@ class BhashiniBhiliSTTService(STTService):
                         yield UserStoppedSpeakingFrame()
             except Exception as exc:
                 logger.error("Bhashini Bhili STT processing error: {}", exc)
+                await self._tear_down_stream(cancel_receiver=True)
+                self._segment_active = False
+                self._stream_broken = False
+                self._closed = False
+                self._vad = VADProcessor(chunk_ms=self._chunk_ms)
                 yield ErrorFrame(f"Bhashini Bhili STT processing failed: {exc}")
             finally:
                 if self._pre_roll_bytes > 0:
