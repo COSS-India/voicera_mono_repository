@@ -1,56 +1,105 @@
-﻿# Integrations
+---
+description: How VoicEra stores per-organisation provider API keys and Vobiz telephony credentials.
+---
 
-Integrations let you securely store API keys for **AI providers** (LLMs, STT, TTS) and **telephony** (Vobiz) at the organisation level. The voice server fetches these at call time via internal APIs, so you do not put per-org provider keys in the voice server `.env` for normal multi-tenant operation.
+# Integrations
+
+Integrations let each organisation store API keys for **AI providers** (LLM, STT, TTS) and **telephony** (Vobiz) inside the Backend, scoped by `org_id`. The Voice Server fetches these at call time via an internal endpoint, so production deployments do not put per-org provider keys in `voice_2_voice_server/.env`.
+
+## Responsibilities
+
+- Persist provider API keys per `org_id` in the `Integrations` MongoDB collection
+- Persist multiple **Custom LLM** endpoints per org in `CustomLLMIntegrations`
+- Serve decrypted keys to the Voice Server via an `X-API-Key`-protected internal endpoint
+- Provide JWT-protected CRUD for the dashboard
 
 ## Telephony credentials (Vobiz)
 
-!!! important
-    **Vobiz Auth ID** and **Vobiz Auth Token** belong in **Dashboard → Integrations**, not in `voice_2_voice_server/.env` for production. The voice server reads them from MongoDB per `org_id` when placing outbound calls and when the backend manages Vobiz applications.
+{% hint style="warning" %}
+**Vobiz Auth ID** and **Vobiz Auth Token** must be added in **Dashboard -> Integrations**, not in `voice_2_voice_server/.env`, for any multi-tenant or production deployment. The Voice Server reads them from MongoDB per `org_id` when placing outbound calls and when the Backend manages Vobiz applications.
+{% endhint %}
 
 | Integration key | Used for |
 |-----------------|----------|
 | Vobiz Auth ID | Vobiz API account id |
 | Vobiz Auth Token | Vobiz API token |
 
-See [Telephony (Vobiz)](telephony.md) for call flow and webhook setup.
+For the full telephony model, see [concepts/telephony-model.md](../concepts/telephony-model.md).
 
 ## How AI integrations work
 
 ```
 Dashboard user
-    │  POST /api/v1/integrations  (JWT)
-    ▼
-Backend → MongoDB Integrations collection (per org_id)
+    | POST /api/v1/integrations  (JWT)
+    v
+Backend -> MongoDB Integrations collection (per org_id)
 
 Voice Server
-    │  POST /api/v1/integrations/bot/get-api-key  (INTERNAL_API_KEY)
-    ▼
-Backend → returns stored API key for requested model
+    | POST /api/v1/integrations/bot/get-api-key  (X-API-Key)
+    v
+Backend -> returns stored API key for requested model
 ```
 
-When an agent uses OpenAI (LLM or Knowledge Base embeddings), the backend looks up the org's OpenAI integration key automatically — no environment variable needed on the voice server.
+When an agent uses OpenAI (LLM or knowledge base embeddings), the Backend looks up the org's OpenAI integration key automatically. No environment variable is required on the Voice Server.
+
+## Supported providers
+
+The following provider keys can be stored as Integrations.
+
+### LLM
+
+| Provider | `model` value | Notes |
+|----------|---------------|-------|
+| OpenAI | `openai` | GPT models as LLM + KB embeddings |
+| Anthropic | `anthropic` | Claude models |
+| Grok / xAI | `grok` | Grok models |
+| Custom LLM | _(see below)_ | OpenAI-compatible endpoints in `CustomLLMIntegrations` |
+
+### STT
+
+| Provider | `model` value |
+|----------|---------------|
+| Deepgram | `deepgram` |
+| ElevenLabs | `elevenlabs` |
+| Sarvam | `sarvam` |
+| Bhashini | `bhashini` |
+
+### TTS
+
+| Provider | `model` value |
+|----------|---------------|
+| Cartesia | `cartesia` |
+| Deepgram | `deepgram` |
+| ElevenLabs | `elevenlabs` |
+| Sarvam | `sarvam` |
+
+### Telephony
+
+| Provider | Integration keys |
+|----------|------------------|
+| Vobiz | `Vobiz Auth ID`, `Vobiz Auth Token` |
 
 ## Custom LLM integrations
 
-Custom LLMs let each organisation connect **multiple** OpenAI Chat Completions API v1-compatible endpoints (for example NVIDIA NIM, vLLM, or other hosted models). Configuration is stored in the `CustomLLMIntegrations` MongoDB collection — not the flat `Integrations` table.
+Custom LLMs let each organisation register **multiple** OpenAI Chat Completions v1-compatible endpoints (for example NVIDIA NIM, vLLM, or hosted inference). Configuration lives in the `CustomLLMIntegrations` collection, not in the flat `Integrations` table.
 
 ```
-Dashboard → Integrations → Custom LLM
-    │  POST /api/v1/custom-llm-integrations  (JWT)
-    ▼
-Backend → MongoDB CustomLLMIntegrations (per org_id, multiple rows)
+Dashboard -> Integrations -> Custom LLM
+    | POST /api/v1/custom-llm-integrations  (JWT)
+    v
+Backend -> MongoDB CustomLLMIntegrations (per org_id, multiple rows)
 
 Assistant create/edit
-    │  llm_model.name = "Custom LLM"
-    │  llm_model.custom_llm_id = "<mongo_id>"
-    ▼
+    | llm_model.name = "Custom LLM"
+    | llm_model.custom_llm_id = "<mongo_id>"
+    v
 Voice Server
-    │  POST /api/v1/custom-llm-integrations/bot/get-config  (INTERNAL_API_KEY)
-    ▼
-Pipecat OpenAILLMService → POST {base_url}/chat/completions
+    | POST /api/v1/custom-llm-integrations/bot/get-config  (X-API-Key)
+    v
+Pipecat OpenAILLMService -> POST {base_url}/chat/completions
 ```
 
-Each custom LLM record stores:
+Each Custom LLM record stores:
 
 | Field | Description |
 |-------|-------------|
@@ -59,7 +108,7 @@ Each custom LLM record stores:
 | `api_key` | Bearer token for the endpoint |
 | `model` | Model id sent in the chat completion request body |
 
-**Agent config example:**
+Agent config example:
 
 ```json
 {
@@ -71,162 +120,70 @@ Each custom LLM record stores:
 }
 ```
 
-**Custom LLM API endpoints:**
+## API surface
 
 | Method | Path | Auth |
 |--------|------|------|
+| `GET` | `/api/v1/integrations` | JWT |
+| `GET` | `/api/v1/integrations/{model}` | JWT |
+| `POST` | `/api/v1/integrations` | JWT |
+| `DELETE` | `/api/v1/integrations/{model}` | JWT |
+| `POST` | `/api/v1/integrations/bot/get-api-key` | `X-API-Key` |
 | `GET` | `/api/v1/custom-llm-integrations` | JWT |
 | `POST` | `/api/v1/custom-llm-integrations` | JWT |
 | `PUT` | `/api/v1/custom-llm-integrations/{id}` | JWT |
 | `DELETE` | `/api/v1/custom-llm-integrations/{id}` | JWT |
 | `POST` | `/api/v1/custom-llm-integrations/bot/get-config` | `X-API-Key` |
 
----
+Create example:
 
-## Managing Integrations from the Dashboard
-
-Navigate to **Integrations** in the left sidebar. You can:
-
-- **Add** a new integration by selecting the provider and pasting your API key
-- **View** existing integrations (keys are not shown in full after saving)
-- **Delete** an integration
-
----
-
-## API Reference
-
-### List integrations
-
-```
-GET /api/v1/integrations
+```bash
+curl -X POST http://localhost:8000/api/v1/integrations \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{ "model": "openai", "api_key": "sk-...", "org_id": "your-org-id" }'
 ```
 
-**Auth:** JWT
+Voice Server internal lookup:
 
-Returns all integrations for the current org.
-
----
-
-### Get integration by model
-
-```
-GET /api/v1/integrations/{model}
+```bash
+curl -X POST http://localhost:8000/api/v1/integrations/bot/get-api-key \
+  -H "X-API-Key: $INTERNAL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "org_id": "your-org-id", "model": "openai" }'
+# -> { "api_key": "sk-..." }
 ```
 
-**Auth:** JWT
+## Integration vs. environment variable
 
-Fetch a specific integration. The `model` parameter is the provider model name (e.g. `openai`, `deepgram`).
-
----
-
-### Create integration
-
-```
-POST /api/v1/integrations
-```
-
-**Auth:** JWT
-
-**Request body:**
-
-```json
-{
-  "model": "openai",
-  "api_key": "sk-...",
-  "org_id": "your-org-id"
-}
-```
-
----
-
-### Delete integration
-
-```
-DELETE /api/v1/integrations/{model}
-```
-
-**Auth:** JWT
-
----
-
-### Get integration key (voice server)
-
-```
-POST /api/v1/integrations/bot/get-api-key
-```
-
-**Auth:** API Key (`X-API-Key`)
-
-Used internally by the voice server to retrieve an org's provider key at call time.
-
-**Request body:**
-
-```json
-{
-  "org_id": "your-org-id",
-  "model": "openai"
-}
-```
-
-**Response:**
-
-```json
-{
-  "api_key": "sk-..."
-}
-```
-
----
-
-## Supported Providers
-
-The following provider API keys can be stored as integrations:
-
-### LLM Providers
-
-| Provider | `model` value | Used for |
-|----------|--------------|---------|
-| OpenAI | `openai` | GPT models as LLM + Knowledge Base embeddings |
-| Anthropic | `anthropic` | Claude models as LLM |
-| Grok / xAI | `grok` | Grok models as LLM |
-| Custom LLM | _(see Custom LLM section)_ | User-provided OpenAI-compatible endpoints |
-
-### STT Providers
-
-| Provider | `model` value |
-|----------|--------------|
-| Deepgram | `deepgram` |
-| ElevenLabs | `elevenlabs` |
-| Sarvam | `sarvam` |
-| Bhashini | `bhashini` |
-
-### TTS Providers
-
-| Provider | `model` value |
-|----------|--------------|
-| Cartesia | `cartesia` |
-| Deepgram | `deepgram` |
-| ElevenLabs | `elevenlabs` |
-| Sarvam | `sarvam` |
-
----
-
-## Integration vs. Environment Variable
-
-Both approaches work. The integration database takes precedence for OpenAI when the agent config specifies an org_id.
+Both approaches work. The Integration record takes precedence for OpenAI when the agent config carries an `org_id`.
 
 | Approach | When to use |
-|----------|------------|
-| **Integration (database)** | Multi-tenant: different orgs can have different API keys; keys managed from the dashboard |
-| **Environment variable** | Single-tenant or development: one global key for all orgs on this instance |
+|----------|-------------|
+| **Integration (database)** | Multi-tenant: different orgs, different keys, managed from the dashboard |
+| **Environment variable** | Single-tenant or local dev: one global key for all orgs on this instance |
 
-!!! note
-    For Knowledge Base (RAG) embeddings, the org's **OpenAI integration must be configured** — the global `OPENAI_API_KEY` environment variable is not used for KB ingest or retrieval.
-
----
+{% hint style="warning" %}
+For knowledge base (RAG) embeddings, the org's **OpenAI integration must be configured**. The global `OPENAI_API_KEY` environment variable is not used for KB ingest or retrieval.
+{% endhint %}
 
 ## Security
 
-- API keys are stored in MongoDB in the `Integrations` collection, scoped by `org_id`.
-- Keys are returned only via the `bot/get-api-key` endpoint which requires the `INTERNAL_API_KEY` header, restricting access to trusted services.
-- In production, ensure `INTERNAL_API_KEY` is a long random string and is not exposed publicly.
+- Keys are stored in MongoDB, scoped by `org_id`.
+- The dashboard never returns full key material after save; only a masked preview.
+- Internal lookup (`bot/get-api-key`, `bot/get-config`) requires the `INTERNAL_API_KEY` header.
+- In production, `INTERNAL_API_KEY` should be a long random string and must match between Backend and Voice Server.
+
+See [guides/deployment/security-hardening.md](../guides/deployment/security-hardening.md).
+
+## Troubleshooting
+
+- [troubleshooting/common-issues.md](../troubleshooting/common-issues.md)
+- Voice Server logs `integration not found` -> the agent's org has no Integration for the configured provider, or `INTERNAL_API_KEY` does not match.
+
+## Next steps
+
+- [services/backend.md](backend.md)
+- [services/voice-server.md](voice-server.md)
+- [concepts/telephony-model.md](../concepts/telephony-model.md)
+- [reference/rest-api.md](../reference/rest-api.md)

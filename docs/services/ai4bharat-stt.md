@@ -1,236 +1,139 @@
-# AI4Bharat STT Service
+---
+description: Optional on-premises Indic speech-to-text server (NeMo Conformer).
+---
 
-Optional on-premises **Indic speech-to-text** (NeMo). The core VoicEra stack can run with cloud STT only.
+# AI4Bharat STT
 
-## HTTP API (port 8001)
+Optional on-premises Indic speech-to-text using NeMo ASR models. The core VoicEra stack can run with cloud STT only; this server is required only when an agent uses the `indic-conformer-stt` provider.
 
-| Endpoint | Method | Body | Response |
-|----------|--------|------|----------|
-| `/` | GET | — | Status |
-| `/health` | GET | — | Health |
-| `/transcribe` | POST | `{ "audio_b64": string, "language_id": string }` (default `hi`) | `{ "text": string }` |
-| `/transcribe/bhili` | POST | Same | Bhili model (`language_id` / agent `bhb`) |
+Default port: **8001**. Code: `ai4bharat_stt_server/server.py`.
 
-Audio: base64 **16 kHz int16 PCM**. Batching: `MAX_BATCH_SIZE=16`, `BATCH_TIMEOUT=0.1s`. **Code:** `ai4bharat_stt_server/server.py`
+## Responsibilities
 
-### Model paths (environment)
+- Serve HTTP transcription for Indic languages (NeMo Conformer)
+- Provide a separate `/transcribe/bhili` endpoint for the Bhili (`bhb`) checkpoint
+- Internal batching to amortise GPU cost across concurrent requests
 
-| Variable | Purpose |
-|----------|---------|
-| `INDIC_NEMO_PATH` | Main Indic NeMo checkpoint file |
-| `BHILI_NEMO_PATH` | Bhili checkpoint |
-| `BHILI_ENABLE` | `"yes"` / `"no"` |
-| `HF_TOKEN` | Optional HuggingFace token |
-| `PORT` | Default `8001` |
+## When you need it
 
-### GPU / VRAM
+| Scenario | Need this server? |
+|----------|-------------------|
+| Cloud STT only (Deepgram, Bhashini, etc.) | No |
+| Local Indic STT or Bhili (`bhb`) | Yes (+ GPU recommended) |
 
-| | |
-|--|--|
-| **Production** | NVIDIA GPU **strongly recommended** |
-| **Development** | CPU fallback is supported but slow |
-| **Pinned VRAM (GB)** | **Deferred** — not benchmarked in this documentation pass |
+## Architecture
 
-Exact VRAM depends on your **NeMo checkpoint file** (`INDIC_NEMO_PATH`, optional `BHILI_NEMO_PATH`), batch size (`MAX_BATCH_SIZE`), and whether both Indic and Bhili models are loaded. VoicEra does not ship a single reference checkpoint size for all deployments.
+FastAPI process with an internal request queue feeding a batched NeMo inference worker. CUDA is used if available; otherwise CPU.
 
-**Until measured values are published:** size GPUs with your hosting partner using a staging load test (`nvidia-smi` while serving `/transcribe` at expected concurrency), or use cloud STT providers and omit this server. Engineering may add reference GB figures after benchmarking on agreed hardware; that work is **out of scope for the initial main merge** and tracked in [source brief A5](../source-briefs/A5-ai4bharat-servers.md).
-
-On **`dev`**, agents with language **`bhb`** and provider `indic-conformer-stt` use `/transcribe/bhili`.
-
-## Overview
-
-This optional service provides **high-accuracy speech-to-text for Indic languages** using AI4Bharat NeMo models.
-
-**Supported Languages:**
-- Hindi (hi)
-- Tamil (ta)
-- Telugu (te)
-- Kannada (kn)
-- Malayalam (ml)
-- Bengali (bn)
-- Punjabi (pa)
-- Marathi (mr)
-- Gujarat (gu)
-- And more...
-
-**Advantages:**
-- Free and open-source
-- Optimized for Indic languages
-- Self-hosted (no API calls needed)
-- Low latency
-- Can run on GPU for better performance
-
-## Quick Start
-
-### Installation
-
-```bash
-cd ai4bharat_stt_server
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Download models
-python download_models.py
-```
-
-### Running the Service
-
-```bash
-# Development
-python server.py
-
-# Via Docker
-docker build -t ai4bharat-stt .
-docker run -p 8001:8001 ai4bharat-stt
-
-# With GPU support
-docker run --gpus all -p 8001:8001 ai4bharat-stt
-```
+- Device: `cuda:0` if CUDA available, else CPU
+- Audio decoder: base64 -> **16 kHz int16 PCM** -> float32
+- Batching: `MAX_BATCH_SIZE=16`, `BATCH_TIMEOUT=0.1s`
 
 ## Configuration
 
-### Environment Variables
+| Variable | Purpose |
+|----------|---------|
+| `INDIC_NEMO_PATH` | Main Indic NeMo checkpoint **file** path |
+| `BHILI_NEMO_PATH` | Bhili NeMo checkpoint (when Bhili enabled) |
+| `BHILI_ENABLE` | `"yes"` / `"no"` |
+| `HF_TOKEN` | Optional; if the checkpoint is gated on HuggingFace |
+| `PORT` | Server port (default `8001`) |
 
-```env
-# Server
-HOST=0.0.0.0
-PORT=8001
-WORKERS=4
+Checkpoint files are deployment-specific and are referenced by **on-disk path**, not HuggingFace model IDs.
 
-# Model
-MODEL_NAME=indic-conformer-hi
-MODEL_PATH=/models
-DEVICE=cuda                    # cuda or cpu
-BATCH_SIZE=32
+## Endpoints / API surface
 
-# Audio
-SAMPLE_RATE=16000
-AUDIO_FORMAT=wav
+| Endpoint | Method | Body | Response |
+|----------|--------|------|----------|
+| `/` | GET | - | Status |
+| `/health` | GET | - | Health |
+| `/transcribe` | POST | `{ "audio_b64": string, "language_id": string }` (default `hi`) | `{ "text": string }` |
+| `/transcribe/bhili` | POST | Same body | `{ "text": string }` (Bhili checkpoint) |
 
-# Logging
-LOG_LEVEL=INFO
+Example:
+
+```bash
+curl -X POST http://localhost:8001/transcribe \
+  -H "Content-Type: application/json" \
+  -d '{ "audio_b64": "<base64 16kHz int16 PCM>", "language_id": "hi" }'
 ```
 
-## API Endpoints
+## Supported languages
 
-### Transcribe (Streaming)
+The Indic Conformer checkpoint covers the major Indian languages. Agent `language` codes used by the Voice Server:
 
-**Endpoint:** `POST /transcribe`
+| Language | Code | Endpoint |
+|----------|------|----------|
+| Hindi | `hi` | `/transcribe` |
+| Tamil | `ta` | `/transcribe` |
+| Telugu | `te` | `/transcribe` |
+| Kannada | `kn` | `/transcribe` |
+| Malayalam | `ml` | `/transcribe` |
+| Bengali | `bn` | `/transcribe` |
+| Punjabi | `pa` | `/transcribe` |
+| Marathi | `mr` | `/transcribe` |
+| Gujarati | `gu` | `/transcribe` |
+| Bhili | `bhb` | `/transcribe/bhili` |
 
-**Request:**
-```json
-{
-  "audio": "base64-encoded-audio",
-  "language": "hi",
-  "format": "wav"
-}
-```
+Exact code support depends on the checkpoint loaded via `INDIC_NEMO_PATH`. See `voice_2_voice_server/config/stt_mappings.py` for per-provider mappings.
 
-**Response:**
-```json
-{
-  "transcript": "नमस्ते, यह एक परीक्षण संदेश है।",
-  "confidence": 0.98,
-  "language": "hi"
-}
-```
+## How it talks to other services
 
-### Health Check
+The Voice Server calls this server only when an agent's `stt_model.name = "indic-conformer-stt"`. The base URL comes from `INDIC_STT_SERVER_URL` (or `AI4BHARAT_STT_URL`) on the Voice Server; `/transcribe` or `/transcribe/bhili` is appended based on the agent's `language`.
 
 ```
-GET /health
+Voice Server (indic-conformer-stt)
+    | POST {INDIC_STT_SERVER_URL}/transcribe        (language != bhb)
+    | POST {INDIC_STT_SERVER_URL}/transcribe/bhili  (language == bhb)
+    v
+ai4bharat_stt_server  (NeMo)
 ```
 
-## Integration with VoicEra
+## GPU / VRAM
 
-### Configuration
+| | |
+|--|--|
+| Production | NVIDIA GPU **strongly recommended** |
+| Development | CPU fallback is supported but slow |
+| Pinned VRAM (GB) | **Deferred** — not benchmarked in this documentation pass |
 
-In `voice_2_voice_server/.env`:
+Exact VRAM depends on your NeMo checkpoint (`INDIC_NEMO_PATH`, optional `BHILI_NEMO_PATH`), `MAX_BATCH_SIZE`, and whether both Indic and Bhili models are loaded. VoicEra does not ship a single reference checkpoint size.
 
-```env
-STT_PROVIDER=ai4bharat
-STT_SERVICE_URL=http://ai4bharat_stt_server:8001
-STT_LANGUAGE=hi
+{% hint style="warning" %}
+Until measured values are published, size GPUs with your hosting partner using a staging load test (`nvidia-smi` while serving `/transcribe` at expected concurrency), or use a cloud STT provider and omit this server.
+{% endhint %}
+
+## Running
+
+```bash
+cd ai4bharat_stt_server
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python server.py --port 8001
 ```
 
-### Usage
+Monorepo: `make start-voice-only-services` (includes the optional AI4Bharat servers and the Voice Server).
 
-```python
-class AI4BharatSTT:
-    def __init__(self, service_url, language="hi"):
-        self.service_url = service_url
-        self.language = language
-    
-    async def transcribe(self, audio_data):
-        import base64
-        import aiohttp
-        
-        async with aiohttp.ClientSession() as session:
-            response = await session.post(
-                f"{self.service_url}/transcribe",
-                json={
-                    "audio": base64.b64encode(audio_data).decode(),
-                    "language": self.language
-                }
-            )
-            result = await response.json()
-            return result["transcript"]
+Docker with GPU:
+
+```bash
+docker run --gpus all -p 8001:8001 \
+  -e INDIC_NEMO_PATH=/models/indic_conformer.nemo \
+  -e BHILI_ENABLE=yes \
+  -e BHILI_NEMO_PATH=/models/bhili.nemo \
+  -v /path/to/models:/models \
+  ai4bharat-stt
 ```
-
-## Performance
-
-### Benchmarks
-
-| Language | Accuracy | Speed | GPU Required |
-|----------|----------|-------|--------------|
-| Hindi | 95%+ | Real-time | Yes (recommended) |
-| Tamil | 92%+ | Real-time | Yes (recommended) |
-| Telugu | 93%+ | Real-time | Yes (recommended) |
-| Kannada | 91%+ | Real-time | Yes (recommended) |
-
-### Optimization Tips
-
-- Use GPU for production deployments
-- Batch audio chunks for better throughput
-- Pre-download models to avoid startup delays
-- Use appropriate sample rate (16kHz recommended)
 
 ## Troubleshooting
 
-### Service won't start
+- [troubleshooting/voice-and-audio.md](../troubleshooting/voice-and-audio.md)
+- [troubleshooting/common-issues.md](../troubleshooting/common-issues.md)
+- "Model file not found" -> verify `INDIC_NEMO_PATH` (and `BHILI_NEMO_PATH` if `BHILI_ENABLE=yes`) point at real files inside the container.
+- Slow transcription on CPU is expected; move to GPU for production loads.
 
-```bash
-# Check Python version
-python --version  # Should be 3.10+
+## Next steps
 
-# Check dependencies
-pip list | grep torch
-
-# Download models
-python download_models.py
-```
-
-### Low accuracy
-
-- Verify audio quality (16kHz, mono)
-- Check language configuration matches audio
-- Ensure model is properly downloaded
-
-### Out of memory
-
-- Reduce BATCH_SIZE in config
-- Use CPU instead of GPU for development
-- Enable model quantization for production
-
----
-
-## Next Steps
-
-- **[TTS Service](ai4bharat-tts.md)** - Text-to-Speech documentation
-- **[Configuration](../getting-started/configuration.md)** - Full configuration guide
-- **[Quick Start](../getting-started/quickstart.md)** - Get VoicEra running
+- [services/ai4bharat-tts.md](ai4bharat-tts.md)
+- [services/voice-server.md](voice-server.md)
+- [concepts/voice-pipeline.md](../concepts/voice-pipeline.md)
