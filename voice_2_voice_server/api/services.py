@@ -29,6 +29,7 @@ from services.kenpath_llm.llm import KenpathLLM
 from services.ai4bharat.tts import IndicParlerRESTTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
 from services.bhashini.stt import BhashiniSTTService
+from services.bhashini.bhili_stt import BhashiniBhiliSTTService
 from services.bhashini.tts import BhashiniTTSService
 from services.openai_kb_llm import OpenAIKnowledgeLLMService
 from services.vllm_qwen import create_voice_llm, VLLM_API_KEY, VLLM_BASE_URL
@@ -454,22 +455,30 @@ def create_stt_service(
             raise ServiceCreationError(f"Unknown ai4bharat STT model: {model}. Expected 'indic-conformer-stt'")
     
     elif provider == "Bhashini":
-        # WebSocket streaming always uses the grpc service ID; agent/UI model names
-        # (e.g. conformer-multilingual-asr) are REST-only and cause INVALID_SERVICE_TASK.
-        api_key = (
-            os.getenv("BHASHINI_API_KEY")
-
-        )
+        lang_code = STT_LANGUAGE_MAP[provider].get(language, language)
+        api_key = os.getenv("BHASHINI_API_KEY")
         if not api_key and org_id:
             api_key = fetch_integration_key(org_id, "Bhashini")
+
+        if lang_code == "bhb":
+            model = args.get("model") or stt_config.get("model") or "asr_streaming"
+            return BhashiniBhiliSTTService(
+                model=model,
+                language=lang_code,
+                sample_rate=sample_rate,
+                input_sample_rate=sample_rate,
+                suppress_vad_frames=(vad_analyzer is not None),
+            )
+
+        # WebSocket streaming always uses the grpc service ID; agent/UI model names
+        # (e.g. conformer-multilingual-asr) are REST-only and cause INVALID_SERVICE_TASK.
         return BhashiniSTTService(
             api_key=api_key,
-            language=STT_LANGUAGE_MAP[provider][language],
+            language=lang_code,
             service_id="bhashini/ai4b/indic-conformer/grpc",
             sample_rate=sample_rate,
             input_sample_rate=sample_rate,
             suppress_vad_frames=(vad_analyzer is not None),
-            
         )
     
     elif provider == "Sarvam":
@@ -623,10 +632,14 @@ def create_tts_service(
     elif provider == "Bhashini":
         speaker = tts_config.get("speaker") or args.get("speaker")
         description = tts_config.get("description") or args.get("description")
+        lang_code = (
+            TTS_LANGUAGE_MAP[provider].get(language, language) if language else "hi"
+        )
         return BhashiniTTSService(
             speaker=speaker,
             description=description,
-            sample_rate=44100
+            language=lang_code,
+            sample_rate=44100,
         )
     
     elif provider == "Sarvam":

@@ -69,7 +69,8 @@
       },
       "bhb": {
         "models": {
-          "ai4bharat": ["indic-conformer-stt"]
+          "ai4bharat": ["indic-conformer-stt"],
+          "bhashini": ["asr_streaming"]
         }
       },
       "Gujarati": {
@@ -310,6 +311,11 @@
           "description": "Bhashini multilingual ASR model powered by AI4Bharat Conformer",
           "streaming": true,
           "recommended": true
+        },
+        "asr_streaming": {
+          "description": "Bhashini Bhili NVCF streaming ASR (Triton gRPC, language bhb)",
+          "streaming": true,
+          "recommended": true
         }
       },
       "elevenlabs": {
@@ -335,7 +341,7 @@
         "Tamil": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
         "Telugu": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
         "Marathi": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
-        "bhb": ["ai4bharat:indic-conformer-stt"],
+        "bhb": ["bhashini:asr_streaming", "ai4bharat:indic-conformer-stt"],
         "Gujarati": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
         "Kannada": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "deepgram:nova-3", "gcp:chirp_3"],
         "Malayalam": ["sarvam:saarika:v2.5", "elevenlabs:scribe-v2-realtime", "gcp:chirp_3"],

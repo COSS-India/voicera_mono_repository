@@ -138,7 +138,7 @@ def get_custom_llm_integrations_by_org(org_id: str) -> List[Dict[str, Any]]:
         db = get_database()
         table = db[_COLLECTION]
         docs = list(table.find({"org_id": org_id}).sort("created_at", 1))
-        return [_doc_to_response(doc, mask_key=True) for doc in docs]
+        return [_doc_to_response(doc) for doc in docs]
     except Exception as exc:
         logger.error("Error listing custom LLM integrations: %s", exc)
         return []

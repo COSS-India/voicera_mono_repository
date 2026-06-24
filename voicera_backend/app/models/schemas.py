@@ -21,6 +21,7 @@ class UserResponse(BaseModel):
     org_id: str
     company_name: str
     created_at: Optional[str] = None
+    is_owner: Optional[bool] = None
 
 class UserLogin(BaseModel):
     """Schema for user login."""
@@ -402,6 +403,12 @@ class MemberResponse(BaseModel):
 
 class MemberDelete(BaseModel):
     """Schema for deleting a member from an organization."""
+    email: EmailStr
+    org_id: str
+
+
+class TransferOwnership(BaseModel):
+    """Schema for transferring organization ownership to another member."""
     email: EmailStr
     org_id: str
 

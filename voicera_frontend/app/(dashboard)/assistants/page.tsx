@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
-import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument } from "@/lib/api"
+import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
 import { agentsQueryKey, useAgentsQuery } from "@/lib/queries/agents"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
@@ -54,6 +54,8 @@ import {
   Check,
   X,
   Timer,
+  MessageSquare,
+  Bell,
 } from "lucide-react"
 
 // Import JSON data
@@ -180,6 +182,13 @@ const getAgentDisplayName = (agent: Agent): string => {
 
 // Helper function to get agent description from config
 const getAgentDescription = (agent: Agent): string => {
+  if (agent.agent_config?.interaction_mode === "non_conversational") {
+    const alert = agent.agent_config?.greeting_message || ""
+    if (alert.length > 0) {
+      return alert.slice(0, 50) + (alert.length > 50 ? "..." : "")
+    }
+    return "One-way alert agent"
+  }
   const prompt = agent.agent_config?.system_prompt || ""
   if (prompt.length > 0) {
     return prompt.slice(0, 50) + (prompt.length > 50 ? "..." : "")
@@ -188,8 +197,32 @@ const getAgentDescription = (agent: Agent): string => {
 }
 
 // Types
+type WizardStepKey = "type" | "agent" | "llm" | "audio" | "telephony" | "call_mgmt" | "review"
+
+const WIZARD_STEP_META: Record<
+  WizardStepKey,
+  { title: string; subtitle: string; icon: typeof FileText }
+> = {
+  type: { title: "Type", subtitle: "Agent Mode", icon: MessageSquare },
+  agent: { title: "Agent", subtitle: "Name & Prompt", icon: FileText },
+  llm: { title: "LLM", subtitle: "Model Config", icon: Settings },
+  audio: { title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
+  telephony: { title: "Telephony", subtitle: "Select Provider", icon: Phone },
+  call_mgmt: { title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
+  review: { title: "Review", subtitle: "Confirm", icon: CheckCircle2 },
+}
+
+function getWizardStepKeys(mode: InteractionMode | null): WizardStepKey[] {
+  if (!mode) return ["type"]
+  if (mode === "non_conversational") {
+    return ["type", "agent", "audio", "telephony", "review"]
+  }
+  return ["type", "agent", "llm", "audio", "telephony", "call_mgmt", "review"]
+}
+
 interface AgentConfig {
   id: string
+  interactionMode: InteractionMode | null
   name?: string
   greetingMessage?: string
   ignoreUserSpeechBeforeGreeting: boolean
@@ -231,6 +264,7 @@ type AgentWithTelephony = Agent & {
 
 const defaultConfig: AgentConfig = {
   id: "",
+  interactionMode: null,
   name: "",
   greetingMessage: "",
   ignoreUserSpeechBeforeGreeting: true,
@@ -267,18 +301,6 @@ const defaultConfig: AgentConfig = {
   telephonyProvider: "Plivo",
 }
 
-// Wizard steps configuration
-const wizardSteps = [
-  { id: 1, title: "Agent", subtitle: "Name & Prompt", icon: FileText },
-  { id: 2, title: "LLM", subtitle: "Model Config", icon: Settings },
-  { id: 3, title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
-  { id: 4, title: "Telephony", subtitle: "Select Provider", icon: Phone },
-  { id: 5, title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
-  { id: 6, title: "Review", subtitle: "Confirm", icon: CheckCircle2 },
-]
-
-const WIZARD_STEP_COUNT = wizardSteps.length
-
 const formatDurationSeconds = (seconds: number) => {
   if (seconds <= 0) return "Disabled"
   if (seconds >= 60 && seconds % 60 === 0) return `${seconds / 60} min`
@@ -300,6 +322,7 @@ export default function AssistantsPage() {
   const [config, setConfig] = useState<AgentConfig>(defaultConfig)
   const [view, setView] = useState<"list" | "create">("list")
   const [createStep, setCreateStep] = useState(1)
+  const [interactionModeLocked, setInteractionModeLocked] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [isCreatingAgent, setIsCreatingAgent] = useState(false)
   const [isTestCallSheetOpen, setIsTestCallSheetOpen] = useState(false)
@@ -310,6 +333,33 @@ export default function AssistantsPage() {
   const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
   const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(false)
+
+  const activeWizardSteps = useMemo(() => {
+    const keys = getWizardStepKeys(config.interactionMode)
+    return keys.map((key, index) => ({
+      id: index + 1,
+      key,
+      ...WIZARD_STEP_META[key],
+      subtitle:
+        key === "agent" && config.interactionMode === "non_conversational"
+          ? "Name & Alert"
+          : key === "audio" && config.interactionMode === "non_conversational"
+            ? "TTS"
+            : WIZARD_STEP_META[key].subtitle,
+    }))
+  }, [config.interactionMode])
+
+  const WIZARD_STEP_COUNT = activeWizardSteps.length
+  const currentStepKey = activeWizardSteps[createStep - 1]?.key
+
+  const getStepIdByKey = (key: WizardStepKey) =>
+    activeWizardSteps.find((step) => step.key === key)?.id ?? 1
+
+  useEffect(() => {
+    if (view === "create" && createStep > activeWizardSteps.length) {
+      setCreateStep(activeWizardSteps.length)
+    }
+  }, [view, createStep, activeWizardSteps.length])
 
   const {
     data: agents = [],
@@ -610,6 +660,7 @@ export default function AssistantsPage() {
   const handleCreateNew = () => {
     setConfig({ ...defaultConfig, id: "new", telephonyProvider: "Plivo" })
     setCreateStep(1)
+    setInteractionModeLocked(false)
     setView("create")
   }
 
@@ -617,6 +668,7 @@ export default function AssistantsPage() {
   const handleBackToList = () => {
     setView("list")
     setCreateStep(1)
+    setInteractionModeLocked(false)
     setConfig({ ...defaultConfig, telephonyProvider: "Plivo" })
   }
 
@@ -907,29 +959,38 @@ export default function AssistantsPage() {
         agent_category: "voicera_telephony",
         agent_type: config.name,
         agent_id: agentId,
-        agent_config: {
-          system_prompt: config.systemPrompt,
-          greeting_message: config.greetingMessage,
-          ignore_user_speech_before_greeting: config.ignoreUserSpeechBeforeGreeting,
-          interruption_min_words: config.interruptionMinWords,
-          user_silence_hangup_seconds: config.userSilenceHangupSeconds,
-          call_timeout_seconds: config.callTimeoutSeconds,
-          hold_messages: config.holdMessages.map((m) => m.trim()).filter(Boolean),
-          hold_message_timeout_seconds: config.holdMessageTimeoutSeconds,
-          user_online_detection_enabled: config.userOnlineDetectionEnabled,
-          user_online_detection_message: config.userOnlineDetectionMessage.trim(),
-          user_online_detection_seconds: config.userOnlineDetectionSeconds,
-          language: languageName,
-          knowledge_base_enabled: config.llmProvider === "openai" ? config.knowledgeEnabled : false,
-          knowledge_document_ids:
-            config.llmProvider === "openai" && config.knowledgeEnabled
-              ? config.knowledgeDocumentIds
-              : [],
-          knowledge_top_k: config.knowledgeTopK,
-          llm_model: llmModel,
-          stt_model: sttModel,
-          tts_model: ttsModel,
-        },
+        agent_config:
+          config.interactionMode === "non_conversational"
+            ? {
+                interaction_mode: "non_conversational",
+                greeting_message: config.greetingMessage,
+                language: languageName,
+                tts_model: ttsModel,
+              }
+            : {
+                interaction_mode: "conversational",
+                system_prompt: config.systemPrompt,
+                greeting_message: config.greetingMessage,
+                ignore_user_speech_before_greeting: config.ignoreUserSpeechBeforeGreeting,
+                interruption_min_words: config.interruptionMinWords,
+                user_silence_hangup_seconds: config.userSilenceHangupSeconds,
+                call_timeout_seconds: config.callTimeoutSeconds,
+                hold_messages: config.holdMessages.map((m) => m.trim()).filter(Boolean),
+                hold_message_timeout_seconds: config.holdMessageTimeoutSeconds,
+                user_online_detection_enabled: config.userOnlineDetectionEnabled,
+                user_online_detection_message: config.userOnlineDetectionMessage.trim(),
+                user_online_detection_seconds: config.userOnlineDetectionSeconds,
+                language: languageName,
+                knowledge_base_enabled: config.llmProvider === "openai" ? config.knowledgeEnabled : false,
+                knowledge_document_ids:
+                  config.llmProvider === "openai" && config.knowledgeEnabled
+                    ? config.knowledgeDocumentIds
+                    : [],
+                knowledge_top_k: config.knowledgeTopK,
+                llm_model: llmModel,
+                stt_model: sttModel,
+                tts_model: ttsModel,
+              },
         telephony_provider: config.telephonyProvider,
         ...(config.telephonyProvider === "Vobiz" && {
           vobiz_app_id: vobizAppId,
@@ -962,6 +1023,9 @@ export default function AssistantsPage() {
   // Navigate to next step
   const handleNextStep = () => {
     if (createStep < WIZARD_STEP_COUNT) {
+      if (currentStepKey === "type") {
+        setInteractionModeLocked(true)
+      }
       setCreateStep(createStep + 1)
     }
   }
@@ -971,24 +1035,47 @@ export default function AssistantsPage() {
 
   // Check if a specific step is completed
   const isStepCompleted = (stepId: number) => {
-    switch (stepId) {
-      case 1:
-        return config.name.length > 0 && config.systemPrompt.length > 0 
-      case 2:
+    const key = activeWizardSteps[stepId - 1]?.key
+    switch (key) {
+      case "type":
+        return config.interactionMode !== null
+      case "agent":
+        if (config.interactionMode === "non_conversational") {
+          return (config.name?.length ?? 0) > 0 && (config.greetingMessage?.trim().length ?? 0) > 0
+        }
+        return (config.name?.length ?? 0) > 0 && config.systemPrompt.length > 0
+      case "llm":
         if (config.llmProvider === "kenpath") {
           return !!config.llmProvider
         }
         if (config.llmProvider === "custom_llm") {
           return !!config.llmProvider && !!config.customLlmId
         }
-        return config.llmProvider && config.llmModel
-      case 3:
-        return config.language && config.sttProvider && config.sttModel && config.ttsProvider && config.ttsModel && config.ttsVoice && config.ttsVoice.length > 0
-      case 4:
+        return !!(config.llmProvider && config.llmModel)
+      case "audio":
+        if (config.interactionMode === "non_conversational") {
+          return !!(
+            config.language &&
+            config.ttsProvider &&
+            config.ttsModel &&
+            config.ttsVoice &&
+            config.ttsVoice.length > 0
+          )
+        }
+        return !!(
+          config.language &&
+          config.sttProvider &&
+          config.sttModel &&
+          config.ttsProvider &&
+          config.ttsModel &&
+          config.ttsVoice &&
+          config.ttsVoice.length > 0
+        )
+      case "telephony":
         return !!config.telephonyProvider
-      case 5:
+      case "call_mgmt":
         return config.callTimeoutSeconds >= 60
-      case 6:
+      case "review":
         return true
       default:
         return false
@@ -1013,7 +1100,7 @@ export default function AssistantsPage() {
   // Get next step label
   const getNextStepLabel = () => {
     if (createStep === WIZARD_STEP_COUNT) return "Create Agent"
-    const nextStep = wizardSteps.find(s => s.id === createStep + 1)
+    const nextStep = activeWizardSteps.find((s) => s.id === createStep + 1)
     return nextStep ? `Continue to ${nextStep.title}` : "Continue"
   }
 
@@ -1209,7 +1296,7 @@ export default function AssistantsPage() {
         <aside className="bg-white border-b border-slate-100 p-3 sm:p-4">
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">Setup Progress</h3>
           <div className="flex gap-2 overflow-x-auto pb-1 justify-center">
-            {wizardSteps.map((step) => {
+            {activeWizardSteps.map((step) => {
               const Icon = step.icon
               const isActive = createStep === step.id
               const isCompleted = isStepCompleted(step.id) && createStep > step.id
@@ -1261,8 +1348,80 @@ export default function AssistantsPage() {
         {/* Step Content */}
         <main className="flex-1 overflow-auto p-6 sm:p-8">
           <div className="w-full max-w-4xl mx-auto">
-            {/* Step 1: Agent Creation */}
-            {createStep === 1 && (
+            {/* Step: Type selection */}
+            {currentStepKey === "type" && (
+              <div className="bg-white rounded-xl border border-slate-200 p-8">
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 mb-1">Choose Agent Type</h2>
+                    <p className="text-slate-500">
+                      Select how this agent should interact on calls. You can change your choice
+                      until you continue. After that, the type is locked for this agent.
+                    </p>
+                  </div>
+                  {interactionModeLocked && (
+                    <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                      Agent type is locked. You cannot switch between conversational and
+                      non-conversational during setup.
+                    </p>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      disabled={interactionModeLocked}
+                      onClick={() => updateConfig("interactionMode", "conversational")}
+                      className={`text-left rounded-xl border-2 p-6 transition-all ${
+                        config.interactionMode === "conversational"
+                          ? "border-slate-900 bg-slate-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      } ${interactionModeLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-10 w-10 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+                          <MessageSquare className="h-5 w-5" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900">Conversational</h3>
+                      </div>
+                      <p className="text-sm text-slate-600">
+                        For an interactable voice agent that listens and responds.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={interactionModeLocked}
+                      onClick={() => updateConfig("interactionMode", "non_conversational")}
+                      className={`text-left rounded-xl border-2 p-6 transition-all ${
+                        config.interactionMode === "non_conversational"
+                          ? "border-slate-900 bg-slate-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      } ${interactionModeLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-10 w-10 rounded-lg bg-amber-600 text-white flex items-center justify-center">
+                          <Bell className="h-5 w-5" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900">Non-conversational</h3>
+                      </div>
+                      <p className="text-sm text-slate-600">
+                        For alerts and one-way messages. Plays your message and ends the call.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleNextStep}
+                  disabled={!canProceed()}
+                  className="mt-8 h-11 px-6 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium gap-2 disabled:bg-slate-200 disabled:text-slate-400 transition-all"
+                >
+                  {getNextStepLabel()}
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {/* Step: Agent */}
+            {currentStepKey === "agent" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-8">
                   {/* Agent Name */}
@@ -1279,18 +1438,34 @@ export default function AssistantsPage() {
                     </p>
                   </div>
 
-                  {/* Agent Welcome Message */}
+                  {/* Agent Welcome / Alert Message */}
                   <div className="space-y-3">
-                    <label className="text-base font-bold text-slate-900">Agent Welcome Message</label>
-                    <Input
-                      value={config.greetingMessage}
-                      onChange={(e) => updateConfig("greetingMessage", e.target.value)}
-                      placeholder="Hello from EkStep"
-                      className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                    />
+                    <label className="text-base font-bold text-slate-900">
+                      {config.interactionMode === "non_conversational"
+                        ? "Alert Message"
+                        : "Agent Welcome Message"}
+                    </label>
+                    {config.interactionMode === "non_conversational" ? (
+                      <Textarea
+                        value={config.greetingMessage}
+                        onChange={(e) => updateConfig("greetingMessage", e.target.value)}
+                        placeholder="Your payment is due tomorrow. Please pay to avoid late fees."
+                        className="min-h-[120px] rounded-lg border-slate-200 bg-white resize-none text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                      />
+                    ) : (
+                      <Input
+                        value={config.greetingMessage}
+                        onChange={(e) => updateConfig("greetingMessage", e.target.value)}
+                        placeholder="Hello from EkStep"
+                        className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                      />
+                    )}
                     <p className="text-sm text-slate-500">
-                      This will be the initial message from the agent. You can use variables here using {"{variable_name}"}
+                      {config.interactionMode === "non_conversational"
+                        ? "This message will be spoken on the call and the call will end when finished."
+                        : `This will be the initial message from the agent. You can use variables here using {"{variable_name}"}`}
                     </p>
+                    {config.interactionMode !== "non_conversational" && (
                     <div className="flex items-center justify-between gap-4 pt-2">
                       <div>
                         <p className="text-sm font-semibold text-slate-800">
@@ -1325,9 +1500,11 @@ export default function AssistantsPage() {
                         <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
                       </label>
                     </div>
+                    )}
                   </div>
 
                   {/* Agent Prompt */}
+                  {config.interactionMode !== "non_conversational" && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="text-base font-bold text-slate-900">Agent Prompt</label>
@@ -1339,6 +1516,7 @@ export default function AssistantsPage() {
                       className="min-h-[200px] rounded-lg border-slate-200 bg-white resize-none text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                     />
                   </div>
+                  )}
                 </div>
 
                 <Button 
@@ -1352,8 +1530,8 @@ export default function AssistantsPage() {
               </div>
             )}
 
-            {/* Step 2: LLM Settings */}
-            {createStep === 2 && (
+            {/* Step: LLM Settings */}
+            {currentStepKey === "llm" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-6">
                   <div className="space-y-4">
@@ -1598,8 +1776,8 @@ export default function AssistantsPage() {
               </div>
             )}
 
-            {/* Step 3: Audio Settings */}
-            {createStep === 3 && (
+            {/* Step: Audio Settings */}
+            {currentStepKey === "audio" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-8">
                   {/* Language Selection */}
@@ -1648,7 +1826,7 @@ export default function AssistantsPage() {
                   </div>
 
                   {/* STT Settings */}
-                  {config.language && (
+                  {config.language && config.interactionMode !== "non_conversational" && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select transcriber</label>
                       <div className="grid grid-cols-2 gap-4">
@@ -1984,7 +2162,7 @@ export default function AssistantsPage() {
             )}
 
             {/* Step 4: Telephony */}
-            {createStep === 4 && (
+            {currentStepKey === "telephony" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-8">
                   {/* Telephony Provider Selection */}
@@ -2027,7 +2205,7 @@ export default function AssistantsPage() {
             )}
 
             {/* Step 5: Call Management */}
-            {createStep === 5 && (
+            {currentStepKey === "call_mgmt" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <h2 className="text-xl font-bold text-slate-900 mb-1">Call Management</h2>
                 <p className="text-slate-500 mb-8">
@@ -2290,12 +2468,27 @@ export default function AssistantsPage() {
             )}
 
             {/* Step 6: Review */}
-            {createStep === 6 && (
+            {currentStepKey === "review" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <h2 className="text-xl font-bold text-slate-900 mb-1">Review Configuration</h2>
                 <p className="text-slate-500 mb-8">Review your agent settings before creating.</p>
 
                 <div className="space-y-0 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden">
+                  {/* Agent Type */}
+                  <div className="flex items-start justify-between p-4 border-b border-slate-200 hover:bg-slate-100/50 transition-colors">
+                    <div className="flex-1 mr-4">
+                      <p className="text-sm font-bold text-slate-900 mb-2">Agent Type</p>
+                      <p className="text-sm text-slate-600">
+                        {config.interactionMode === "non_conversational"
+                          ? "Non-conversational (Alert)"
+                          : "Conversational"}
+                      </p>
+                    </div>
+                    <button onClick={() => setCreateStep(getStepIdByKey("type"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                      Edit
+                    </button>
+                  </div>
+
                   {/* Agent Details */}
                   <div className="flex items-start justify-between p-4 border-b border-slate-200 hover:bg-slate-100/50 transition-colors">
                     <div className="flex-1 mr-4">
@@ -2304,26 +2497,34 @@ export default function AssistantsPage() {
                         <span className="font-semibold">Name:</span> {config.name || "—"}
                       </p>
                       <p className="text-sm text-slate-600 mb-1">
-                        <span className="font-semibold">Welcome:</span> {config.greetingMessage || "—"}
+                        <span className="font-semibold">
+                          {config.interactionMode === "non_conversational" ? "Alert:" : "Welcome:"}
+                        </span>{" "}
+                        {config.greetingMessage || "—"}
                       </p>
-                      <p className="text-sm text-slate-600 mb-1">
-                        <span className="font-semibold">Ignore speech during welcome:</span>{" "}
-                        {config.greetingMessage?.trim()
-                          ? config.ignoreUserSpeechBeforeGreeting
-                            ? "Yes"
-                            : "No"
-                          : "—"}
-                      </p>
-                      <p className="text-sm text-slate-600 line-clamp-2">
-                        <span className="font-semibold">Prompt:</span> {config.systemPrompt || "—"}
-                      </p>
+                      {config.interactionMode !== "non_conversational" && (
+                        <>
+                          <p className="text-sm text-slate-600 mb-1">
+                            <span className="font-semibold">Ignore speech during welcome:</span>{" "}
+                            {config.greetingMessage?.trim()
+                              ? config.ignoreUserSpeechBeforeGreeting
+                                ? "Yes"
+                                : "No"
+                              : "—"}
+                          </p>
+                          <p className="text-sm text-slate-600 line-clamp-2">
+                            <span className="font-semibold">Prompt:</span> {config.systemPrompt || "—"}
+                          </p>
+                        </>
+                      )}
                     </div>
-                    <button onClick={() => setCreateStep(1)} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                    <button onClick={() => setCreateStep(getStepIdByKey("agent"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
                       Edit
                     </button>
                   </div>
 
                   {/* LLM Settings */}
+                  {config.interactionMode !== "non_conversational" && (
                   <div className="flex items-start justify-between p-4 border-b border-slate-200 hover:bg-slate-100/50 transition-colors">
                     <div>
                       <p className="text-sm font-bold text-slate-900 mb-2">LLM Model</p>
@@ -2347,26 +2548,29 @@ export default function AssistantsPage() {
                         </p>
                       )}
                     </div>
-                    <button onClick={() => setCreateStep(2)} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                    <button onClick={() => setCreateStep(getStepIdByKey("llm"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
                       Edit
                     </button>
                   </div>
+                  )}
 
                   {/* Audio Settings */}
-                  <div className="flex items-start justify-between p-4 hover:bg-slate-100/50 transition-colors">
+                  <div className="flex items-start justify-between p-4 border-b border-slate-200 hover:bg-slate-100/50 transition-colors">
                     <div>
                       <p className="text-sm font-bold text-slate-900 mb-2">Audio Configuration</p>
                       <p className="text-sm font-medium text-slate-700">
                         {config.language ? displayLanguageName(config.language) : "—"}
                       </p>
-                      <p className="text-sm text-slate-500 mt-1">
-                        <span className="font-medium">STT:</span> {getProviderOfficialName(config.sttProvider) || "—"} / {config.sttModel || "—"}
-                      </p>
+                      {config.interactionMode !== "non_conversational" && (
+                        <p className="text-sm text-slate-500 mt-1">
+                          <span className="font-medium">STT:</span> {getProviderOfficialName(config.sttProvider) || "—"} / {config.sttModel || "—"}
+                        </p>
+                      )}
                       <p className="text-sm text-slate-500">
                         <span className="font-medium">TTS:</span> {getProviderOfficialName(config.ttsProvider) || "—"} / {config.ttsModel || "—"} / {config.ttsVoice || "—"}
                       </p>
                     </div>
-                    <button onClick={() => setCreateStep(3)} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                    <button onClick={() => setCreateStep(getStepIdByKey("audio"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
                       Edit
                     </button>
                   </div>
@@ -2379,12 +2583,13 @@ export default function AssistantsPage() {
                         {config.telephonyProvider ? config.telephonyProvider.charAt(0).toUpperCase() + config.telephonyProvider.slice(1) : "—"}
                       </p>
                     </div>
-                    <button onClick={() => setCreateStep(4)} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                    <button onClick={() => setCreateStep(getStepIdByKey("telephony"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
                       Edit
                     </button>
                   </div>
 
                   {/* Call Management */}
+                  {config.interactionMode !== "non_conversational" && (
                   <div className="flex items-start justify-between p-4 border-b border-slate-200 hover:bg-slate-100/50 transition-colors">
                     <div>
                       <p className="text-sm font-bold text-slate-900 mb-2">Call Management</p>
@@ -2417,10 +2622,11 @@ export default function AssistantsPage() {
                         {config.holdMessageTimeoutSeconds.toFixed(1)}s
                       </p>
                     </div>
-                    <button onClick={() => setCreateStep(5)} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                    <button onClick={() => setCreateStep(getStepIdByKey("call_mgmt"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
                       Edit
                     </button>
                   </div>
+                  )}
                 </div>
 
 

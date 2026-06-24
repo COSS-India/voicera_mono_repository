@@ -10,6 +10,26 @@ import string
 
 logger = logging.getLogger(__name__)
 
+VALID_INTERACTION_MODES = {"conversational", "non_conversational"}
+
+
+def _get_interaction_mode(agent_config: Dict[str, Any]) -> str:
+    mode = (agent_config or {}).get("interaction_mode") or "conversational"
+    return mode if mode in VALID_INTERACTION_MODES else "conversational"
+
+
+def _validate_agent_config_for_mode(agent_config: Dict[str, Any]) -> Optional[str]:
+    mode = _get_interaction_mode(agent_config)
+    if mode == "non_conversational":
+        greeting = str((agent_config or {}).get("greeting_message") or "").strip()
+        if not greeting:
+            return "Alert message is required for non-conversational agents"
+        tts_model = (agent_config or {}).get("tts_model")
+        if not isinstance(tts_model, dict) or not tts_model.get("name"):
+            return "TTS configuration is required for non-conversational agents"
+    return None
+
+
 def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
     """
     Create a new agent type for a given org.
@@ -39,12 +59,19 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
         })
         if existing_agent_by_id:
             return {"status": "fail", "message": "Agent ID already exists for this organization"}
+
+        agent_config = dict(agent_data.agent_config or {})
+        if not agent_config.get("interaction_mode"):
+            agent_config["interaction_mode"] = "conversational"
+        validation_error = _validate_agent_config_for_mode(agent_config)
+        if validation_error:
+            return {"status": "fail", "message": validation_error}
         
         now_iso = datetime.now().isoformat()
         agent_doc = {
             "agent_type": agent_data.agent_type,
             "agent_id": agent_data.agent_id,
-            "agent_config": agent_data.agent_config,
+            "agent_config": agent_config,
             "org_id": agent_data.org_id,
             "created_at": now_iso,
             "updated_at": now_iso,
@@ -183,8 +210,26 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
             if duplicate:
                 return {"status": "fail", "message": "Agent type already exists for this organization"}
 
+        existing_mode = _get_interaction_mode(existing_agent.get("agent_config") or {})
+        incoming_config = dict(agent_data.agent_config or {})
+        incoming_mode = _get_interaction_mode(incoming_config)
+
+        if existing_mode == "non_conversational":
+            if incoming_mode != "non_conversational":
+                return {
+                    "status": "fail",
+                    "message": "Cannot change a non-conversational agent to conversational",
+                }
+            incoming_config["interaction_mode"] = "non_conversational"
+        elif not incoming_config.get("interaction_mode"):
+            incoming_config["interaction_mode"] = existing_mode
+
+        validation_error = _validate_agent_config_for_mode(incoming_config)
+        if validation_error:
+            return {"status": "fail", "message": validation_error}
+
         update_doc = {
-            "agent_config": agent_data.agent_config,
+            "agent_config": incoming_config,
             "updated_at": datetime.now().isoformat(),
             "agent_type": target_agent_type,
         }

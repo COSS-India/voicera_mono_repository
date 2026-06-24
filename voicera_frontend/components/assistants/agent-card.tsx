@@ -8,7 +8,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { 
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardPortal,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
+import {
   PhoneCall,
   Monitor,
   Clock,
@@ -44,6 +50,10 @@ export function AgentCard({
 }: AgentCardProps) {
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
+  const isAlertAgent = agent.agent_config?.interaction_mode === "non_conversational"
+  const fullPromptText = isAlertAgent
+    ? (agent.agent_config?.greeting_message ?? "").trim()
+    : (agent.agent_config?.system_prompt ?? "").trim()
 
   const isConnected = Boolean(agent?.phone_number)
 
@@ -55,35 +65,117 @@ export function AgentCard({
   }
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't navigate if clicking on interactive elements
     const target = e.target as HTMLElement
     if (
-      target.closest('button') ||
-      target.closest('[role="menuitem"]') ||
-      target.closest('[role="dialog"]')
+      target.closest("button") ||
+      target.closest("[role=menuitem]") ||
+      target.closest("[role=dialog]")
     ) {
       return
     }
     onViewConfig(agent)
   }
 
+  const agentIcon = (
+    <div
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border-0 bg-[#F1EFE8] text-[#5F5E5A]"
+      aria-label="Agent phone icon"
+    >
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#5F5E5A"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94" />
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+      </svg>
+    </div>
+  )
+
+  const hoverZone = (
+    <>
+      <div>
+        <div className="flex flex-wrap items-start gap-2">
+          <h3 className="text-[17px] font-medium leading-snug text-slate-900 break-words">
+            {displayName}
+          </h3>
+          {isAlertAgent && (
+            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+              Alert
+            </span>
+          )}
+        </div>
+        <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-slate-500">
+          {description}
+        </p>
+      </div>
+
+      <div className="mt-4">
+        <button
+          type="button"
+          className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium"
+          style={{
+            backgroundColor: isConnected ? "#EAF3DE" : "#FCEBEB",
+            color: isConnected ? "#3B6D11" : "#A32D2D",
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            window.location.assign("/numbers")
+          }}
+          title="Manage numbers"
+        >
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: isConnected ? "#3B6D11" : "#A32D2D" }}
+          />
+          {isConnected ? agent.phone_number : "Not linked"}
+        </button>
+        {callCount > 0 && (
+          <span className="ml-2 inline-flex h-8 items-center rounded-full bg-slate-100 px-2.5 text-[13px] font-medium text-slate-700">
+            {callCount.toLocaleString()} Calls
+          </span>
+        )}
+      </div>
+
+      <div className="my-4 border-t-[0.5px] border-slate-200" />
+    </>
+  )
+
+  const hoverZoneBody = fullPromptText ? (
+    <HoverCard openDelay={200} closeDelay={100}>
+      <HoverCardTrigger asChild>
+        <div className="mt-4 space-y-4 outline-none">{hoverZone}</div>
+      </HoverCardTrigger>
+      <HoverCardPortal>
+        <HoverCardContent side="top" className="max-w-md max-h-80 overflow-y-auto p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#5F5E5A]">
+            {isAlertAgent ? "Alert message" : "System prompt"}
+          </p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+            {fullPromptText}
+          </p>
+        </HoverCardContent>
+      </HoverCardPortal>
+    </HoverCard>
+  ) : (
+    <div className="mt-4 space-y-4">{hoverZone}</div>
+  )
+
   return (
-    <div 
+    <div
       onClick={handleCardClick}
       className="group cursor-pointer rounded-xl border-[0.5px] border-slate-200 bg-white p-[18px] transition-all duration-150 hover:-translate-y-[2px] hover:border-slate-300"
     >
-      <div className="flex items-center justify-between">
-        <div
-          className="flex h-10 w-10 items-center justify-center rounded-[10px] border-0 bg-[#F1EFE8] text-[#5F5E5A]"
-          aria-label="Agent phone icon"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5F5E5A" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94"/>
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-          </svg>
-        </div>
+      <div className="flex items-start justify-between gap-3">
+        {agentIcon}
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
             className="inline-flex h-8 items-center gap-1.5 rounded-full border-[0.5px] border-slate-300 bg-transparent px-2.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
@@ -132,45 +224,7 @@ export function AgentCard({
         </div>
       </div>
 
-      <div className="mt-4 space-y-4">
-        <div>
-          <h3 className="line-clamp-1 text-[17px] font-medium text-slate-900">
-            {displayName}
-          </h3>
-          <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-slate-500">
-            {description}
-          </p>
-        </div>
-
-        <div>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium"
-            style={{
-              backgroundColor: isConnected ? "#EAF3DE" : "#FCEBEB",
-              color: isConnected ? "#3B6D11" : "#A32D2D",
-            }}
-            onClick={(e) => {
-              e.stopPropagation()
-              window.location.assign("/numbers")
-            }}
-            title="Manage numbers"
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: isConnected ? "#3B6D11" : "#A32D2D" }}
-            />
-            {isConnected ? agent.phone_number : "Not linked"}
-          </button>
-          {callCount > 0 && (
-            <span className="ml-2 inline-flex h-8 items-center rounded-full bg-slate-100 px-2.5 text-[13px] font-medium text-slate-700">
-              {callCount.toLocaleString()} Calls
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="my-4 border-t-[0.5px] border-slate-200" />
+      {hoverZoneBody}
 
       <div className="grid grid-cols-2 gap-2">
         <Button
@@ -189,8 +243,14 @@ export function AgentCard({
               ? "border-slate-300 text-slate-700"
               : "border-slate-200 text-slate-400"
           )}
-          style={{ transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease" }}
-          title={!isConnected ? "Please attach a phone number to this agent first" : "Make a test call"}
+          style={{
+            transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+          }}
+          title={
+            !isConnected
+              ? "Please attach a phone number to this agent first"
+              : "Make a test call"
+          }
         >
           <PhoneCall className="mr-1.5 h-3.5 w-3.5" />
           Test Call
@@ -203,7 +263,9 @@ export function AgentCard({
           }}
           variant="outline"
           className="h-9 rounded-[7px] border-[0.5px] border-slate-300 bg-transparent px-2 text-[13px] font-medium text-slate-700 shadow-none hover:bg-[var(--color-background-secondary)] hover:border-[var(--color-border-secondary)] hover:text-[var(--color-text-primary)]"
-          style={{ transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease" }}
+          style={{
+            transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+          }}
           title="Test this agent directly in your browser"
         >
           <Monitor className="mr-1.5 h-3.5 w-3.5" />

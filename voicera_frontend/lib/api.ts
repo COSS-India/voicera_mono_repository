@@ -333,6 +333,7 @@ export interface User {
   org_id: string
   company_name: string
   created_at: string
+  is_owner?: boolean
 }
 
 export interface LoginResponse {
@@ -362,8 +363,11 @@ export interface Agent {
   plivo_answer_url?: string
 }
 
+export type InteractionMode = "conversational" | "non_conversational"
+
 export interface AgentConfig {
-  system_prompt: string
+  interaction_mode?: InteractionMode
+  system_prompt?: string
   greeting_message: string
   ignore_user_speech_before_greeting?: boolean
   interruption_min_words?: number
@@ -374,17 +378,18 @@ export interface AgentConfig {
   user_online_detection_enabled?: boolean
   user_online_detection_message?: string
   user_online_detection_seconds?: number
-  session_timeout_minutes: number
+  session_timeout_minutes?: number
   language: string
   knowledge_base_enabled?: boolean
   knowledge_document_ids?: string[]
   knowledge_top_k?: number
-  llm_model: {
+  llm_model?: {
     name: string
     model?: string
     vistaar_environment?: "prod" | "dev"
+    custom_llm_id?: string
   }
-  stt_model: {
+  stt_model?: {
     name: string
     model?: string
     keywords?: string
@@ -1577,6 +1582,29 @@ export async function deleteMember(email: string, orgId: string): Promise<{ stat
     throw new Error(error.detail || error.error || "Failed to delete member")
   }
   
+  return response.json()
+}
+
+/**
+ * Transfer organization ownership to another member (owner only)
+ */
+export async function transferOwnership(
+  email: string,
+  orgId: string
+): Promise<{ status: string; message: string }> {
+  const response = await fetchWithAuth(`/api/v1/members/transfer-ownership`, {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      org_id: orgId,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.error || "Failed to transfer ownership")
+  }
+
   return response.json()
 }
 

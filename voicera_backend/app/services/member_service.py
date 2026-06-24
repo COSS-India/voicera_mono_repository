@@ -13,6 +13,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def is_org_owner(email: str, org_id: str) -> bool:
+    """Return True if the user is the organization owner."""
+    try:
+        db = get_database()
+        user = db["UserTable"].find_one({"email": email, "org_id": org_id})
+        return bool(user and not user.get("is_member", False))
+    except Exception as e:
+        logger.error(f"Error checking org owner: {str(e)}")
+        return False
+
+
 def add_member(member_data: MemberCreate) -> Dict[str, Any]:
     """
     Add a new member to an organization.
@@ -81,19 +92,26 @@ def get_members_by_org(org_id: str) -> Dict[str, Any]:
         return {"status": "fail", "message": f"Error fetching members: {str(e)}"}
 
 
-def delete_member(member_data: MemberDelete) -> Dict[str, Any]:
+def delete_member(member_data: MemberDelete, caller_email: str) -> Dict[str, Any]:
     """
     Delete a member from an organization.
     Removes user from both UserTable and Members mapping table.
-    Only members (is_member=True) can be deleted, not org owners.
+    Only the org owner can remove members. Org owners cannot be deleted.
     
     Args:
         member_data: Member deletion data (email and org_id)
+        caller_email: Email of the user performing the deletion
         
     Returns:
         Dict with status and message
     """
     try:
+        if not is_org_owner(caller_email, member_data.org_id):
+            return {
+                "status": "fail",
+                "message": "Only the organization owner can remove members",
+            }
+
         db = get_database()
         users_table = db["UserTable"]
         members_table = db["Members"]
@@ -133,6 +151,53 @@ def delete_member(member_data: MemberDelete) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error deleting member: {str(e)}")
         return {"status": "fail", "message": f"Error deleting member: {str(e)}"}
+
+
+def transfer_ownership(org_id: str, caller_email: str, new_owner_email: str) -> Dict[str, Any]:
+    """
+    Transfer organization ownership to another member.
+    Only the current owner can transfer. Caller becomes a regular member.
+    """
+    try:
+        if caller_email == new_owner_email:
+            return {"status": "fail", "message": "Cannot transfer ownership to yourself"}
+
+        if not is_org_owner(caller_email, org_id):
+            return {
+                "status": "fail",
+                "message": "Only the organization owner can transfer ownership",
+            }
+
+        db = get_database()
+        users_table = db["UserTable"]
+
+        new_owner = users_table.find_one({"email": new_owner_email, "org_id": org_id})
+        if not new_owner:
+            return {"status": "fail", "message": "Member not found in this organization"}
+        if not new_owner.get("is_member", False):
+            return {"status": "fail", "message": "This user is already the organization owner"}
+
+        caller = users_table.find_one({"email": caller_email, "org_id": org_id})
+        if not caller:
+            return {"status": "fail", "message": "Caller not found in this organization"}
+
+        users_table.update_one(
+            {"email": caller_email, "org_id": org_id},
+            {"$set": {"is_member": True}},
+        )
+        users_table.update_one(
+            {"email": new_owner_email, "org_id": org_id},
+            {"$set": {"is_member": False}},
+        )
+
+        logger.info(
+            f"Ownership transferred in org {org_id}: {caller_email} -> {new_owner_email}"
+        )
+        return {"status": "success", "message": "Ownership transferred successfully"}
+
+    except Exception as e:
+        logger.error(f"Error transferring ownership: {str(e)}")
+        return {"status": "fail", "message": f"Error transferring ownership: {str(e)}"}
 
 
 def validate_member_and_get_token(email: str, password: str) -> Optional[Dict[str, Any]]:

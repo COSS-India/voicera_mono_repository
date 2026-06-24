@@ -3,7 +3,7 @@ Member API routes.
 """
 from fastapi import APIRouter, HTTPException, status, Depends
 from app.models.schemas import (
-    MemberCreate, MemberResponse, MemberDelete,
+    MemberCreate, MemberResponse, MemberDelete, TransferOwnership,
     SuccessResponse, ErrorResponse
 )
 from app.services import member_service
@@ -68,10 +68,35 @@ async def delete_member(
             detail="Not authorized to delete members from this organization"
         )
     
-    result = member_service.delete_member(member_data)
+    result = member_service.delete_member(member_data, current_user["email"])
     if result["status"] == "fail":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result["message"]
+        )
+    return result
+
+
+@router.post("/transfer-ownership", response_model=Dict[str, Any])
+async def transfer_ownership(
+    transfer_data: TransferOwnership,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Transfer organization ownership to another member (owner only)."""
+    if current_user.get("org_id") != transfer_data.org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to transfer ownership for this organization",
+        )
+
+    result = member_service.transfer_ownership(
+        transfer_data.org_id,
+        current_user["email"],
+        transfer_data.email,
+    )
+    if result["status"] == "fail":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["message"],
         )
     return result

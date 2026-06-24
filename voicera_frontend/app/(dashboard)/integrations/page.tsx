@@ -197,6 +197,7 @@ export default function IntegrationsPage() {
 
   // Custom LLM integrations
   const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
+  const [customLLMApiKeys, setCustomLLMApiKeys] = useState<Record<string, string>>({})
   const [customLLMModalOpen, setCustomLLMModalOpen] = useState(false)
   const [editingCustomLLM, setEditingCustomLLM] = useState<CustomLLMIntegration | null>(null)
   const [modalCustomLLMName, setModalCustomLLMName] = useState("")
@@ -222,6 +223,11 @@ export default function IntegrationsPage() {
         getCustomLLMIntegrations(),
       ])
       setCustomLLMIntegrations(customLlms)
+      const customKeys: Record<string, string> = {}
+      customLlms.forEach((llm) => {
+        if (llm.api_key) customKeys[llm.id] = llm.api_key
+      })
+      setCustomLLMApiKeys(customKeys)
       
       // Convert integrations array to connected providers map and api keys map
       const connected: Record<string, boolean> = {}
@@ -449,7 +455,11 @@ export default function IntegrationsPage() {
     setEditingCustomLLM(integration ?? null)
     setModalCustomLLMName(integration?.name ?? "")
     setModalCustomLLMBaseUrl(integration?.base_url ?? "")
-    setModalCustomLLMApiKey(integration ? "••••••••••••••••" : "")
+    setModalCustomLLMApiKey(
+      integration
+        ? customLLMApiKeys[integration.id] || integration.api_key || ""
+        : ""
+    )
     setModalCustomLLMModel(integration?.model ?? "")
     setCustomLLMApiKeyVisible(false)
     setCustomLLMDocsOpen(false)
@@ -482,18 +492,30 @@ export default function IntegrationsPage() {
           base_url: modalCustomLLMBaseUrl.trim(),
           model: modalCustomLLMModel.trim(),
         }
-        if (modalCustomLLMApiKey && !modalCustomLLMApiKey.includes("•")) {
+        if (modalCustomLLMApiKey.trim()) {
           updatePayload.api_key = modalCustomLLMApiKey.trim()
         }
-        await updateCustomLLMIntegration(editingCustomLLM.id, updatePayload)
+        const updateResult = await updateCustomLLMIntegration(editingCustomLLM.id, updatePayload)
+        if (updateResult.integration?.api_key) {
+          setCustomLLMApiKeys((prev) => ({
+            ...prev,
+            [editingCustomLLM.id]: updateResult.integration.api_key,
+          }))
+        }
       } else {
-        await createCustomLLMIntegration({
+        const createResult = await createCustomLLMIntegration({
           org_id: orgId,
           name: modalCustomLLMName.trim(),
           base_url: modalCustomLLMBaseUrl.trim(),
           api_key: modalCustomLLMApiKey.trim(),
           model: modalCustomLLMModel.trim(),
         })
+        if (createResult.integration?.api_key) {
+          setCustomLLMApiKeys((prev) => ({
+            ...prev,
+            [createResult.integration.id]: createResult.integration.api_key,
+          }))
+        }
       }
 
       setCustomLLMModalOpen(false)

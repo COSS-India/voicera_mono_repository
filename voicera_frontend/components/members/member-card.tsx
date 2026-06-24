@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -20,6 +21,7 @@ import {
   Loader2,
   Trash2,
   MoreVertical,
+  Crown,
 } from "lucide-react"
 import { Member } from "@/lib/api"
 
@@ -34,23 +36,48 @@ const formatDate = (dateString: string) => {
 interface MemberCardProps {
   member: Member
   isCurrentUser: boolean
+  canManageMembers: boolean
   isDeleting: boolean
+  isTransferring: boolean
   onDelete: (member: Member) => void
+  onTransferOwnership: (member: Member) => void
 }
 
-export function MemberCard({ member, isCurrentUser, isDeleting, onDelete }: MemberCardProps) {
+export function MemberCard({
+  member,
+  isCurrentUser,
+  canManageMembers,
+  isDeleting,
+  isTransferring,
+  onDelete,
+  onTransferOwnership,
+}: MemberCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showTransferDialog, setShowTransferDialog] = useState(false)
   const isOwner = member.is_owner === true
-  const canDelete = !isCurrentUser && !isOwner
+  const canDelete = canManageMembers && !isCurrentUser && !isOwner
+  const canTransfer = canManageMembers && !isCurrentUser && !isOwner
+  const showMenu = canDelete || canTransfer
+  const isBusy = isDeleting || isTransferring
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     setShowDeleteDialog(true)
   }
 
+  const handleTransferClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowTransferDialog(true)
+  }
+
   const handleConfirmDelete = () => {
     setShowDeleteDialog(false)
     onDelete(member)
+  }
+
+  const handleConfirmTransfer = () => {
+    setShowTransferDialog(false)
+    onTransferOwnership(member)
   }
 
   return (
@@ -61,15 +88,16 @@ export function MemberCard({ member, isCurrentUser, isDeleting, onDelete }: Memb
     >
 
       {/* Dropdown menu */}
-      {canDelete && (
+      {showMenu && (
         <div className="absolute top-2.5 right-2.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 onClick={(e) => e.stopPropagation()}
                 className="flex h-8 w-8 items-center justify-center rounded-md border border-[#e5e5e5] bg-white"
+                disabled={isBusy}
               >
-                {isDeleting ? (
+                {isBusy ? (
                   <Loader2 className="h-[18px] w-[18px] text-slate-500 animate-spin" />
                 ) : (
                   <MoreVertical className="h-[18px] w-[18px] text-slate-500" />
@@ -77,14 +105,27 @@ export function MemberCard({ member, isCurrentUser, isDeleting, onDelete }: Memb
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem
-                onClick={handleDeleteClick}
-                className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50"
-                disabled={isDeleting}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Remove member
-              </DropdownMenuItem>
+              {canTransfer && (
+                <DropdownMenuItem
+                  onClick={handleTransferClick}
+                  className="cursor-pointer"
+                  disabled={isBusy}
+                >
+                  <Crown className="h-4 w-4 mr-2" />
+                  Make owner
+                </DropdownMenuItem>
+              )}
+              {canTransfer && canDelete && <DropdownMenuSeparator />}
+              {canDelete && (
+                <DropdownMenuItem
+                  onClick={handleDeleteClick}
+                  className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50"
+                  disabled={isBusy}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Remove member
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -145,6 +186,36 @@ export function MemberCard({ member, isCurrentUser, isDeleting, onDelete }: Memb
               className="flex-1 sm:flex-none"
             >
               {isDeleting ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Ownership Dialog */}
+      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer ownership</DialogTitle>
+            <DialogDescription className="pt-2">
+              Make <span className="font-medium text-slate-700">"{member.name}"</span> the organization owner?
+              You will become a regular member and lose owner privileges.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-1 w-full">
+            <Button
+              variant="outline"
+              onClick={() => setShowTransferDialog(false)}
+              disabled={isTransferring}
+              className="flex-1 sm:flex-none"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmTransfer}
+              disabled={isTransferring}
+              className="flex-1 sm:flex-none"
+            >
+              {isTransferring ? "Transferring..." : "Make owner"}
             </Button>
           </DialogFooter>
         </DialogContent>

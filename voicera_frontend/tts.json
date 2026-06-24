@@ -634,6 +634,12 @@
             "voices": ["Sanjay", "Sunita", "Nikhil", "Radha", "Varun", "Isha"],
             "recommended_voices": ["Sanjay", "Sunita"],
             "note": "Using Marathi voice set for Bhili (bhb)"
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Sanjay", "Sunita", "Isha", "Radha"],
+            "recommended_voices": ["Divya", "Sanjay"]
           }
         }
       },
@@ -1173,7 +1179,7 @@
         "Assamese": ["sarvam:bulbul:v3", "elevenlabs:eleven_multilingual_v2", "gcp:Chirp3-HD", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Urdu": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
         "Nepali": ["elevenlabs:eleven_multilingual_v2", "gcp:Chirp3-HD", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "bhb": ["ai4bharat:indic-parler-tts"],
+        "bhb": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Sanskrit": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Manipuri": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
         "Bodo": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
