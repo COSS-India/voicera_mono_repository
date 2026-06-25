@@ -10,6 +10,8 @@ This guide gets the three VoicEra services running on your machine with hot relo
 If you only want to try VoicEra end-to-end, use the Docker Compose path in [install and run](../../quickstart/install-and-run.md). This page covers running the services directly against your editor.
 {% endhint %}
 
+> **GPU drivers**: If you plan to run local AI4Bharat STT/TTS containers during development, install the NVIDIA driver and `nvidia-container-toolkit` on your machine first. See [Prerequisites → Server and infrastructure](../../quickstart/prerequisites.md#server-and-infrastructure) for details.
+
 ## Prerequisites
 
 | Tool | Version |
@@ -287,6 +289,16 @@ safety check
 # Frontend
 npm audit
 ```
+
+## Nginx reverse proxy (optional for local dev)
+
+Local development typically runs without a reverse proxy — services bind to `localhost` ports directly. If you need to test webhook flows with a public URL, use ngrok (see [Install and run](../../quickstart/install-and-run.md#4-expose-the-voice-server-optional-dev-only)).
+
+For a production nginx configuration that proxies to the backend (port 8000) and voice server (port 7860) with WebSocket and SSL support, see [Deployment walkthrough → Nginx reverse proxy](../deployment/deployment-walkthrough.md#nginx-reverse-proxy).
+
+## Systemd service
+
+A systemd unit is not required for development. If you need the development stack to start on boot, use the same unit described in [Docker Compose deployment → Systemd service](../deployment/docker-compose.md#systemd-service-auto-start-on-reboot), pointing `WorkingDirectory` at your local clone.
 
 ## Next steps
 

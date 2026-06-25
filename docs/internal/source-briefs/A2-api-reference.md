@@ -95,7 +95,7 @@
 
 ### Browser test (same protocol)
 
-Detailed client behavior: `voice_2_voice_server/docs/talk-on-browser-feature.md`
+Detailed client behavior: see [First call → Test on browser](../../quickstart/first-call.md) in the public docs. _(The original implementation notes live in `voice_2_voice_server/docs/talk-on-browser-feature.md` inside the `voice_2_voice_server` submodule — not present on the current branch.)_
 
 Path: `wss://<public-host>/agent/{agent_id}`
 

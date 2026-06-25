@@ -75,7 +75,7 @@ The Indic Conformer checkpoint covers the major Indian languages. Agent `languag
 | Gujarati | `gu` | `/transcribe` |
 | Bhili | `bhb` | `/transcribe/bhili` |
 
-Exact code support depends on the checkpoint loaded via `INDIC_NEMO_PATH`. See `voice_2_voice_server/config/stt_mappings.py` for per-provider mappings.
+Exact code support depends on the checkpoint loaded via `INDIC_NEMO_PATH`. Per-provider language code mappings are defined in the voice server _(see source: `voice_2_voice_server/config/stt_mappings.py`)_.
 
 ## How it talks to other services
 

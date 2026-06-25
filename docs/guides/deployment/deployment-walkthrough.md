@@ -105,6 +105,106 @@ Default development credentials are listed in [Default credentials](../../quicks
 
 VoicEra usually sets this automatically when the agent is created from the dashboard. Confirm it manually if the provider portal allows.
 
+## Nginx reverse proxy
+
+In production, front the stack with nginx to handle TLS termination and proxy traffic to the backend and voice server. Install nginx and obtain a certificate:
+
+```bash
+sudo apt-get install -y nginx
+sudo certbot certonly --standalone -d api.example.gov.in -d voice.example.gov.in
+```
+
+Create `/etc/nginx/sites-enabled/voicera.conf`:
+
+```nginx
+# Redirect HTTP → HTTPS
+server {
+    listen 80;
+    server_name api.example.gov.in voice.example.gov.in;
+    return 301 https://$server_name$request_uri;
+}
+
+# Backend API
+server {
+    listen 443 ssl http2;
+    server_name api.example.gov.in;
+
+    ssl_certificate     /etc/letsencrypt/live/api.example.gov.in/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.gov.in/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        "upgrade";
+    }
+}
+
+# Voice server (HTTP + WebSocket)
+server {
+    listen 443 ssl http2;
+    server_name voice.example.gov.in;
+
+    ssl_certificate     /etc/letsencrypt/live/voice.example.gov.in/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/voice.example.gov.in/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:7860;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade         $http_upgrade;
+        proxy_set_header Connection      "upgrade";
+        proxy_set_header Host            $host;
+        proxy_set_header X-Real-IP       $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+After the proxy is in place, set `JOHNAIC_SERVER_URL=https://voice.example.gov.in` and `JOHNAIC_WEBSOCKET_URL=wss://voice.example.gov.in` in `voice_2_voice_server/.env`. See [Production deployment](production.md) for a complete multi-domain nginx config.
+
+## Verification / smoke test
+
+After the stack starts, run these quick checks to confirm all services are healthy:
+
+```bash
+# 1. Check all containers are running
+docker compose ps
+
+# 2. Backend health
+curl -fs http://localhost:8000/health && echo "Backend OK"
+
+# 3. Voice server health
+curl -fs http://localhost:7860/health && echo "Voice server OK"
+
+# 4. Frontend reachable
+curl -fsI http://localhost:3000 | head -1
+
+# 5. Follow live logs for a few seconds
+docker compose logs -f --tail 20
+```
+
+Expected results:
+- `docker compose ps` — every service shows `Up` (no `Restarting` or `Exit`)
+- Backend and voice server health endpoints return a 2xx response
+- Frontend returns HTTP `200` or `302`
+- No `ERROR` lines appear in the tail of the logs
+
+If any service is unhealthy, check its logs:
+
+```bash
+docker compose logs -f <service-name>   # e.g. backend, voice_server, mongodb
+```
+
+See [Troubleshooting: deployment](../../troubleshooting/deployment.md) for remediation steps.
+
 ## Stop and restart
 
 | Action | Command |

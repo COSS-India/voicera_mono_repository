@@ -363,8 +363,8 @@ See [../reference/environment-variables.md](../reference/environment-variables.m
 Position matters. A processor inserted before STT will not see transcripts; one inserted after TTS cannot block audio output.
 {% endhint %}
 
-- **STT** — create `services/<name>/stt.py` extending `STTService`; implement `run()` and `stop()`. Register in `voice_2_voice_server/config/stt_mappings.py`. Add `elif provider == "Name":` branch in `create_stt_service()`.
-- **TTS** — create `services/<name>/tts.py` extending `TTSService`; implement `run_tts(text)` as async generator yielding `AudioRawFrame`. Register in `voice_2_voice_server/config/tts_mappings.py`. Add to `create_tts_service()`.
+- **STT** — create `services/<name>/stt.py` extending `STTService`; implement `run()` and `stop()`. Register in the provider mapping _(see source: `voice_2_voice_server/config/stt_mappings.py`)_. Add `elif provider == "Name":` branch in `create_stt_service()`.
+- **TTS** — create `services/<name>/tts.py` extending `TTSService`; implement `run_tts(text)` as async generator yielding `AudioRawFrame`. Register in the provider mapping _(see source: `voice_2_voice_server/config/tts_mappings.py`)_. Add to `create_tts_service()`.
 - **LLM** — reuse a Pipecat built-in or extend `OpenAILLMService` for OpenAI-compatible providers. Register aliases in `voice_2_voice_server/config/llm_mappings.py`. Add to `create_llm_service()` with org-scoped key via `fetch_integration_key()` if needed.
 - **Frame processor** — extend `FrameProcessor`, override `process_frame(frame, direction)`, always `await super().process_frame(...)` first, and `await self.push_frame(...)` to pass frames downstream. Insert into `pipeline_processors` at the correct position.
 

@@ -8,6 +8,8 @@ This guide moves a working VoicEra stack from a single-host demo into a hardened
 
 For step-by-step go-live instructions read [Deployment walkthrough](deployment-walkthrough.md) first, then return here to harden the result.
 
+> **GPU drivers**: See [Prerequisites](../../quickstart/prerequisites.md#server-and-infrastructure) for NVIDIA driver installation before proceeding if you plan to run local AI4Bharat STT/TTS containers.
+
 ## Pre-deployment checklist
 
 - [ ] All `.env` files contain non-default secrets
@@ -231,6 +233,46 @@ Restart the affected service after changing tuning values.
 | Alerts | PagerDuty, OpsGenie, Slack |
 
 Recommended Grafana dashboards: system health, API latency and error rate, active calls and duration, MongoDB connection pool.
+
+## Systemd service (auto-start on reboot)
+
+Create a systemd unit so Docker Compose starts automatically on boot and restarts on failure:
+
+```bash
+sudo tee /etc/systemd/system/voicera.service > /dev/null << 'EOF'
+[Unit]
+Description=VoicEra stack (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/voicera_mono_repository
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable voicera
+sudo systemctl start voicera
+sudo systemctl status voicera
+```
+
+Change `WorkingDirectory` to your actual repository path. View logs:
+
+```bash
+journalctl -u voicera -f
+journalctl -u voicera -n 200 --no-pager
+```
 
 ## Rolling updates
 

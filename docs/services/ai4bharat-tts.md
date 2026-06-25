@@ -72,7 +72,7 @@ Indic Parler covers the major Indian languages. Agent `language` codes used by t
 | Gujarati | `gu` |
 | Bhili | `bhb` (or `bhili`) |
 
-Exact support depends on the loaded Parler weights. See `voice_2_voice_server/config/tts_mappings.py` for per-provider mappings.
+Exact support depends on the loaded Parler weights. Per-provider language code mappings are defined in the voice server _(see source: `voice_2_voice_server/config/tts_mappings.py`)_.
 
 ## How it talks to other services
 

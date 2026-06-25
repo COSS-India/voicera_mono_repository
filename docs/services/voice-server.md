@@ -95,7 +95,7 @@ WebSocket protocol details: [reference/websocket-api.md](../reference/websocket-
 
 ## Pipecat pipeline
 
-The pipeline is constructed in `voice_2_voice_server/api/bot.py` and the per-call services in `voice_2_voice_server/api/services.py`. Provider mappings live in `voice_2_voice_server/config/llm_mappings.py`, `voice_2_voice_server/config/stt_mappings.py`, `voice_2_voice_server/config/tts_mappings.py`.
+The pipeline is constructed in `voice_2_voice_server/api/bot.py` and the per-call services in `voice_2_voice_server/api/services.py`. Provider mappings live in the `voice_2_voice_server/config/` directory _(see source: `llm_mappings.py`, `stt_mappings.py`, `tts_mappings.py`)_.
 
 ```bash
 audio in -> STT -> LLM -> TTS -> audio out
@@ -153,7 +153,7 @@ Configured per agent in the dashboard. The following keys are recognised by the 
 | `indic-parler-tts` | AI4Bharat local server (WebSocket, 44.1 kHz float32) |
 | `bhashini` | Bhashini cloud TTS |
 
-Language code mappings per provider live in `voice_2_voice_server/config/stt_mappings.py` and `voice_2_voice_server/config/tts_mappings.py`. Bhili uses the agent code `bhb`.
+Language code mappings per provider live in `voice_2_voice_server/config/` _(see source: `stt_mappings.py`, `tts_mappings.py`)_. Bhili uses the agent code `bhb`.
 
 ## Browser test (Talk on Browser)
 

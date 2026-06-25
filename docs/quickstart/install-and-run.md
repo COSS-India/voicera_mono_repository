@@ -6,6 +6,8 @@ description: Install Docker, clone the repository, configure environment files, 
 
 End-to-end install path for operators and hosting partners running VoicEra with Docker Compose. Complete the [prerequisites](prerequisites.md) before starting.
 
+> **GPU drivers**: If you plan to run local AI4Bharat STT/TTS containers, install the NVIDIA driver and `nvidia-container-toolkit` before proceeding. See [Prerequisites → Server and infrastructure](prerequisites.md#server-and-infrastructure) for GPU requirements.
+
 ## 1. Install Docker and Docker Compose
 
 {% tabs %}
@@ -162,6 +164,72 @@ docker-compose up -d
 docker compose ps
 docker images | grep voicera
 ```
+
+## Nginx reverse proxy (production)
+
+For production, place nginx in front of the stack to terminate TLS and proxy traffic. Install and obtain a certificate:
+
+```bash
+sudo apt-get install -y nginx
+sudo certbot certonly --standalone \
+  -d api.example.gov.in \
+  -d voice.example.gov.in
+```
+
+Minimal `/etc/nginx/sites-enabled/voicera.conf` with WebSocket support:
+
+```nginx
+server {
+    listen 80;
+    server_name api.example.gov.in voice.example.gov.in;
+    return 301 https://$server_name$request_uri;
+}
+
+# Backend API
+server {
+    listen 443 ssl http2;
+    server_name api.example.gov.in;
+
+    ssl_certificate     /etc/letsencrypt/live/api.example.gov.in/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.gov.in/privkey.pem;
+
+    location / {
+        proxy_pass         http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+
+# Voice server (HTTP + WebSocket)
+server {
+    listen 443 ssl http2;
+    server_name voice.example.gov.in;
+
+    ssl_certificate     /etc/letsencrypt/live/voice.example.gov.in/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/voice.example.gov.in/privkey.pem;
+
+    location / {
+        proxy_pass         http://localhost:7860;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade         $http_upgrade;
+        proxy_set_header   Connection      "upgrade";
+        proxy_set_header   Host            $host;
+        proxy_set_header   X-Real-IP       $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+After setting up nginx, update `JOHNAIC_SERVER_URL` and `JOHNAIC_WEBSOCKET_URL` in `voice_2_voice_server/.env` to use your public domain. For a full production-grade config see [Production deployment](../guides/deployment/production.md).
 
 ## Common issues
 

@@ -192,6 +192,45 @@ Sticky sessions on the voice server are not required for inbound calls because e
 
 More remedies live in [Troubleshooting: deployment](../../troubleshooting/deployment.md).
 
+## Systemd service (auto-start on reboot)
+
+Run the following once on the host to create a systemd unit that starts the VoicEra stack automatically and restarts it on failure:
+
+```bash
+sudo tee /etc/systemd/system/voicera.service > /dev/null << 'EOF'
+[Unit]
+Description=VoicEra stack (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/voicera_mono_repository
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable voicera
+sudo systemctl start voicera
+sudo systemctl status voicera
+```
+
+Adjust `WorkingDirectory` to wherever you cloned the repository. View live output:
+
+```bash
+journalctl -u voicera -f
+```
+
 ## Next steps
 
 - [Deployment walkthrough](deployment-walkthrough.md)
