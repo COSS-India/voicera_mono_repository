@@ -53,6 +53,10 @@ from utils.bot_utils import (
     is_non_conversational,
     patch_immediate_first_chunk,
 )
+from utils.language_switching import (
+    LANGUAGE_SWITCH_SYSTEM_PROMPT,
+    setup_language_switching,
+)
 from utils.call_recording_utils import submit_call_recording
 from utils.vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
 from utils.metrics import CallMetricsObserver
@@ -167,10 +171,33 @@ async def run_bot(
         tts._aggregate_sentences = True
         tts._text_aggregator = FastPunctuationAggregator()
 
+        tts_provider = str(tts_config.get("name") or "").strip().lower()
+        tts_model = (tts_config.get("args") or {}).get("model") or tts_config.get("model")
+        stt_model = (stt_config.get("args") or {}).get("model") or stt_config.get("model")
+        language_switching_enabled = (
+            llm_provider_name == "openai"
+            and tts_provider == "ai4bharat"
+            and stt_provider_name == "ai4bharat"
+            and tts_model == "indic-parler-tts"
+            and stt_model == "indic-conformer-stt"
+        )
+
         system_prompt = agent_config.get("system_prompt", None)
         if llm_provider_name in ("qwen", "localqwen", "vllm"):
             system_prompt = ensure_no_think_suffix(system_prompt or "")
+        if language_switching_enabled:
+            system_prompt = (system_prompt or "") + LANGUAGE_SWITCH_SYSTEM_PROMPT
+            logger.info("Language switching enabled (OpenAI + AI4Bharat STT/TTS)")
         context = OpenAILLMContext([{"role": "system", "content": system_prompt}])
+
+        if language_switching_enabled:
+            setup_language_switching(
+                llm=llm,
+                stt=stt,
+                tts=tts,
+                context=context,
+                default_language=language or "hi",
+            )
         
         # Use stored user aggregator params if available (for OpenAI services)
         user_params = getattr(llm, "_user_aggregator_params", None)
@@ -393,7 +420,7 @@ async def bot(
             sample_rate=sample_rate,
             params=VADParams(
                 stop_secs=0.4,
-                min_volume=0.4,
+                min_volume=0.5,
                 confidence=0.3,
                 start_secs=0.1,
             )
