@@ -20,4 +20,5 @@ Do **not** describe the project as proprietary or "all rights reserved" in exter
 
 ## Related
 
-- [FAQ](../guide/faq.md)
+- [FAQ](../guides/operator/faq.md)
+- [Welcome](../README.md)

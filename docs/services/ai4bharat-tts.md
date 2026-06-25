@@ -1,10 +1,43 @@
-# AI4Bharat TTS Service
+---
+description: Optional on-premises Indic text-to-speech server (Parler TTS over WebSocket).
+---
 
-Optional on-premises **Indic text-to-speech** (Parler TTS) over **WebSocket** (default port **8002**).
+# AI4Bharat TTS
 
-## WebSocket protocol
+Optional on-premises Indic text-to-speech using Parler TTS over **WebSocket**. The core VoicEra stack can run with cloud TTS only; this server is required only when an agent uses the `indic-parler-tts` provider.
 
-**Client → server** (one JSON object per utterance):
+Default port: **8002**. Code: `ai4bharat_tts_server/server.py`, `ai4bharat_tts_server/inference/runner.py`.
+
+## Responsibilities
+
+- Accept WebSocket utterance requests with prompt + voice description + language
+- Stream synthesised audio back as binary float32 mono PCM chunks
+- Continuous batching in an inference worker for throughput
+
+## When you need it
+
+| Scenario | Need this server? |
+|----------|-------------------|
+| Cloud TTS only | No |
+| Local Indic TTS or Bhili | Yes (+ GPU recommended) |
+
+## Architecture
+
+PyTorch Parler TTS model behind a WebSocket frontend. An inference worker pulls from a per-connection queue and batches concurrent utterances.
+
+- Sample rate: **44100 Hz** (`AUDIO_SAMPLE_RATE`)
+- Output: float32 mono PCM, streamed as binary frames
+- Framework: PyTorch + Parler TTS
+
+## Configuration
+
+The server reads model paths and runtime knobs from environment variables. Refer to `ai4bharat_tts_server/.env.example` for the active set in the repo.
+
+## Endpoints / API surface
+
+WebSocket per-connection protocol (one utterance per JSON message):
+
+**Client -> server:**
 
 ```json
 {
@@ -16,350 +49,100 @@ Optional on-premises **Indic text-to-speech** (Parler TTS) over **WebSocket** (d
 
 Use `"bhb"` or `"bhili"` for Bhili.
 
-**Server → client:** metadata JSON, then binary **float32 mono PCM** chunks, then `{ "type": "done" }`.
+**Server -> client:**
 
-- Sample rate: **44100 Hz**
-- **Code:** `ai4bharat_tts_server/server.py`, `inference/runner.py`
+1. Small JSON metadata frame
+2. Binary frames: float32 mono PCM chunks
+3. Final JSON: `{ "type": "done" }`
 
-### GPU / VRAM
+## Supported languages
+
+Indic Parler covers the major Indian languages. Agent `language` codes used by the Voice Server:
+
+| Language | Code |
+|----------|------|
+| Hindi | `hi` |
+| Tamil | `ta` |
+| Telugu | `te` |
+| Kannada | `kn` |
+| Malayalam | `ml` |
+| Bengali | `bn` |
+| Punjabi | `pa` |
+| Marathi | `mr` |
+| Gujarati | `gu` |
+| Bhili | `bhb` (or `bhili`) |
+
+Exact support depends on the loaded Parler weights. See `voice_2_voice_server/config/tts_mappings.py` for per-provider mappings.
+
+## How it talks to other services
+
+The Voice Server connects only when an agent's `tts_model.name = "indic-parler-tts"`. The base URL comes from `INDIC_TTS_SERVER_URL` (or `AI4BHARAT_TTS_URL`); the WebSocket client lives in `voice_2_voice_server/services/ai4bharat/tts.py`.
+
+```
+Voice Server (indic-parler-tts)
+    | WS {INDIC_TTS_SERVER_URL}
+    v
+ai4bharat_tts_server (Parler, 44.1 kHz float32)
+```
+
+Telephony pipelines downsample / convert the 44.1 kHz float32 stream to the carrier sample rate as needed.
+
+## GPU / VRAM
 
 | | |
 |--|--|
-| **Production** | NVIDIA GPU **expected** for Parler TTS inference |
-| **Development** | CPU possible but not recommended for latency |
-| **Recommended GPUs** | **RTX 4000 series and newer** (see list below) |
-| **Pinned VRAM (GB)** | **Deferred** — depends on checkpoint and concurrency |
+| Production | NVIDIA GPU **expected** for Parler TTS inference |
+| Development | CPU possible but not recommended for latency |
+| Recommended GPUs | **RTX 4000 series and newer** (see list below) |
+| Pinned VRAM (GB) | **Deferred** — depends on checkpoint and concurrency |
 
-**Hardware guidance:** GPUs at **RTX 4000 series and above** (NVIDIA Ada, Blackwell, and datacenter classes) generally run Parler TTS well for production. Examples that teams have used or sized for:
+**Hardware guidance.** GPUs at RTX 4000 series and above (NVIDIA Ada, Blackwell, and datacenter classes) generally run Parler TTS well for production. Examples teams have used or sized for:
 
 RTX 5090, RTX 5080, RTX 5070 Ti, RTX 5070, RTX 5060 Ti, RTX 5060, RTX 4090, RTX 4080 Super, RTX 4080, RTX 4070 Ti Super, RTX 4070 Ti, RTX 4070 Super, RTX 4070, RTX 4060 Ti 16GB, RTX 4060 Ti, RTX 4060, RTX 6000 Ada, RTX 5000 Ada, RTX 4500 Ada, RTX 4000 Ada, L40S, L40, H100, H200.
 
 Older or low-VRAM cards may work for light dev loads but are not recommended for production latency and concurrency.
 
-**Until pinned GB figures are published:** VRAM still depends on your Parler weights, batching, and concurrent utterances — consult your hosting partner or observe `nvidia-smi` on staging. Reference GB benchmarks remain **deferred** (see [A5](../source-briefs/A5-ai4bharat-servers.md)).
+{% hint style="warning" %}
+Until pinned GB figures are published, VRAM still depends on your Parler weights, batching, and concurrent utterances. Consult your hosting partner or observe `nvidia-smi` on staging.
+{% endhint %}
 
-Voice server connects when agent uses `indic-parler-tts` — see `voice_2_voice_server/services/ai4bharat/`.
-
-## Overview
-
-This optional service provides **natural speech synthesis for Indic languages** using Parler TTS.
-
-**Supported Languages:**
-- Hindi (hi)
-- Tamil (ta)
-- Telugu (te)
-- Kannada (kn)
-- Malayalam (ml)
-- Bengali (bn)
-- Punjabi (pa)
-- Marathi (mr)
-- Gujarati (gu)
-- And more...
-
-**Advantages:**
-- Free and open-source
-- Optimized for Indic languages
-- Self-hosted (no API calls needed)
-- Natural-sounding voices
-- Multiple speaker options
-- Can run on GPU for better performance
-
-## Quick Start
-
-### Installation
+## Running
 
 ```bash
 cd ai4bharat_tts_server
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install dependencies
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# Download models
-python download_models.py
-```
-
-### Running the Service
-
-```bash
-# Development
 python server.py
-
-# Via Docker
-docker build -t ai4bharat-tts .
-docker run -p 8002:8002 ai4bharat-tts
-
-# With GPU support
-docker run --gpus all -p 8002:8002 ai4bharat-tts
 ```
 
-## Configuration
+Monorepo: `make start-voice-only-services` (includes the optional AI4Bharat servers and the Voice Server).
 
-### Environment Variables
-
-```env
-# Server
-HOST=0.0.0.0
-PORT=8002
-WORKERS=2
-
-# Model
-MODEL_NAME=indic-parler-hi
-MODEL_PATH=/models
-DEVICE=cuda                    # cuda or cpu
-ENABLE_CACHING=true
-
-# Audio
-SAMPLE_RATE=16000
-AUDIO_FORMAT=wav
-SPEED=1.0                      # 0.5 - 2.0
-
-# Logging
-LOG_LEVEL=INFO
-```
-
-## API Endpoints
-
-### Synthesize
-
-**Endpoint:** `POST /synthesize`
-
-**Request:**
-```json
-{
-  "text": "नमस्ते, आपका स्वागत है।",
-  "language": "hi",
-  "speaker": "female",
-  "speed": 1.0
-}
-```
-
-**Response:**
-```
-Content-Type: audio/wav
-Body: Binary audio data (16-bit PCM, 16kHz)
-```
-
-### Health Check
-
-```
-GET /health
-```
-
-## Speakers & Voices
-
-### Available Speakers
-
-Each language supports multiple speakers:
-
-```
-Hindi (hi):
-  - female (default)
-  - male
-  - child
-
-Tamil (ta):
-  - female (default)
-  - male
-
-Telugu (te):
-  - female (default)
-  - male
-
-And so on for other languages...
-```
-
-## Integration with VoicEra
-
-### Configuration
-
-In `voice_2_voice_server/.env`:
-
-```env
-TTS_PROVIDER=ai4bharat
-TTS_SERVICE_URL=http://ai4bharat_tts_server:8002
-TTS_LANGUAGE=hi
-TTS_SPEAKER=female
-TTS_SPEED=1.0
-```
-
-### Usage
-
-```python
-class AI4BharatTTS:
-    def __init__(self, service_url, language="hi", speaker="female"):
-        self.service_url = service_url
-        self.language = language
-        self.speaker = speaker
-    
-    async def synthesize(self, text, speed=1.0):
-        import aiohttp
-        
-        async with aiohttp.ClientSession() as session:
-            response = await session.post(
-                f"{self.service_url}/synthesize",
-                json={
-                    "text": text,
-                    "language": self.language,
-                    "speaker": self.speaker,
-                    "speed": speed
-                }
-            )
-            audio_data = await response.read()
-            return audio_data
-```
-
-## Voice Customization
-
-### Adjust Speed
-
-```python
-# Slow down speech
-await tts.synthesize("Hello", speed=0.8)
-
-# Speed up speech
-await tts.synthesize("Hello", speed=1.2)
-
-# Range: 0.5 (very slow) to 2.0 (very fast)
-```
-
-### Choose Speaker
-
-```python
-# Female voice
-response = await session.post(
-    url,
-    json={
-        "text": "नमस्ते",
-        "speaker": "female"
-    }
-)
-
-# Male voice
-response = await session.post(
-    url,
-    json={
-        "text": "नमस्ते",
-        "speaker": "male"
-    }
-)
-```
-
-## Performance
-
-### Benchmarks
-
-| Language | Quality | Speed | GPU Required |
-|----------|---------|-------|--------------|
-| Hindi | High | Real-time | Yes (recommended) |
-| Tamil | High | Real-time | Yes (recommended) |
-| Telugu | High | Real-time | Yes (recommended) |
-| Kannada | High | Real-time | Yes (recommended) |
-
-### Optimization Tips
-
-- Enable audio caching for repeated text
-- Use GPU for production deployments
-- Pre-warm models on service startup
-- Batch synthesis requests when possible
-- Use appropriate sample rate (16kHz recommended)
-
-## Caching Strategy
-
-### Enable Caching
-
-```env
-ENABLE_CACHING=true
-CACHE_SIZE_MB=500
-CACHE_TTL_HOURS=24
-```
-
-### How Caching Works
-
-```
-Request: "नमस्ते" in Hindi
-  │
-  ├─► Check cache
-  │      ├─► Cache HIT: Return cached audio
-  │      └─► Cache MISS: Generate and cache
-  │
-  └─► Return audio to client
-```
-
-### Cache Key
-
-```python
-cache_key = f"{text}:{language}:{speaker}:{speed}"
-# Example: "नमस्ते:hi:female:1.0"
-```
-
-## Troubleshooting
-
-### Service won't start
+Docker with GPU:
 
 ```bash
-# Check Python version
-python --version  # Should be 3.10+
-
-# Check dependencies
-pip list | grep torch
-
-# Download models
-python download_models.py
+docker run --gpus all -p 8002:8002 \
+  -v /path/to/models:/models \
+  ai4bharat-tts
 ```
 
-### No audio output
-
-- Verify text is in the correct language
-- Check speaker name is valid for the language
-- Ensure model is properly downloaded
-- Check service logs for errors
-
-### Audio quality issues
-
-- Verify language matches text language
-- Try different speaker
-- Adjust speed parameter
-- Check input text for special characters
-
-### Out of memory
-
-- Reduce cache size
-- Disable caching if not needed
-- Use CPU instead of GPU
-- Enable model quantization
-
-### Slow synthesis
-
-- Enable GPU if available
-- Check system resources (CPU, memory)
-- Enable caching for repeated text
-- Reduce batch size
-
-## Advanced Configuration
-
-### Docker Compose Integration
+Docker Compose snippet for GPU passthrough:
 
 ```yaml
 services:
   ai4bharat_tts_server:
     build: ./ai4bharat_tts_server
-    container_name: voicera_tts
     restart: unless-stopped
     ports:
       - "8002:8002"
-    environment:
-      HOST: 0.0.0.0
-      PORT: 8002
-      MODEL_PATH: /models
-      DEVICE: cuda
     volumes:
       - ./models:/models
-    devices:
-      - /dev/nvidia.com/gpu=all  # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 5s
@@ -367,10 +150,15 @@ services:
       retries: 5
 ```
 
----
+## Troubleshooting
 
-## Next Steps
+- [troubleshooting/voice-and-audio.md](../troubleshooting/voice-and-audio.md)
+- [troubleshooting/common-issues.md](../troubleshooting/common-issues.md)
+- Choppy or silent audio in the call -> verify the Voice Server is resampling the 44.1 kHz float32 stream to the carrier rate (`SAMPLE_RATE`, default `8000`).
+- High latency -> ensure CUDA is being used (`nvidia-smi`) and that batching is not starved by a single long utterance.
 
-- **[STT Service](ai4bharat-stt.md)** - Speech-to-Text documentation
-- **[Configuration](../getting-started/configuration.md)** - Full configuration guide
-- **[Quick Start](../getting-started/quickstart.md)** - Get VoicEra running
+## Next steps
+
+- [services/ai4bharat-stt.md](ai4bharat-stt.md)
+- [services/voice-server.md](voice-server.md)
+- [concepts/voice-pipeline.md](../concepts/voice-pipeline.md)
