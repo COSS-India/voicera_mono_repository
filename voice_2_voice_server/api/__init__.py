@@ -6,7 +6,6 @@ This module provides:
 - Service factories for LLM, STT, and TTS providers
 """
 
-from .bot import bot, run_bot
 from .server import app
 from .services import (
     create_llm_service,
@@ -16,9 +15,6 @@ from .services import (
 )
 
 __all__ = [
-    # Bot
-    "bot",
-    "run_bot",
     # Server
     "app",
     # Services
