@@ -20,10 +20,10 @@ No SSH or server access is needed for any of these.
 | Test an agent without a phone | **Test on Browser** on the agent card |
 | Manage team access | **Members** (if your role allows) |
 | Upload knowledge PDFs | **Knowledge base** |
-| Run or monitor outbound batches | **Campaigns** (if enabled) |
+| Run or monitor outbound batches | **Campaigns** |
 
 {% hint style="info" %}
-There is no built-in log viewer in the dashboard today. Any task that needs Docker logs or shell access requires your hosting partner.
+Log viewing and service management require Docker and shell access. These tasks are the responsibility of the hosting partner.
 {% endhint %}
 
 ## What needs a hosting partner

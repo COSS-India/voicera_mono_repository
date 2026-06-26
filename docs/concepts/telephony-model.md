@@ -89,7 +89,7 @@ See [../guides/operator/dashboard-tour.md](../guides/operator/dashboard-tour.md)
 | Path | Purpose |
 | --- | --- |
 | `WS /agent/{agent_id}` | Vobiz inbound audio and browser test. |
-| `WS /plivo/agent/{agent_id}` | Plivo (when enabled). |
+| `WS /plivo/agent/{agent_id}` | Plivo. |
 | `WS /browser/agent/{agent_id}` | Browser test client (16 kHz L16). |
 
 ### Protocol summary
@@ -122,7 +122,7 @@ The `VobizFrameSerializer` extends Pipecat's `PlivoFrameSerializer` to add the 1
 
 ## Plivo
 
-Some builds show **Plivo** as disabled. When enabled in a future release, credentials will also live under **Integrations**; webhooks land under `/plivo/answer` and the WebSocket at `/plivo/agent/{agent_id}`. Check your deployment build before documenting Plivo for operators.
+Plivo is supported as an alternative telephony provider. Credentials follow the same **Integrations** model as Vobiz; webhooks land on `/plivo/answer` and audio streams over `/plivo/agent/{agent_id}`. Contact your hosting partner to confirm Plivo is enabled in your deployment configuration.
 
 ## Common pitfalls
 

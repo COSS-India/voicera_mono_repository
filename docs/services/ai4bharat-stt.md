@@ -95,12 +95,12 @@ ai4bharat_stt_server  (NeMo)
 |--|--|
 | Production | NVIDIA GPU **strongly recommended** |
 | Development | CPU fallback is supported but slow |
-| Pinned VRAM (GB) | **Deferred** — not benchmarked in this documentation pass |
+| Pinned VRAM (GB) | Checkpoint-dependent; size with your hosting partner using a staging load test |
 
 Exact VRAM depends on your NeMo checkpoint (`INDIC_NEMO_PATH`, optional `BHILI_NEMO_PATH`), `MAX_BATCH_SIZE`, and whether both Indic and Bhili models are loaded. VoicEra does not ship a single reference checkpoint size.
 
-{% hint style="warning" %}
-Until measured values are published, size GPUs with your hosting partner using a staging load test (`nvidia-smi` while serving `/transcribe` at expected concurrency), or use a cloud STT provider and omit this server.
+{% hint style="info" %}
+VRAM requirements depend on the NeMo checkpoint loaded, `MAX_BATCH_SIZE`, and concurrent load. Size GPUs with your hosting partner using a staging load test (`nvidia-smi` while serving `/transcribe` at expected concurrency). As an alternative, cloud STT providers require no on-premises GPU.
 {% endhint %}
 
 ## Running

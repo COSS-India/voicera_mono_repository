@@ -6,7 +6,7 @@ description: What the JOHNAIC environment variables mean and how to set the publ
 
 Environment variables named `JOHNAIC_*` are not a third-party product. They hold the **public base URL of your deployed voice server** — the address on the internet that telephony providers call for webhooks and that browsers connect to for live audio.
 
-The name is a legacy from an early deployment hostname (`johnaic.com`). New documentation uses **public voice server URL**. A future release may rename these variables to `VOICERA_PUBLIC_URL` and `VOICERA_PUBLIC_WS_URL`.
+The name is a legacy from an early deployment hostname (`johnaic.com`). Current documentation uses **public voice server URL**.
 
 ## What they are used for
 

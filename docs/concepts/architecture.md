@@ -122,7 +122,7 @@ flowchart LR
 
 {% tabs %}
 {% tab title="Docker Compose (default)" %}
-All services run on one host via `docker-compose.yml`. Good for trials, demos, and small production deployments. See [docker-compose.md](../guides/deployment/docker-compose.md).
+All services run on one host via `docker-compose.yml`. Suitable for single-host deployments from development through production. See [docker-compose.md](../guides/deployment/docker-compose.md).
 
 ```text
 host

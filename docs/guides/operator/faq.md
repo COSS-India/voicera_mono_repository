@@ -60,7 +60,7 @@ Use **Test on Browser** on the agent card under **Assistants**. See the [dashboa
 
 ### How do I make an outbound call?
 
-Either run a **Campaign** in the dashboard (if enabled) or call `POST /outbound/call/` on the voice server. Confirm which features your deployment supports — see [REST API](../../reference/rest-api.md).
+Run a **Campaign** from the dashboard or call `POST /outbound/call/` on the voice server directly. See [REST API](../../reference/rest-api.md) for the full outbound API reference.
 
 ## Documentation and license
 

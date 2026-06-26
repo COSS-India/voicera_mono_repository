@@ -27,7 +27,7 @@ The left sidebar groups everything by feature area.
 | **Phone numbers** | List numbers and link them to agents |
 | **Meetings** | Call history with time, duration, and status |
 | **Knowledge base** | Upload PDFs that agents can read from |
-| **Campaigns** | Run outbound calling batches (if enabled) |
+| **Campaigns** | Run outbound calling batches |
 | **Members** | Invite teammates and manage roles |
 
 ## Agents (Assistants)
@@ -42,7 +42,7 @@ Click **Assistants** in the sidebar, then **New assistant**. Fill in the fields 
 |-------|---------------|
 | Name | A label you will recognise, e.g. "Support agent — Hindi" |
 | Language | Conversation language (e.g. Hindi `hi`) |
-| Telephony | Provider for this agent (Vobiz is the primary supported option) |
+| Telephony | Provider for this agent (Vobiz or Plivo) |
 | STT, TTS, LLM | Pick the speech-to-text, text-to-speech, and language model providers |
 | Greeting | What the agent says when a call connects |
 | System prompt | Instructions and persona for the agent |
@@ -117,7 +117,7 @@ See [first call walkthrough](../../quickstart/first-call.md) for a full step-by-
 
 ## Making outbound calls
 
-Outbound calling depends on which features are enabled in your deployment. Options include:
+VoicEra supports two outbound paths:
 
 - **Campaigns** in the dashboard — upload a CSV of numbers and run a batch.
 - **API call** to `POST /outbound/call/` on the voice server (for integrators — see [REST API](../../reference/rest-api.md)).

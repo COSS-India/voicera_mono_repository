@@ -1,10 +1,10 @@
 ---
-description: Proof-of-concept for switching STT and TTS languages during an active voice call without restarting the session.
+description: Runtime language switching for AI4Bharat STT and TTS services during an active voice call without restarting the session.
 ---
 
 # Mid-Call Language Switching
 
-**Status:** Proof of Concept
+**Scope:** AI4Bharat STT and TTS — 23 Indic languages
 
 ## Overview
 
@@ -46,6 +46,6 @@ The implementation supports 23 Indic languages including:
 - Bengali, Marathi, Gujarati, Punjabi, Urdu
 - And others
 
-## Current Scope
+## Supported Scope
 
-Proof-of-concept implementation supporting real-time language switching for AI4Bharat STT and TTS services.
+Runtime language switching is supported for AI4Bharat STT and TTS services, covering 23 Indic languages.

@@ -7,7 +7,7 @@ description: Complete REST API reference for the VoicEra backend, with request p
 VoicEra's backend exposes a REST API on port `8000`. All resource routes are mounted under the `/api/v1` prefix. For the auto-generated, always-current schema, use Swagger UI at `http://<host>:8000/docs` or fetch the OpenAPI spec from `http://<host>:8000/openapi.json`.
 
 {% hint style="info" %}
-**Swagger is the source of truth.** This document is a human-readable companion. When in doubt, check `/docs`.
+**Swagger is the authoritative source.** This document is a human-readable companion. For the most current endpoint details, see `/docs`.
 {% endhint %}
 
 ---
@@ -109,7 +109,11 @@ Register a new user account. The first user creates a new organization; subseque
 | `company_name` | string | yes | Organization / company name |
 | `org_id` | string | no | If provided (from an invite link), joins an existing org instead of creating one |
 
-**Returns** `201 Created` — [User](#user)
+**Returns** `201 Created` — `{ "status": "success", "message": "...", "org_id": "..." }`
+
+{% hint style="info" %}
+The response confirms account creation and returns the assigned `org_id`. It does not include the full user profile. To retrieve the complete profile, first obtain a token via `POST /api/v1/users/login`, then call `GET /api/v1/users/me`.
+{% endhint %}
 
 ---
 
@@ -164,7 +168,7 @@ Return a user profile by email address. Users can only fetch their own profile.
 
 `POST /api/v1/users/forgot-password`
 
-Send a password-reset email via Mailtrap (when configured).
+Send a password-reset email to the specified address via the configured mail provider.
 
 **Auth:** None (public)
 
@@ -222,14 +226,18 @@ Create a new agent configuration.
 | `agent_category` | string | no | Optional category label |
 | `phone_number` | string | no | Phone number to associate with this agent |
 | `app_id` | string | no | External telephony application ID |
-| `greeting_message` | string | no | First message spoken when a call is answered |
+| `greeting_message` | string | no | First message spoken when a call is answered. Write-only; not included in read responses. |
 | `telephony_provider` | string | no | `"Vobiz"` or `"Plivo"` |
 | `vobiz_app_id` | string | no | Linked Vobiz application ID |
 | `vobiz_answer_url` | string | no | Vobiz answer webhook URL |
 | `plivo_app_id` | string | no | Linked Plivo application ID |
 | `plivo_answer_url` | string | no | Plivo answer webhook URL |
 
-**Returns** `201 Created` — [Agent](#agent)
+**Returns** `201 Created` — `{ "status": "success", "message": "..." }`
+
+{% hint style="info" %}
+The response confirms agent creation. To retrieve the full agent configuration, call `GET /api/v1/agents/{agent_type}`.
+{% endhint %}
 
 ---
 
@@ -286,7 +294,7 @@ Update any subset of an agent's fields. If `agent_type` is renamed and the agent
 | `agent_category` | string | no | Category label |
 | `phone_number` | string | no | Associated phone number |
 | `app_id` | string | no | Telephony application ID |
-| `greeting_message` | string | no | First message spoken on answer |
+| `greeting_message` | string | no | First message spoken when a call is answered. Write-only; not included in read responses. |
 | `telephony_provider` | string | no | `"Vobiz"` or `"Plivo"` |
 | `vobiz_app_id` | string | no | Linked Vobiz application ID |
 | `vobiz_answer_url` | string | no | Vobiz answer webhook URL |
@@ -394,7 +402,7 @@ Return a paginated list of calls for the caller's organization.
 | Query parameter | Type | Default | Description |
 |-----------------|------|---------|-------------|
 | `page` | integer | `1` | Page number (1-based) |
-| `limit` | integer | `50` | Records per page. Capped at 50 unless `for_export=true` |
+| `limit` | integer | `50` | Records per page (default 50; up to 10,000 when `for_export=true`) |
 | `for_export` | boolean | `false` | Lift the 50-record cap (up to 10 000) for bulk export |
 | `agent_type` | string | — | Filter by agent slug |
 | `from_number` | string | — | Filter by caller number |
@@ -442,7 +450,7 @@ Return full detail for a single call, including transcript and recording URL. Th
 
 `GET /api/v1/meetings/{meeting_id}/recording`
 
-Proxy-stream the audio recording for a call. Returns a `StreamingResponse` (WAV, MP3, or M4A). The meeting must belong to the caller's organization. Only `minio://` URLs are supported; recordings stored externally must be proxied separately.
+Proxy-stream the audio recording for a call. Returns a `StreamingResponse` (WAV, MP3, or M4A). The meeting must belong to the caller's organization. Recordings are served from MinIO object storage via `minio://` URLs.
 
 **Auth:** JWT
 
@@ -712,7 +720,7 @@ Start dialing all contacts in a batch. Forwards the request to the voice server,
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_type` | string | no | Override agent for this run |
-| `concurrency` | integer | no | Max simultaneous calls (1–20, default 5) |
+| `concurrency` | integer | no | Max simultaneous calls (1–20). Omit to use the batch's stored concurrency (defaults to 5 at upload time) |
 
 **Returns** `200 OK` — voice server run response
 
@@ -753,7 +761,7 @@ Schedule a batch to run at a future local time.
 | `scheduled_at_local` | string | yes | Local datetime string (e.g. `"2026-07-01T09:00:00"`) |
 | `timezone` | string | yes | IANA timezone (e.g. `"Asia/Kolkata"`) |
 | `agent_type` | string | no | Override agent |
-| `concurrency` | integer | no | Max simultaneous calls (1–20) |
+| `concurrency` | integer | no | Max simultaneous calls (1–20). Omit to use the batch's stored setting |
 
 **Returns** `200 OK` — updated [Batch](#batch)
 
@@ -871,7 +879,7 @@ Manage org-scoped PDF documents. Uploaded PDFs are chunked and embedded into a C
 
 `POST /api/v1/knowledge/upload`
 
-Upload a PDF and schedule background ingest. Returns immediately with status `processing`. Poll `GET /api/v1/knowledge` to check when status changes to `ready`.
+Upload a PDF and initiate background ingest. Returns immediately with status `processing`. Monitor ingest progress via `GET /api/v1/knowledge`; status transitions to `ready` on completion.
 
 **Auth:** JWT
 
@@ -1153,7 +1161,7 @@ Create a Vobiz application bound to an agent's answer URL.
 |----------------|------|-------------|
 | `application_id` | string | Vobiz application ID |
 
-**Returns** `200 OK`
+**Returns** `200 OK` — `{ "status": "success", "message": "..." }`
 
 ---
 
@@ -1182,7 +1190,7 @@ Assign a phone number to a Vobiz application.
 | `phone_number` | string | yes | E.164 phone number |
 | `application_id` | string | yes | Vobiz application ID |
 
-**Returns** `201 Created`
+**Returns** `201 Created` — `{ "status": "success", "message": "..." }`
 
 ---
 
@@ -1198,7 +1206,7 @@ Assign a phone number to a Vobiz application.
 |-----------|------|----------|-------------|
 | `phone_number` | string | yes | E.164 phone number to unlink |
 
-**Returns** `200 OK`
+**Returns** `200 OK` — `{ "status": "success", "message": "..." }`
 
 ---
 
@@ -1384,16 +1392,16 @@ Transfer organization ownership to another existing member. The caller must be t
 
 ## Voice Server HTTP API
 
-The voice server is a separate FastAPI app on port `7860`. Most traffic is WebSocket audio; the HTTP surface is small.
+The voice server is a dedicated FastAPI service on port `7860`. Real-time audio is handled via WebSocket; the HTTP surface manages call control and routing operations.
 
 Base URL: `http://localhost:7860`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/` | None | Status string |
+| GET | `/` | None | Status — returns `{"service": "Telephony Server", "status": "running"}` |
 | GET | `/health` | None | Health check |
 | GET | `/docs` | None | Swagger UI |
-| GET | `/telemetry/gpu` | None | GPU telemetry (nvidia-smi stats; returns `status: unavailable` if no GPU) |
+| GET | `/telemetry/gpu` | None | GPU telemetry via nvidia-smi (`status: unavailable` on CPU-only deployments) |
 | POST | `/outbound/call/` | None | Initiate an outbound call |
 | POST | `/outbound/batch/run/` | None | Start batch calling worker (called by backend) |
 | POST | `/outbound/batch/stop/` | None | Stop batch calling worker (called by backend) |
@@ -1576,11 +1584,14 @@ Returned immediately after CSV upload. A subset of [Batch](#batch):
 | `org_id` | string | Organization ID |
 | `batch_name` | string | Display name |
 | `agent_type` | string | Agent slug |
+| `concurrency` | integer | Max simultaneous calls (default `5`) |
 | `original_filename` | string | Uploaded CSV filename |
 | `status` | string | Always `"uploaded"` |
 | `total_contacts` | integer | Total rows |
 | `valid_contacts` | integer | Valid rows |
 | `invalid_contacts` | integer | Invalid rows |
+| `schedule_mode` | string | Fixed value `"run_now"` at upload time |
+| `scheduled_status` | string | Fixed value `"none"` at upload time |
 | `created_at` | string | ISO 8601 creation timestamp |
 
 ---

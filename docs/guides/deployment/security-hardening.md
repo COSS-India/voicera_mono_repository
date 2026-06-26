@@ -4,7 +4,7 @@ description: Production security hardening for VoicEra covering credentials, Mon
 
 # Security and production hardening
 
-VoicEra ships with development defaults so a new operator can run the stack within minutes. None of those defaults are safe for production. This page is the hardening pass to run before any VoicEra deployment becomes reachable on the internet or processes real call traffic.
+VoicEra ships with development defaults so a new operator can run the stack within minutes. All default values must be replaced before a deployment handles real traffic. This page is the hardening checklist to complete before any VoicEra deployment becomes reachable on the internet or processes real call data.
 
 The intended audience is a hosting partner or platform engineer who has already completed the [Deployment walkthrough](deployment-walkthrough.md) and now needs to close gaps before go-live.
 

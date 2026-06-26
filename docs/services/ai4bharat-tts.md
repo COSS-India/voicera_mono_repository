@@ -94,7 +94,7 @@ Telephony pipelines downsample / convert the 44.1 kHz float32 stream to the carr
 | Production | NVIDIA GPU **expected** for Parler TTS inference |
 | Development | CPU possible but not recommended for latency |
 | Recommended GPUs | **RTX 4000 series and newer** (see list below) |
-| Pinned VRAM (GB) | **Deferred** — depends on checkpoint and concurrency |
+| Pinned VRAM (GB) | Checkpoint-dependent; size with your hosting partner using a staging load test |
 
 **Hardware guidance.** GPUs at RTX 4000 series and above (NVIDIA Ada, Blackwell, and datacenter classes) generally run Parler TTS well for production. Examples teams have used or sized for:
 
@@ -102,8 +102,8 @@ RTX 5090, RTX 5080, RTX 5070 Ti, RTX 5070, RTX 5060 Ti, RTX 5060, RTX 4090, RTX 
 
 Older or low-VRAM cards may work for light dev loads but are not recommended for production latency and concurrency.
 
-{% hint style="warning" %}
-Until pinned GB figures are published, VRAM still depends on your Parler weights, batching, and concurrent utterances. Consult your hosting partner or observe `nvidia-smi` on staging.
+{% hint style="info" %}
+VRAM requirements depend on your Parler weights, batch size, and concurrent utterances. Consult your hosting partner or observe `nvidia-smi` during a staging load test to size the GPU for your expected concurrency.
 {% endhint %}
 
 ## Running

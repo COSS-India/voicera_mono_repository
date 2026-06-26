@@ -173,7 +173,7 @@ Enable KB on an agent from the **Assistants** page. These fields land in the age
 | `knowledge_top_k` | integer | Excerpts injected per user turn (default 3 for Groq, 10 for OpenAI). |
 
 {% hint style="info" %}
-KB is wired up for **OpenAI** and **Groq** LLM providers via `KnowledgeBaseMixin`. Other providers fall back to a non-grounded LLM call. See [voice-pipeline.md](voice-pipeline.md#knowledge-base-integration).
+KB retrieval is supported for **OpenAI** and **Groq** LLM providers via `KnowledgeBaseMixin`. Agents using other providers respond using the LLM prompt and conversation context without KB grounding. See [voice-pipeline.md](voice-pipeline.md#knowledge-base-integration).
 {% endhint %}
 
 ## Runtime flow

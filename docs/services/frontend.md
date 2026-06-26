@@ -16,7 +16,7 @@ Default port: **3000**.
 - **Phone numbers**: provision and attach Vobiz / Plivo numbers
 - **Meetings / call history**: review transcripts, sentiment, recordings
 - **Test on Browser**: live audio test against a configured agent
-- Campaigns / batches (when enabled) and telemetry views
+- Campaigns / batches and telemetry views
 
 ## Architecture
 

@@ -117,7 +117,7 @@ Looking for the data model relationships behind these terms? See [agents-campaig
 | --- | --- |
 | **Pipecat** | The open-source voice-AI framework powering VoicEra's voice server. See [voice-pipeline.md](voice-pipeline.md). |
 | **Pipeline** | The ordered list of processors that handle a call in real time. |
-| **Plivo** | Telephony provider; supported alongside Vobiz when enabled. |
+| **Plivo** | Telephony provider; supported alongside Vobiz. |
 | **Public voice server URL** | The internet address of the voice server (`JOHNAIC_SERVER_URL` / `JOHNAIC_WEBSOCKET_URL`). |
 
 ## R

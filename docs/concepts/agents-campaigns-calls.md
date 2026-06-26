@@ -77,7 +77,7 @@ An **agent** is the configuration that drives the voice pipeline for every call 
 - **Behavioural config** — system prompt, greeting, barge-in thresholds, silence handling.
 - **Language** — propagated to STT and TTS where applicable.
 - **Knowledge attachments** — `knowledge_document_ids` controls which docs are searched at call time.
-- **Telephony provider** — currently Vobiz on most deployments; Plivo when enabled.
+- **Telephony provider** — Vobiz or Plivo, configured per agent.
 
 ### Lifecycle
 

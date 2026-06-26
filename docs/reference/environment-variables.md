@@ -7,7 +7,7 @@ description: Canonical reference for every environment variable used across Voic
 Every VoicEra service is configured through environment variables, typically loaded from a per-service `.env` file. This page is the canonical list. For port-level defaults see [ports-and-defaults.md](ports-and-defaults.md); for credentials, see [../quickstart/default-credentials.md](../quickstart/default-credentials.md).
 
 {% hint style="warning" %}
-**Vobiz Auth ID / Token are not env vars in production.** They are stored per-organization in the database via **Dashboard -> Integrations** and consumed at call time by `fetch_integration_key(org_id, ...)`. The env entries below exist only for legacy single-tenant dev setups. See [../concepts/telephony-model.md](../concepts/telephony-model.md).
+**Vobiz Auth ID / Token are not env vars in production.** They are stored per-organization in the database via **Dashboard -> Integrations** and consumed at call time by `fetch_integration_key(org_id, ...)`. The env entries below are development fallbacks for single-tenant setups; use Dashboard → Integrations for all production deployments. See [../concepts/telephony-model.md](../concepts/telephony-model.md).
 {% endhint %}
 
 ## Configuration files
@@ -63,7 +63,7 @@ In Docker Compose deployments the same files are mounted via `env_file:` in `doc
 | `MAILTRAP_FROM_NAME` | backend | `VoicEra` | no | From name |
 | `FRONTEND_URL` | backend | `http://localhost:3000` | no | Used in password-reset links |
 
-### Vobiz (legacy / dev only)
+### Vobiz (development fallback)
 
 | Name | Service | Default | Required | Description |
 |------|---------|---------|----------|-------------|

@@ -14,8 +14,9 @@ The VoicEra voice server accepts a single bidirectional WebSocket per call. Tele
 
 | Path | Used by |
 |------|---------|
-| `/agent/{agent_id}` | Vobiz inbound/outbound and browser test |
+| `/agent/{agent_id}` | Vobiz inbound/outbound |
 | `/plivo/agent/{agent_id}` | Plivo inbound/outbound |
+| `/browser/agent/{agent_id}` | Browser client (also emits [`transcript`](#transcript) events) |
 
 The `agent_id` is the UUID of a VoicEra agent. The voice server looks up the agent's configuration (LLM, STT, TTS, prompt, language) from the backend when the WebSocket opens.
 
@@ -43,7 +44,7 @@ All audio frames carry **16-bit linear PCM** (L16) at **16 kHz mono**, base64-en
 | Transport | Base64 string in JSON |
 
 {% hint style="warning" %}
-**μ-law is 8 kHz only.** The Vobiz serializer (`vobiz_serializer.py`) supports L16 at 16 kHz; using μ-law forces the pipeline down to 8 kHz, degrading STT and TTS quality.
+**Recommended format: L16 at 16 kHz.** The Vobiz serializer (`vobiz_serializer.py`) is optimized for L16 at 16 kHz. Using μ-law operates the pipeline at 8 kHz, which reduces STT and TTS fidelity compared to the 16 kHz L16 format.
 {% endhint %}
 
 ---
@@ -110,20 +111,25 @@ Used by some providers for synchronisation marks.
 
 ## Server to client messages
 
-### `media`
+### `playAudio`
 
-Downlink audio frames synthesised by TTS.
+Outbound audio frames produced by the TTS pipeline. The event type is `playAudio` at all sample rates — both 8 kHz μ-law and 16 kHz L16. The `streamId` field identifies the active stream session.
 
 ```json
 {
-  "event": "media",
+  "event": "playAudio",
   "media": {
     "contentType": "audio/x-l16",
     "sampleRate": 16000,
     "payload": "<base64 PCM>"
-  }
+  },
+  "streamId": "<stream_sid>"
 }
 ```
+
+{% hint style="info" %}
+The event type for server-sent audio frames is `playAudio`. This applies at both 8 kHz (μ-law) and 16 kHz (L16). Clients must listen for `event: "playAudio"` to receive TTS output.
+{% endhint %}
 
 ### `clear`
 
@@ -136,6 +142,25 @@ Tells the client to flush any buffered downlink audio (used when the user barges
 ### `mark`
 
 Echo of a previously-issued `mark` from the client, used to confirm playback boundaries.
+
+### `transcript` (browser endpoint only)
+
+Emitted exclusively by `/browser/agent/{agent_id}`. Sent after each completed STT or TTS turn, providing a real-time transcript of the conversation.
+
+```json
+{
+  "event": "transcript",
+  "role": "user",
+  "content": "Hello, I need help with my account.",
+  "timestamp": "2026-06-26T10:00:00.123456+00:00"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `role` | string | `"user"` (STT output) or `"assistant"` (LLM/TTS output) |
+| `content` | string | Transcript text for this turn |
+| `timestamp` | string | ISO 8601 UTC timestamp, or `null` |
 
 ---
 
@@ -163,7 +188,7 @@ Echo of a previously-issued `mark` from the client, used to confirm playback bou
     |                                          |                          |
     |  { "event": "media", payload: <pcm> }    |                          |
     |----------------------------------------->| STT -> LLM -> TTS        |
-    |  { "event": "media", payload: <pcm> }    |                          |
+    |  { "event": "playAudio", payload: <pcm> }|                          |
     |<-----------------------------------------|                          |
     |              ... (loop)                  |                          |
     |                                          |                          |
@@ -185,12 +210,12 @@ Echo of a previously-issued `mark` from the client, used to confirm playback bou
 
 ## Example: browser test client
 
-The browser test is built into the dashboard (**Assistants → Test on Browser**) and demonstrates the full protocol.
+The browser client is built into the dashboard (**Assistants → Test on Browser**) and implements the full WebSocket protocol.
 
 {% tabs %}
 {% tab title="javascript" %}
 ```javascript
-const ws = new WebSocket(`wss://voice.example.com/agent/${agentId}`);
+const ws = new WebSocket(`wss://voice.example.com/browser/agent/${agentId}`);
 
 ws.onopen = () => {
   ws.send(JSON.stringify({
@@ -201,10 +226,12 @@ ws.onopen = () => {
 
 ws.onmessage = (evt) => {
   const msg = JSON.parse(evt.data);
-  if (msg.event === "media") {
+  if (msg.event === "playAudio") {       // TTS audio at 16 kHz
     playPcm16k(atob(msg.media.payload));
   } else if (msg.event === "clear") {
     flushPlaybackBuffer();
+  } else if (msg.event === "transcript") { // browser endpoint only
+    console.log(msg.role, msg.content);
   }
 };
 
@@ -227,7 +254,7 @@ import asyncio, base64, json, uuid
 import aiohttp
 
 async def run(agent_id: str, pcm_chunks):
-    url = f"wss://voice.example.com/agent/{agent_id}"
+    url = f"wss://voice.example.com/browser/agent/{agent_id}"
     async with aiohttp.ClientSession() as session:
         async with session.ws_connect(url) as ws:
             await ws.send_json({
@@ -252,7 +279,7 @@ async def run(agent_id: str, pcm_chunks):
             async def recv_audio():
                 async for msg in ws:
                     data = json.loads(msg.data)
-                    if data["event"] == "media":
+                    if data["event"] == "playAudio":  # TTS audio at 16 kHz
                         yield base64.b64decode(data["media"]["payload"])
 
             await asyncio.gather(send_audio(), anext(recv_audio()))
@@ -271,7 +298,7 @@ Telephony providers reach the voice server over public URLs; the trust boundary 
 | Traffic | Auth mechanism |
 |---------|----------------|
 | Telephony provider to voice server | Public URLs; provider account |
-| Browser test client to voice server | None (gated by deployment) |
+| Browser client to voice server | None (access controlled by deployment network configuration) |
 | Voice server to backend | `INTERNAL_API_KEY` header |
 
 See [../concepts/telephony-model.md](../concepts/telephony-model.md) for the full trust model.
@@ -290,8 +317,8 @@ See [../concepts/telephony-model.md](../concepts/telephony-model.md) for the ful
 
 1. Send the `start` frame within 5 seconds of opening the socket or providers will time out.
 2. Keep `media` frames small (~20 ms PCM, roughly 640 bytes pre-base64) to minimise latency.
-3. Handle the `clear` event — without it, barge-in feels broken.
-4. Use `wss://` in any non-local environment; some providers refuse plaintext.
+3. Handle the `clear` event to enable responsive barge-in behavior.
+4. Use `wss://` in all non-local environments; telephony providers require encrypted connections.
 5. Always close the socket on hangup so the recording is finalised.
 
 ## Next steps
