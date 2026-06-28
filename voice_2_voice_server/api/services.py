@@ -29,6 +29,7 @@ from services.kenpath_llm.llm import KenpathLLM
 from services.ai4bharat.tts import IndicParlerRESTTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
 from services.bhashini.stt import BhashiniSTTService
+from services.bhashini.socketio_stt import BhashiniSocketIOSTTService
 from services.bhashini.bhili_stt import BhashiniBhiliSTTService
 from services.bhashini.tts import BhashiniTTSService
 from services.openai_kb_llm import OpenAIKnowledgeLLMService
@@ -465,6 +466,28 @@ def create_stt_service(
             return BhashiniBhiliSTTService(
                 model=model,
                 language=lang_code,
+                sample_rate=sample_rate,
+                input_sample_rate=sample_rate,
+                suppress_vad_frames=(vad_analyzer is not None),
+            )
+
+        english_languages = {
+            "en",
+            "eng",
+            "English",
+            "English (India)",
+            "English (United States)",
+        }
+        if lang_code in ("en", "eng") or language in english_languages:
+            model = (
+                args.get("model")
+                or stt_config.get("model")
+                or "ai4bharat/whisper-medium-en--gpu--t4"
+            )
+            return BhashiniSocketIOSTTService(
+                api_key=api_key,
+                language="en",
+                service_id=model,
                 sample_rate=sample_rate,
                 input_sample_rate=sample_rate,
                 suppress_vad_frames=(vad_analyzer is not None),

@@ -6,7 +6,8 @@
           "deepgram": ["nova-3", "nova-2", "flux-general-en"],
           "gcp": ["chirp_3", "chirp_2", "long", "short", "telephony"],
           "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
-          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"]
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
+          "bhashini": ["ai4bharat/whisper-medium-en--gpu--t4"]
         }
       },
       "English (India)": {
@@ -14,7 +15,8 @@
           "deepgram": ["nova-3", "nova-2"],
           "gcp": ["chirp_3", "chirp_2", "long", "short"],
           "sarvam": ["saaras:v3", "saarika:v2", "saarika:v2.5"],
-          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"]
+          "elevenlabs": ["scribe-v2", "scribe-v2-realtime"],
+          "bhashini": ["ai4bharat/whisper-medium-en--gpu--t4"]
         }
       },
       "Hindi": {
@@ -311,6 +313,11 @@
           "description": "Bhashini multilingual ASR model powered by AI4Bharat Conformer",
           "streaming": true,
           "recommended": true
+        },
+        "ai4bharat/whisper-medium-en--gpu--t4": {
+          "description": "Bhashini English ASR via Dhruva Socket.IO (Whisper medium)",
+          "streaming": true,
+          "recommended": false
         },
         "asr_streaming": {
           "description": "Bhashini Bhili NVCF streaming ASR (Triton gRPC, language bhb)",
