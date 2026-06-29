@@ -173,10 +173,16 @@ def create_llm_service(
             or llm_config.get("vistaar_environment")
             or "prod"
         )
+        kenpath_backend = (
+            args.get("kenpath_backend")
+            or llm_config.get("kenpath_backend")
+            or "vistaar"
+        )
         return KenpathLLM(
             vistaar_session_id=vistaar_session_id,
             language=language,
             vistaar_environment=vistaar_env,
+            kenpath_backend=kenpath_backend,
             hold_messages=hold_messages or [],
             response_timeout=hold_message_timeout_seconds,
         )

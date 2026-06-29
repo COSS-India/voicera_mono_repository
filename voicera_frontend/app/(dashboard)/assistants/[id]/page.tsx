@@ -44,6 +44,12 @@ import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMInt
 // Import JSON data
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
+import {
+  type KenpathVariant,
+  kenpathLlmFieldsFromVariant,
+  kenpathVariantFromLlmModel,
+  kenpathVariantHelpText,
+} from "@/lib/kenpath"
 import ttsData from "@/tts.json"
 import descriptionsData from "@/descriptions.json"
 import {
@@ -261,7 +267,7 @@ export default function AgentDetailPage() {
   const [llmProvider, setLlmProvider] = useState("")
   const [llmModel, setLlmModel] = useState("")
   const [customLlmId, setCustomLlmId] = useState("")
-  const [kenpathEnvironment, setKenpathEnvironment] = useState<"prod" | "dev">("prod")
+  const [kenpathVariant, setKenpathVariant] = useState<KenpathVariant>("prod")
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false)
   const [knowledgeDocumentIds, setKnowledgeDocumentIds] = useState<string[]>([])
   const [knowledgeTopK, setKnowledgeTopK] = useState(3)
@@ -591,8 +597,9 @@ export default function AgentDetailPage() {
           setLlmProvider(getProviderIdFromName(llmProviderName))
           setLlmModel(agentData.agent_config?.llm_model?.model || "")
           setCustomLlmId(agentData.agent_config?.llm_model?.custom_llm_id || "")
-          const vistaarEnv = agentData.agent_config?.llm_model?.vistaar_environment
-          setKenpathEnvironment(vistaarEnv === "dev" ? "dev" : "prod")
+          setKenpathVariant(
+            kenpathVariantFromLlmModel(agentData.agent_config?.llm_model)
+          )
           setKnowledgeEnabled(Boolean((agentData.agent_config as any)?.knowledge_base_enabled))
           setKnowledgeDocumentIds(
             Array.isArray((agentData.agent_config as any)?.knowledge_document_ids)
@@ -806,7 +813,7 @@ export default function AgentDetailPage() {
         name: llmProvider || "",
         ...(llmProvider === "custom_llm" && customLlmId && { custom_llm_id: customLlmId }),
         ...(llmProvider && llmProvider !== "kenpath" && llmModel && { model: llmModel }),
-        ...(llmProvider === "kenpath" && { vistaar_environment: kenpathEnvironment }),
+        ...(llmProvider === "kenpath" && kenpathLlmFieldsFromVariant(kenpathVariant)),
       },
       stt_model: {
         name: sttProvider || "",
@@ -852,7 +859,7 @@ export default function AgentDetailPage() {
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
     const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, language, llmProvider, llmModel, customLlmId, kenpathEnvironment, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, language, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -926,7 +933,7 @@ export default function AgentDetailPage() {
             name: getProviderOfficialName(llmProvider),
             ...(llmProvider === "custom_llm" && customLlmId && { custom_llm_id: customLlmId }),
             ...(llmProvider !== "kenpath" && { model: llmModel }),
-            ...(llmProvider === "kenpath" && { vistaar_environment: kenpathEnvironment }),
+            ...(llmProvider === "kenpath" && kenpathLlmFieldsFromVariant(kenpathVariant)),
           },
           stt_model: {
             name: getProviderOfficialName(sttProvider),
@@ -1171,7 +1178,7 @@ export default function AgentDetailPage() {
                         setLlmModel("");
                         setCustomLlmId("");
                         if (v === "kenpath") {
-                          setKenpathEnvironment("prod")
+                          setKenpathVariant("prod")
                         }
                         if (v !== "openai") {
                           setKnowledgeEnabled(false)
@@ -1211,30 +1218,33 @@ export default function AgentDetailPage() {
                   </div>
 
                   {llmProvider === "kenpath" && (
-                    <div>
-                      <label className="text-sm font-semibold text-slate-700 mb-2 block">
-                        <span className="inline-flex items-center gap-2">
-                          Vistaar API
-                        </span>
-                      </label>
-                      <Select
-                        value={kenpathEnvironment}
-                        onValueChange={(v) => setKenpathEnvironment(v as "prod" | "dev")}
-                      >
-                        <SelectTrigger className="border-slate-200 h-11 shadow-sm rounded-md focus:ring-slate-300 transition focus:border-slate-500 bg-white">
-                          <SelectValue placeholder="Select API environment" />
-                        </SelectTrigger>
-                        <SelectContent className="z-[100] rounded-md shadow-lg">
-                          <SelectItem value="prod" className="hover:bg-slate-100 transition">
-                            Production
-                          </SelectItem>
-                          <SelectItem value="dev" className="hover:bg-slate-100 transition">
-                            Development
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-slate-500 mt-2 pl-1">
-                        Vistaar API environment for Kenpath (Hindi, Marathi, and Bhili).
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-semibold text-slate-700 mb-2 block">
+                          Kenpath environment
+                        </label>
+                        <Select
+                          value={kenpathVariant}
+                          onValueChange={(v) => setKenpathVariant(v as KenpathVariant)}
+                        >
+                          <SelectTrigger className="border-slate-200 h-11 shadow-sm rounded-md focus:ring-slate-300 transition focus:border-slate-500 bg-white">
+                            <SelectValue placeholder="Select Kenpath environment" />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100] rounded-md shadow-lg">
+                            <SelectItem value="prod" className="hover:bg-slate-100 transition">
+                              Production
+                            </SelectItem>
+                            <SelectItem value="dev" className="hover:bg-slate-100 transition">
+                              Development
+                            </SelectItem>
+                            <SelectItem value="bharatvistaar" className="hover:bg-slate-100 transition">
+                              Bharat Vistaar
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-xs text-slate-500 pl-1">
+                        {kenpathVariantHelpText(kenpathVariant)}
                       </p>
                     </div>
                   )}

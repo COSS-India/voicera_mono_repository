@@ -30,6 +30,12 @@
               "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
               "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
             }
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Rohit", "Aman", "Rani"],
+            "recommended_voices": ["Divya", "Rohit"]
           }
         }
       },
@@ -68,6 +74,12 @@
               "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
               "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
             }
+          },
+          "bhashini": {
+            "available": true,
+            "model": "bhashini-indic-parler",
+            "voices": ["Divya", "Rohit", "Aman", "Rani"],
+            "recommended_voices": ["Divya", "Rohit"]
           }
         }
       },

@@ -61,6 +61,12 @@ import {
 // Import JSON data
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
+import {
+  type KenpathVariant,
+  kenpathLlmFieldsFromVariant,
+  kenpathVariantHelpText,
+  kenpathVariantLabel,
+} from "@/lib/kenpath"
 import ttsData from "@/tts.json"
 import descriptionsData from "@/descriptions.json"
 
@@ -238,7 +244,7 @@ interface AgentConfig {
   llmProvider: string
   llmModel: string
   customLlmId: string
-  kenpathEnvironment: "prod" | "dev"
+  kenpathVariant: KenpathVariant
   knowledgeEnabled: boolean
   knowledgeDocumentIds: string[]
   knowledgeTopK: number
@@ -280,7 +286,7 @@ const defaultConfig: AgentConfig = {
   llmProvider: "openai",
   llmModel: "gpt-4o",
   customLlmId: "",
-  kenpathEnvironment: "prod",
+  kenpathVariant: "prod",
   knowledgeEnabled: false,
   knowledgeDocumentIds: [],
   knowledgeTopK: 3,
@@ -815,7 +821,7 @@ export default function AssistantsPage() {
         updated.llmModel = ""
         updated.customLlmId = ""
         if ((value as string) === "kenpath") {
-          updated.kenpathEnvironment = "prod"
+          updated.kenpathVariant = "prod"
         }
         if ((value as string) !== "openai") {
           updated.knowledgeEnabled = false
@@ -871,6 +877,7 @@ export default function AssistantsPage() {
         model?: string
         custom_llm_id?: string
         vistaar_environment?: "prod" | "dev"
+        kenpath_backend?: "vistaar" | "bharatvistaar"
       } = {
         name: getProviderOfficialName(config.llmProvider),
       }
@@ -880,7 +887,7 @@ export default function AssistantsPage() {
       } else if (config.llmProvider !== "kenpath") {
         llmModel.model = config.llmModel
       } else {
-        llmModel.vistaar_environment = config.kenpathEnvironment
+        Object.assign(llmModel, kenpathLlmFieldsFromVariant(config.kenpathVariant))
       }
 
       // Build STT model object WITHOUT language inside, using official provider name
@@ -1567,11 +1574,13 @@ export default function AssistantsPage() {
 
                       {config.llmProvider === "kenpath" ? (
                         <Select
-                          value={config.kenpathEnvironment}
-                          onValueChange={(v) => updateConfig("kenpathEnvironment", v as "prod" | "dev")}
+                          value={config.kenpathVariant}
+                          onValueChange={(v) =>
+                            updateConfig("kenpathVariant", v as KenpathVariant)
+                          }
                         >
                           <SelectTrigger className="h-12 rounded-lg w-full border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
-                            <SelectValue placeholder="Select API environment" />
+                            <SelectValue placeholder="Select Kenpath environment" />
                           </SelectTrigger>
                           <SelectContent className="rounded-lg">
                             <SelectItem value="prod" className="py-2.5">
@@ -1579,6 +1588,9 @@ export default function AssistantsPage() {
                             </SelectItem>
                             <SelectItem value="dev" className="py-2.5">
                               Development
+                            </SelectItem>
+                            <SelectItem value="bharatvistaar" className="py-2.5">
+                              Bharat Vistaar
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -1627,7 +1639,7 @@ export default function AssistantsPage() {
 
                   {config.llmProvider === "kenpath" && (
                     <p className="text-sm text-blue-600">
-                      Vistaar API environment for Kenpath (Hindi, Marathi, and Bhili).
+                      {kenpathVariantHelpText(config.kenpathVariant)}
                     </p>
                   )}
 
@@ -2531,7 +2543,7 @@ export default function AssistantsPage() {
                       <p className="text-sm font-medium text-slate-700">
                         {getProviderOfficialName(config.llmProvider) || "—"}
                         {config.llmProvider === "kenpath"
-                          ? ` / ${config.kenpathEnvironment === "dev" ? "Development" : "Production"}`
+                          ? ` / ${kenpathVariantLabel(config.kenpathVariant)}`
                           : ` / ${config.llmModel || "—"}`}
                       </p>
                       {config.llmProvider !== "kenpath" && (

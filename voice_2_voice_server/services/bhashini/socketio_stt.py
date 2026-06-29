@@ -38,6 +38,19 @@ DEFAULT_SERVICE_ID = "ai4bharat/whisper-medium-en--gpu--t4"
 DEFAULT_RESPONSE_FREQUENCY_SECS = 2.0
 
 
+def _extract_transcript_text(output_list: list, *, interim: bool) -> str:
+    """Dhruva ASR returns transcript text in ``source`` (Socket.IO / Whisper)."""
+
+    def chunk_text(chunk: dict) -> str:
+        return str(chunk.get("source") or chunk.get("target") or "").strip()
+
+    if not output_list:
+        return ""
+    if interim:
+        return chunk_text(output_list[0])
+    return ". ".join(text for chunk in output_list if (text := chunk_text(chunk))).strip()
+
+
 class BhashiniSocketIOSTTService(STTService):
     """Socket.IO pipeline ASR client for Dhruva Bhashini English streaming transcription."""
 
@@ -264,13 +277,9 @@ class BhashiniSocketIOSTTService(STTService):
                 raise ValueError("Output is missing or malformed.")
 
             if streaming_status.get("isIntermediateResult"):
-                text = str(output_list[0].get("target", "")).strip()
+                text = _extract_transcript_text(output_list, interim=True)
             else:
-                text = ". ".join(
-                    chunk["target"]
-                    for chunk in output_list
-                    if chunk.get("target", "").strip()
-                ).strip()
+                text = _extract_transcript_text(output_list, interim=False)
 
             if not text:
                 return
