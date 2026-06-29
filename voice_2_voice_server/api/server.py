@@ -455,6 +455,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
     except Exception as e:
         logger.error(f"❌ WebSocket error: {e}")
         logger.debug(traceback.format_exc())
+        await websocket.close(code=1011, reason="Internal server error")
     finally:
         logger.info(f"🔌 WebSocket closed: call_sid={call_sid}")
 
@@ -488,6 +489,7 @@ async def plivo_hangup_webhook(request: Request):
 @app.websocket("/plivo/agent/{agent_id}")
 async def plivo_websocket_endpoint(websocket: WebSocket, agent_id: str):
     """WebSocket endpoint for Plivo audio streaming."""
+    await websocket.accept()
     logger.info(f"🔌 Plivo WebSocket connected: agent={agent_id}")
 
     call_sid = None
@@ -512,6 +514,7 @@ async def plivo_websocket_endpoint(websocket: WebSocket, agent_id: str):
     except Exception as e:
         logger.error(f"❌ Plivo WebSocket error: {e}")
         logger.debug(traceback.format_exc())
+        await websocket.close(code=1011, reason="Internal server error")
     finally:
         logger.info(f"🔌 Plivo WebSocket closed: call_sid={call_sid}")
 
@@ -573,6 +576,7 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
     except Exception as e:
         logger.error(f"❌ Browser WebSocket error: {e}")
         logger.debug(traceback.format_exc())
+        await websocket.close(code=1011, reason="Internal server error")
     finally:
         logger.info(f"🔌 Browser WebSocket closed: call_sid={call_sid}")
 
