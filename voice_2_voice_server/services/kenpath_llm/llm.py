@@ -46,6 +46,21 @@ def resolve_vistaar_base_url(environment: Optional[str]) -> str:
     )
 
 
+def resolve_voice_bhili_url(environment: Optional[str]) -> str:
+    """Resolve Voice Bhili URL from vistaar environment (same prod/dev as streaming API)."""
+    env = normalize_vistaar_environment(environment)
+    if env == "dev":
+        override = os.environ.get("KENPATH_VOICE_BHILI_URL_DEV")
+    else:
+        override = os.environ.get("KENPATH_VOICE_BHILI_URL_PROD")
+    if override:
+        return override
+    legacy = os.environ.get("KENPATH_VOICE_BHILI_URL")
+    if legacy:
+        return legacy
+    return f"{resolve_vistaar_base_url(environment)}/api/voice-bhili"
+
+
 class KenpathLLM(OpenAILLMService):
     def __init__(
         self,
@@ -70,11 +85,7 @@ class KenpathLLM(OpenAILLMService):
         # Shared aiohttp session (created lazily)
         self._session: Optional[aiohttp.ClientSession] = None
 
-        # Voice Bhili (dev): GET JSON, no JWT — see KENPATH_VOICE_BHILI_URL
-        self._voice_bhili_url = os.environ.get(
-            "KENPATH_VOICE_BHILI_URL",
-            "https://vistaar-dev.mahapocra.gov.in/api/voice-bhili",
-        )
+        self._voice_bhili_url = resolve_voice_bhili_url(self._vistaar_environment)
 
         # Language: bhb -> Voice Bhili API; Hindi -> hi; else Marathi mr
         lang_lower = (language or "").strip().lower()
@@ -98,7 +109,7 @@ class KenpathLLM(OpenAILLMService):
 
         if self._use_voice_bhili:
             logger.info(
-                f"🤖 KenpathLLM initialized | Voice Bhili | timeout={self.response_timeout}s | hold_messages={len(self.hold_messages)} | url={self._voice_bhili_url}"
+                f"🤖 KenpathLLM initialized | Voice Bhili | env={self._vistaar_environment} | timeout={self.response_timeout}s | hold_messages={len(self.hold_messages)} | url={self._voice_bhili_url}"
             )
         else:
             logger.info(
@@ -276,9 +287,11 @@ class KenpathLLM(OpenAILLMService):
             "target_lang": self._target_lang,
         }
         headers = {"Accept": "application/json"}
+        if self._vistaar_environment == "prod":
+            headers["Authorization"] = f"Bearer {self._generate_jwt()}"
 
         logger.info(
-            f"📡 Voice Bhili API | session_id={session_id} | query={query[:50]}..."
+            f"📡 Voice Bhili API | env={self._vistaar_environment} | session_id={session_id} | query={query[:50]}..."
         )
 
         session = await self._get_session()

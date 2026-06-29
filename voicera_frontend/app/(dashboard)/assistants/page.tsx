@@ -1627,7 +1627,7 @@ export default function AssistantsPage() {
 
                   {config.llmProvider === "kenpath" && (
                     <p className="text-sm text-blue-600">
-                      Vistaar API environment for Hindi/Marathi streaming. Voice Bhili uses a separate endpoint.
+                      Vistaar API environment for Kenpath (Hindi, Marathi, and Bhili).
                     </p>
                   )}
 

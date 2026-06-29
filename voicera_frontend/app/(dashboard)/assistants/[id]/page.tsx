@@ -1234,7 +1234,7 @@ export default function AgentDetailPage() {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-slate-500 mt-2 pl-1">
-                        Environment for Hindi/Marathi streaming. Voice Bhili uses a separate endpoint.
+                        Vistaar API environment for Kenpath (Hindi, Marathi, and Bhili).
                       </p>
                     </div>
                   )}
