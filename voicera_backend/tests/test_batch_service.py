@@ -363,6 +363,26 @@ class TestCreateBatchFromCsv:
         assert result["valid_contacts"] == 1
         assert result["invalid_contacts"] == 2
 
+    def test_gridfs_file_and_contacts_deleted_when_insert_one_fails(self):
+        mock_db = _make_mock_db()
+        mock_db["Batches"].find_one.return_value = None  # no duplicate
+        mock_db["Batches"].insert_one.side_effect = RuntimeError("DB write failed")
+        mock_fs = self._make_fs()
+        with patch("app.services.batch_service.get_database", return_value=mock_db), \
+             patch("app.services.batch_service.GridFS", return_value=mock_fs):
+            with pytest.raises(RuntimeError, match="DB write failed"):
+                create_batch_from_csv(
+                    org_id="testorg1",
+                    batch_name="Fail Batch",
+                    agent_type="sales_bot",
+                    original_filename="f.csv",
+                    csv_bytes=VALID_CSV,
+                )
+        # GridFS file must not be orphaned
+        mock_fs.delete.assert_called_once()
+        # Already-inserted contact rows must be rolled back
+        mock_db["BatchContacts"].delete_many.assert_called_once()
+
 
 # ── TestListBatches ───────────────────────────────────────────────────────
 
@@ -692,6 +712,17 @@ class TestClaimNextContact:
         with patch("app.services.batch_service.get_database", return_value=mock_db):
             result = claim_next_contact_for_execution(org_id="testorg1", batch_id="b-test-001")
         assert result is None
+
+    def test_claim_filter_targets_valid_queued_contacts_for_correct_batch(self):
+        mock_db = MagicMock()
+        mock_db["BatchContacts"].find_one_and_update.return_value = None
+        with patch("app.services.batch_service.get_database", return_value=mock_db):
+            claim_next_contact_for_execution(org_id="testorg1", batch_id="b-test-001")
+        filter_arg = mock_db["BatchContacts"].find_one_and_update.call_args[0][0]
+        assert filter_arg["batch_id"] == "b-test-001"
+        assert filter_arg["org_id"] == "testorg1"
+        assert filter_arg["status"] == "queued"
+        assert filter_arg["is_valid"] is True
 
 
 # ── TestReportContactResult ───────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import pytest
 import json
 import time
+from contextlib import ExitStack
 from unittest.mock import MagicMock, AsyncMock, patch, ANY
 
 from pipecat.frames.frames import TTSSpeakFrame
@@ -35,256 +36,6 @@ class TestRunBot:
             sample_rate=8000,
             on_client_connected_hook=None,
         )
-
-    @pytest.mark.asyncio
-    @patch("api.bot.is_non_conversational")
-    @patch("api.bot.create_llm_service")
-    @patch("api.bot.create_stt_service")
-    @patch("api.bot.create_tts_service")
-    @patch("api.bot.FastPunctuationAggregator")
-    @patch("api.bot.OpenAILLMContext")
-    @patch("api.bot.create_greeting_filters")
-    @patch("api.bot.GoodbyeHangupProcessor")
-    @patch("api.bot.UserOnlineDetectionFilter")
-    @patch("api.bot.UserSilenceHangupProcessor")
-    @patch("api.bot.Pipeline")
-    @patch("api.bot.PipelineTask")
-    @patch("api.bot.PipelineRunner")
-    @patch("api.bot.CallMetricsObserver")
-    @patch("api.bot.get_sample_rate")
-    @patch("api.bot.get_ignore_user_speech_before_greeting")
-    @patch("api.bot.get_interruption_min_words")
-    @patch("api.bot.get_hold_messages")
-    @patch("api.bot.get_hold_message_timeout_seconds")
-    @patch("api.bot.get_user_online_detection_message")
-    @patch("api.bot.get_user_online_detection_enabled")
-    @patch("api.bot.get_user_online_detection_seconds")
-    @patch("api.bot.get_user_silence_hangup_seconds")
-    async def test_run_bot_conversational_happy_path(
-        self,
-        mock_get_silence_seconds,
-        mock_get_online_seconds,
-        mock_get_online_enabled,
-        mock_get_online_msg,
-        mock_get_hold_timeout,
-        mock_get_hold_msgs,
-        mock_get_min_words,
-        mock_get_ignore_speech,
-        mock_get_sample_rate,
-        mock_metrics_observer_class,
-        mock_runner_class,
-        mock_task_class,
-        mock_pipeline_class,
-        mock_silence_processor_class,
-        mock_online_filter_class,
-        mock_goodbye_processor_class,
-        mock_create_greeting_filters,
-        mock_llm_context_class,
-        mock_aggregator_class,
-        mock_create_tts,
-        mock_create_stt,
-        mock_create_llm,
-        mock_is_non_conversational,
-    ):
-        # 1. Setup config helpers
-        mock_is_non_conversational.return_value = False
-        mock_get_sample_rate.return_value = 16000
-        mock_get_ignore_speech.return_value = True
-        mock_get_min_words.return_value = 3
-        mock_get_hold_msgs.return_value = ["Wait"]
-        mock_get_hold_timeout.return_value = 0.5
-        mock_get_online_msg.return_value = "Are you there?"
-        mock_get_online_enabled.return_value = True
-        mock_get_online_seconds.return_value = 5
-        mock_get_silence_seconds.return_value = 10
-
-        # 2. Setup mock services
-        mock_llm = MagicMock()
-        mock_llm.name = "mock_llm"
-        mock_create_llm.return_value = mock_llm
-
-        mock_stt = MagicMock()
-        mock_stt.name = "mock_stt"
-        mock_create_stt.return_value = mock_stt
-
-        mock_tts = MagicMock()
-        mock_tts.name = "mock_tts"
-        mock_create_tts.return_value = mock_tts
-
-        mock_context = MagicMock()
-        mock_llm_context_class.return_value = mock_context
-
-        mock_context_aggregator = MagicMock()
-        mock_context_aggregator.user.return_value = "context_aggregator_user"
-        mock_context_aggregator.assistant.return_value = "context_aggregator_assistant"
-        mock_llm.create_context_aggregator.return_value = mock_context_aggregator
-
-        mock_greeting_blocker = MagicMock()
-        mock_greeting_completer = MagicMock()
-        mock_create_greeting_filters.return_value = (
-            None,
-            mock_greeting_blocker,
-            mock_greeting_completer,
-        )
-
-        mock_goodbye = MagicMock()
-        mock_goodbye_processor_class.return_value = mock_goodbye
-
-        mock_online = MagicMock()
-        mock_online_filter_class.return_value = mock_online
-
-        mock_silence = MagicMock()
-        mock_silence_processor_class.return_value = mock_silence
-
-        # 3. Setup transport
-        mock_transport = MagicMock()
-        mock_transport_input = MagicMock()
-        mock_transport_output = MagicMock()
-        mock_transport.input.return_value = mock_transport_input
-        mock_transport.output.return_value = mock_transport_output
-
-        # Setup event handler capture
-        registered_handlers = {}
-
-        def mock_event_handler(event_name):
-            def decorator(func):
-                registered_handlers[event_name] = func
-                return func
-
-            return decorator
-
-        mock_transport.event_handler.side_effect = mock_event_handler
-
-        # 4. Setup pipeline and task
-        mock_pipeline = MagicMock()
-        mock_pipeline_class.return_value = mock_pipeline
-        mock_task = MagicMock()
-        mock_task.queue_frames = AsyncMock()
-        mock_task.cancel = AsyncMock()
-        mock_task.stop_when_done = AsyncMock()
-        mock_task_class.return_value = mock_task
-
-        # 5. Setup runner & observer
-        mock_runner = AsyncMock()
-        mock_runner.run = AsyncMock()
-        mock_runner_class.return_value = mock_runner
-
-        mock_observer = MagicMock()
-        mock_metrics_observer_class.return_value = mock_observer
-
-        # Setup audiobuffer & transcript
-        mock_transcript = MagicMock()
-        mock_transcript.user.return_value = "transcript_user"
-        mock_transcript.assistant.return_value = "transcript_assistant"
-        mock_audiobuffer = MagicMock()
-        mock_audiobuffer.start_recording = AsyncMock()
-
-        agent_config = {
-            "llm_model": {"name": "openai", "args": {"model": "gpt-4"}},
-            "stt_model": {"name": "deepgram"},
-            "tts_model": {"name": "elevenlabs"},
-            "greeting_message": "Hello there!",
-            "org_id": "org_123",
-            "language": "English",
-        }
-
-        on_connected_hook = AsyncMock()
-
-        # Run
-        result = await run_bot(
-            mock_transport,
-            agent_config,
-            mock_transcript,
-            audiobuffer=mock_audiobuffer,
-            handle_sigint=True,
-            on_client_connected_hook=on_connected_hook,
-        )
-
-        assert result == mock_observer
-        mock_create_llm.assert_called_once_with(
-            {
-                "name": "openai",
-                "args": {"model": "gpt-4"},
-                "knowledge_base_enabled": False,
-                "knowledge_document_ids": [],
-                "knowledge_top_k": 10,
-            },
-            vistaar_session_id=None,
-            language="English",
-            org_id="org_123",
-            hold_messages=["Wait"],
-            hold_message_timeout_seconds=0.5,
-        )
-        mock_create_stt.assert_called_once_with(
-            {"name": "deepgram", "language": "English"},
-            16000,
-            vad_analyzer=None,
-            org_id="org_123",
-        )
-        mock_create_tts.assert_called_once_with(
-            {"name": "elevenlabs", "language": "English"}, 16000, org_id="org_123"
-        )
-
-        # Check Pipeline configuration — assert by membership, not position,
-        # so that inserting/removing processors doesn't break these tests.
-        processors = mock_pipeline_class.call_args[0][0]
-        assert mock_transport_input in processors
-        assert mock_stt in processors
-        assert mock_greeting_blocker in processors
-        assert any(
-            p.__class__.__name__ == "BargeInInterruptionProcessor" for p in processors
-        ), "Expected a BargeInInterruptionProcessor in the pipeline"
-        assert "transcript_user" in processors
-        assert "context_aggregator_user" in processors
-        assert mock_llm in processors
-        assert mock_goodbye in processors
-        assert mock_tts in processors
-        assert mock_greeting_completer in processors
-        assert mock_online in processors
-        assert mock_silence in processors
-        assert "transcript_assistant" in processors
-        assert mock_audiobuffer in processors
-        assert mock_transport_output in processors
-        assert "context_aggregator_assistant" in processors
-
-        # Verify ordering of a few critical dependencies
-        assert processors.index(mock_transport_input) < processors.index(mock_stt)
-        assert processors.index(mock_stt) < processors.index(mock_llm)
-        assert processors.index(mock_llm) < processors.index(mock_tts)
-        assert processors.index(mock_tts) < processors.index(mock_transport_output)
-
-        # Check task options
-        mock_task_class.assert_called_once()
-        task_args, task_kwargs = mock_task_class.call_args
-        assert task_args[0] == mock_pipeline
-        assert task_kwargs["observers"] == [mock_observer]
-
-        # Verify handlers
-        assert "on_client_connected" in registered_handlers
-        assert "on_client_disconnected" in registered_handlers
-
-        # Invoke connected handler
-        await registered_handlers["on_client_connected"](mock_transport, MagicMock())
-        mock_audiobuffer.start_recording.assert_called_once()
-        on_connected_hook.assert_awaited_once()
-        mock_greeting_blocker.start_greeting.assert_called_once()
-        mock_task.queue_frames.assert_called_once()
-        queued_args = mock_task.queue_frames.call_args[0][0]
-        assert len(queued_args) == 1
-        assert isinstance(queued_args[0], TTSSpeakFrame)
-        assert queued_args[0].text == "Hello there!"
-
-        # Invoke disconnected handler
-        await registered_handlers["on_client_disconnected"](
-            mock_transport, MagicMock()
-        )
-        mock_task.cancel.assert_called_once()
-
-        # Invoke schedule_call_end
-        # Find the goodbye processor's initialization callback
-        goodbye_callback = mock_goodbye_processor_class.call_args[0][0]
-        await goodbye_callback()
-        mock_task.stop_when_done.assert_called_once()
 
     @pytest.mark.asyncio
     @patch("api.bot.is_non_conversational")
@@ -426,6 +177,267 @@ class TestRunBot:
             mock_runner.run = AsyncMock()
             with pytest.raises(ValueError):
                 await run_bot(MagicMock(), {}, MagicMock())
+
+
+class TestRunBotConversational:
+    """Focused tests for the conversational pipeline path in run_bot.
+
+    Each test covers a single concern.  All shared mock infrastructure lives in
+    the bot_mocks fixture and _run helper — no test method carries a @patch stack.
+
+    Why no @patch decorators here:
+        All 11 required patches are applied once inside _run via ExitStack.
+        Mock objects retain their call history after the patches are removed,
+        so every assertion made after _run() returns is still valid.
+    """
+
+    # Complete config so every utility helper (get_hold_messages, etc.) reads
+    # from the dict without needing a patch.  No `interaction_mode` key means
+    # is_non_conversational() returns False — the conversational path runs naturally.
+    AGENT_CONFIG = {
+        "llm_model": {"name": "openai", "args": {"model": "gpt-4"}},
+        "stt_model": {"name": "deepgram"},
+        "tts_model": {"name": "elevenlabs"},
+        "greeting_message": "Hello there!",
+        "org_id": "org_123",
+        "language": "English",
+        "hold_messages": ["Please hold."],
+        "hold_message_timeout_seconds": 0.3,
+        "interruption_min_words": 1,
+        "ignore_user_speech_before_greeting": True,
+        "user_online_detection_enabled": True,
+        "user_online_detection_message": "Are you there?",
+        "user_online_detection_seconds": 5.0,
+        "user_silence_hangup_seconds": 10,
+    }
+
+    @pytest.fixture
+    def bot_mocks(self):
+        """All shared mock objects.  Tests pull what they need by key."""
+        mock_llm = MagicMock()
+        mock_llm.name = "mock_llm"
+        mock_stt = MagicMock()
+        mock_stt.name = "mock_stt"
+        mock_tts = MagicMock()
+        mock_tts.name = "mock_tts"
+
+        mock_context_aggregator = MagicMock()
+        mock_llm.create_context_aggregator.return_value = mock_context_aggregator
+
+        mock_greeting_blocker = MagicMock()
+        mock_greeting_completer = MagicMock()
+        mock_goodbye = MagicMock()
+        mock_online = MagicMock()
+        mock_silence = MagicMock()
+
+        mock_task = MagicMock()
+        mock_task.queue_frames = AsyncMock()
+        mock_task.cancel = AsyncMock()
+        mock_task.stop_when_done = AsyncMock()
+
+        mock_runner = AsyncMock()
+        mock_runner.run = AsyncMock()
+
+        mock_observer = MagicMock()
+
+        registered_handlers = {}
+        mock_transport = MagicMock()
+        mock_transport.input.return_value = MagicMock()
+        mock_transport.output.return_value = MagicMock()
+
+        def capture_handler(event_name):
+            def decorator(fn):
+                registered_handlers[event_name] = fn
+                return fn
+            return decorator
+
+        mock_transport.event_handler.side_effect = capture_handler
+
+        return {
+            "mock_llm": mock_llm,
+            "mock_stt": mock_stt,
+            "mock_tts": mock_tts,
+            "mock_context_aggregator": mock_context_aggregator,
+            "mock_greeting_blocker": mock_greeting_blocker,
+            "mock_greeting_completer": mock_greeting_completer,
+            "mock_goodbye": mock_goodbye,
+            "mock_online": mock_online,
+            "mock_silence": mock_silence,
+            "mock_task": mock_task,
+            "mock_runner": mock_runner,
+            "mock_observer": mock_observer,
+            "mock_transport": mock_transport,
+            "registered_handlers": registered_handlers,
+        }
+
+    async def _run(self, mocks, agent_config=None, **kwargs):
+        """Run run_bot inside a fully mocked environment.
+
+        Spy mock references (create_llm_service, Pipeline, PipelineTask, etc.)
+        are written back into `mocks` so callers can assert call_args after
+        this method returns — mock objects retain history after patches are removed.
+        """
+        kwargs.setdefault("sample_rate", 8000)
+        with ExitStack() as stack:
+            mocks["mock_create_llm"] = stack.enter_context(
+                patch("api.bot.create_llm_service", return_value=mocks["mock_llm"])
+            )
+            mocks["mock_create_stt"] = stack.enter_context(
+                patch("api.bot.create_stt_service", return_value=mocks["mock_stt"])
+            )
+            mocks["mock_create_tts"] = stack.enter_context(
+                patch("api.bot.create_tts_service", return_value=mocks["mock_tts"])
+            )
+            stack.enter_context(patch(
+                "api.bot.create_greeting_filters",
+                return_value=(None, mocks["mock_greeting_blocker"], mocks["mock_greeting_completer"]),
+            ))
+            mocks["mock_goodbye_cls"] = stack.enter_context(
+                patch("api.bot.GoodbyeHangupProcessor", return_value=mocks["mock_goodbye"])
+            )
+            stack.enter_context(patch("api.bot.UserOnlineDetectionFilter", return_value=mocks["mock_online"]))
+            stack.enter_context(patch("api.bot.UserSilenceHangupProcessor", return_value=mocks["mock_silence"]))
+            mocks["mock_pipeline_cls"] = stack.enter_context(patch("api.bot.Pipeline"))
+            mocks["mock_task_cls"] = stack.enter_context(
+                patch("api.bot.PipelineTask", return_value=mocks["mock_task"])
+            )
+            stack.enter_context(patch("api.bot.PipelineRunner", return_value=mocks["mock_runner"]))
+            stack.enter_context(patch("api.bot.CallMetricsObserver", return_value=mocks["mock_observer"]))
+
+            return await run_bot(
+                mocks["mock_transport"],
+                agent_config or self.AGENT_CONFIG,
+                MagicMock(),
+                **kwargs,
+            )
+
+    # ── Return value ──────────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_returns_metrics_observer(self, bot_mocks):
+        result = await self._run(bot_mocks)
+        assert result == bot_mocks["mock_observer"]
+
+    # ── Service factory call args ─────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_llm_called_with_merged_config(self, bot_mocks):
+        """LLM receives knowledge_base fields merged in and language injected."""
+        await self._run(bot_mocks)
+        bot_mocks["mock_create_llm"].assert_called_once_with(
+            {
+                "name": "openai",
+                "args": {"model": "gpt-4"},
+                "knowledge_base_enabled": False,
+                "knowledge_document_ids": [],
+                "knowledge_top_k": 10,
+            },
+            vistaar_session_id=None,
+            language="English",
+            org_id="org_123",
+            hold_messages=["Please hold."],
+            hold_message_timeout_seconds=0.3,
+        )
+
+    @pytest.mark.asyncio
+    async def test_stt_receives_language_and_sample_rate(self, bot_mocks):
+        await self._run(bot_mocks, sample_rate=16000)
+        bot_mocks["mock_create_stt"].assert_called_once_with(
+            {"name": "deepgram", "language": "English"},
+            16000,
+            vad_analyzer=None,
+            org_id="org_123",
+        )
+
+    @pytest.mark.asyncio
+    async def test_tts_receives_language_and_sample_rate(self, bot_mocks):
+        await self._run(bot_mocks, sample_rate=16000)
+        bot_mocks["mock_create_tts"].assert_called_once_with(
+            {"name": "elevenlabs", "language": "English"},
+            16000,
+            org_id="org_123",
+        )
+
+    # ── Pipeline composition ──────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_pipeline_contains_required_processors(self, bot_mocks):
+        await self._run(bot_mocks)
+        processors = bot_mocks["mock_pipeline_cls"].call_args[0][0]
+        m = bot_mocks
+
+        assert m["mock_transport"].input.return_value in processors
+        assert m["mock_stt"] in processors
+        assert m["mock_greeting_blocker"] in processors
+        assert any(
+            p.__class__.__name__ == "BargeInInterruptionProcessor" for p in processors
+        ), "BargeInInterruptionProcessor missing from pipeline"
+        assert m["mock_context_aggregator"].user.return_value in processors
+        assert m["mock_llm"] in processors
+        assert m["mock_goodbye"] in processors
+        assert m["mock_tts"] in processors
+        assert m["mock_greeting_completer"] in processors
+        assert m["mock_online"] in processors
+        assert m["mock_silence"] in processors
+        assert m["mock_context_aggregator"].assistant.return_value in processors
+        assert m["mock_transport"].output.return_value in processors
+
+    @pytest.mark.asyncio
+    async def test_pipeline_audio_processing_order(self, bot_mocks):
+        """Audio must flow: transport-in → STT → LLM → TTS → transport-out."""
+        await self._run(bot_mocks)
+        processors = bot_mocks["mock_pipeline_cls"].call_args[0][0]
+        m = bot_mocks
+        idx = processors.index
+
+        assert idx(m["mock_transport"].input.return_value) < idx(m["mock_stt"])
+        assert idx(m["mock_stt"]) < idx(m["mock_llm"])
+        assert idx(m["mock_llm"]) < idx(m["mock_tts"])
+        assert idx(m["mock_tts"]) < idx(m["mock_transport"].output.return_value)
+
+    # ── PipelineTask wiring ───────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_metrics_observer_registered_with_task(self, bot_mocks):
+        await self._run(bot_mocks)
+        _, task_kwargs = bot_mocks["mock_task_cls"].call_args
+        assert task_kwargs["observers"] == [bot_mocks["mock_observer"]]
+
+    # ── Event handlers ────────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_on_client_connected_queues_greeting_and_starts_recording(self, bot_mocks):
+        audiobuffer = MagicMock()
+        audiobuffer.start_recording = AsyncMock()
+        on_hook = AsyncMock()
+
+        await self._run(bot_mocks, audiobuffer=audiobuffer, on_client_connected_hook=on_hook)
+
+        handler = bot_mocks["registered_handlers"]["on_client_connected"]
+        await handler(bot_mocks["mock_transport"], MagicMock())
+
+        audiobuffer.start_recording.assert_called_once()
+        on_hook.assert_awaited_once()
+        bot_mocks["mock_greeting_blocker"].start_greeting.assert_called_once()
+        queued = bot_mocks["mock_task"].queue_frames.call_args[0][0]
+        assert len(queued) == 1
+        assert isinstance(queued[0], TTSSpeakFrame)
+        assert queued[0].text == "Hello there!"
+
+    @pytest.mark.asyncio
+    async def test_on_client_disconnected_cancels_task(self, bot_mocks):
+        await self._run(bot_mocks)
+        handler = bot_mocks["registered_handlers"]["on_client_disconnected"]
+        await handler(bot_mocks["mock_transport"], MagicMock())
+        bot_mocks["mock_task"].cancel.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_goodbye_callback_stops_pipeline_task(self, bot_mocks):
+        """The callback wired into GoodbyeHangupProcessor must call task.stop_when_done."""
+        await self._run(bot_mocks)
+        schedule_call_end = bot_mocks["mock_goodbye_cls"].call_args[0][0]
+        await schedule_call_end()
+        bot_mocks["mock_task"].stop_when_done.assert_called_once()
 
 
 class TestBotEntryPoint:
@@ -637,13 +649,13 @@ class TestBotEntryPoint:
         self,
         mock_submit_recording,
         mock_run_bot,
-        mock_wait_download_vobiz,
-        mock_start_vobiz,
         mock_patch_chunk,
         mock_transport_class,
         mock_params_class,
         mock_vad_class,
         mock_serializer_class,
+        mock_download_recording,
+        mock_start_recording,
         mock_storage_class,
     ):
         mock_storage = MagicMock()
@@ -651,8 +663,18 @@ class TestBotEntryPoint:
         mock_storage.save_recording_from_chunks = AsyncMock()
         mock_storage.save_transcript_from_lines = AsyncMock()
         mock_storage_class.from_env.return_value = mock_storage
-        mock_start_vobiz.return_value = "vobiz_rec_999"
-        mock_wait_download_vobiz.return_value = None  # Download failed
+        mock_start_recording.return_value = "vobiz_rec_999"
+        mock_download_recording.return_value = None  # Download failed
+
+        # Fire the hook so recording_id is set; otherwise the finally block
+        # skips the download entirely and the "failed download" path is never exercised.
+        async def mock_run_bot_side_effect(*args, **kwargs):
+            hook = kwargs.get("on_client_connected_hook")
+            if hook:
+                await hook()
+            return MagicMock()
+
+        mock_run_bot.side_effect = mock_run_bot_side_effect
 
         websocket_client = AsyncMock()
         agent_config = {
@@ -671,9 +693,9 @@ class TestBotEntryPoint:
 
         assert result == "call_vobiz"
 
-        # run_bot mock returned immediately without calling the hook, so
-        # vobiz_recording_id stays None → no download attempt → recording_url=None.
-        # In finally block, it skips download, but doesn't crash
+        # Recording was started, download returned None → save_recording_bytes skipped.
+        mock_start_recording.assert_called_once_with("call_vobiz", "org_777", ANY)
+        mock_download_recording.assert_called_once_with("vobiz_rec_999", "org_777")
         mock_storage.save_recording_bytes.assert_not_called()
         mock_submit_recording.assert_called_once_with(
             call_sid="call_vobiz",
@@ -877,3 +899,45 @@ class TestBotEntryPoint:
             "call_plivo",
             ["[10:00:01] user: Hello", "[10:00:02] assistant: Hi there"],
         )
+
+    @pytest.mark.asyncio
+    @patch("api.bot.MinIOStorage")
+    @patch("api.bot.parse_telephony_websocket", new_callable=AsyncMock)
+    @patch("api.bot.VobizFrameSerializer")
+    @patch("api.bot.SileroVADAnalyzer")
+    @patch("api.bot.FastAPIWebsocketParams")
+    @patch("api.bot.FastAPIWebsocketTransport")
+    @patch("api.bot.patch_immediate_first_chunk")
+    @patch("api.bot.run_bot")
+    @patch("api.bot.submit_call_recording", new_callable=AsyncMock)
+    async def test_bot_exception_in_run_bot_still_submits_recording(
+        self,
+        mock_submit_recording,
+        mock_run_bot,
+        mock_patch_chunk,
+        mock_transport_class,
+        mock_params_class,
+        mock_vad_class,
+        mock_serializer_class,
+        mock_parse_telephony,
+        mock_storage_class,
+    ):
+        mock_storage = MagicMock()
+        mock_storage.save_recording_from_chunks = AsyncMock()
+        mock_storage.save_transcript_from_lines = AsyncMock()
+        mock_storage_class.from_env.return_value = mock_storage
+        mock_parse_telephony.return_value = (None, {"stream_id": "s1", "call_id": "c1"})
+        mock_run_bot.side_effect = RuntimeError("pipeline crashed")
+
+        with pytest.raises(RuntimeError, match="pipeline crashed"):
+            await voice_bot(
+                websocket_client=AsyncMock(),
+                stream_sid=None,
+                call_sid=None,
+                agent_type="inbound",
+                agent_config={"stt_model": {"name": "deepgram"}, "org_id": "org1"},
+                provider="plivo",
+            )
+
+        # The finally block in voice_bot must run even when run_bot raises.
+        mock_submit_recording.assert_called_once()
