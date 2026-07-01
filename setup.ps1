@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # VoicEra — Windows Full Setup & Go Live
 # One command to go from fresh Windows EC2 to running application.
 #
@@ -488,7 +488,7 @@ try {
     $NGROK_URL = ($tunnels | Where-Object { $_.proto -eq "https" } | Select-Object -First 1).public_url
     if (-not $NGROK_URL) { $NGROK_URL = $tunnels[0].public_url }
 } catch {}
-ok "ngrok started${if($NGROK_URL){`: $NGROK_URL`}else{' (URL pending)'}}"
+if ($NGROK_URL) { ok "ngrok started: $NGROK_URL" } else { ok "ngrok started (URL pending)" }
 
 # ── Cloudflare tunnel ──
 $CF_LOG = "$env:TEMP\voicera_cf.log"
@@ -576,7 +576,7 @@ if (Test-Port 8002) {
 Write-Host ""
 Write-Host "  NOTE: First login requires email verification bypass." -ForegroundColor Yellow
 Write-Host "  Run after signup:" -ForegroundColor Yellow
-Write-Host '  mongosh "mongodb://admin:admin123@localhost:27017/voicera?authSource=admin" --quiet --eval "db.users.updateOne({email:'"'"'your@email.com'"'"'},{`$set:{is_verified:true}})"' -ForegroundColor DarkGray
+Write-Host '  mongosh "mongodb://admin:admin123@localhost:27017/voicera?authSource=admin" --quiet --eval "db.users.updateOne({email:''your@email.com''},{$set:{is_verified:true}})"' -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Logs: C:\logs\voicera\" -ForegroundColor DarkGray
 Write-Host "  ngrok dashboard: http://localhost:4040" -ForegroundColor DarkGray
