@@ -21,8 +21,8 @@ $ErrorActionPreference = "Stop"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-$NGROK_TOKEN    = if ($env:NGROK_TOKEN)     { $env:NGROK_TOKEN }     else { "" }
-$HF_TOKEN       = if ($env:HF_TOKEN)        { $env:HF_TOKEN }        else { "" }
+$NGROK_TOKEN    = if ($env:NGROK_TOKEN)     { $env:NGROK_TOKEN }     else { "38n07ZPka4Ra3hBJBnu5w45AMGr_2frPwYhkYHXDsuEE9WF6Q" }
+$HF_TOKEN       = if ($env:HF_TOKEN)        { $env:HF_TOKEN }        else { "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" }
 $ENABLE_STT     = if ($env:ENABLE_STT)      { $env:ENABLE_STT }      else { "yes" }
 $ENABLE_TTS     = if ($env:ENABLE_TTS)      { $env:ENABLE_TTS }      else { "yes" }
 $ENABLE_LLM     = if ($env:ENABLE_LLM)      { $env:ENABLE_LLM }      else { "none" }
@@ -58,15 +58,16 @@ function Test-Port {
 function Show-Banner {
     Clear-Host
     Write-Host ""
-    Write-Host "    ___    ____  _          ____  " -ForegroundColor Cyan
-    Write-Host "   / _ \  / __ \(_)____ ___/ __/______ _" -ForegroundColor Cyan
-    Write-Host "  | | | |/ / / / // ___// _ \  _// ___/ _  \" -ForegroundColor DarkCyan
-    Write-Host "  | |_| / /_/ / // /__ /  __/ / / /  / /_/ /" -ForegroundColor Blue
-    Write-Host "   \___/\____/_/ \___/ \___/_/ /_/   \__,_/ " -ForegroundColor DarkBlue
+    Write-Host "    ██╗   ██╗ ██████╗ ██╗ ██████╗███████╗██████╗  █████╗ " -ForegroundColor Cyan
+    Write-Host "    ██║   ██║██╔═══██╗██║██╔════╝██╔════╝██╔══██╗██╔══██╗" -ForegroundColor Cyan
+    Write-Host "    ██║   ██║██║   ██║██║██║     █████╗  ██████╔╝███████║" -ForegroundColor Blue
+    Write-Host "    ╚██╗ ██╔╝██║   ██║██║██║     ██╔══╝  ██╔══██╗██╔══██║" -ForegroundColor DarkBlue
+    Write-Host "     ╚████╔╝ ╚██████╔╝██║╚██████╗███████╗██║  ██║██║  ██║" -ForegroundColor Blue
+    Write-Host "      ╚═══╝   ╚═════╝ ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "  ─────────────────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host "   Voice AI for Every Language  |  Built by COSS India" -ForegroundColor White
-    Write-Host "  ─────────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host "  ────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host "   Voice AI for Every Language  │  Built by COSS India" -ForegroundColor White
+    Write-Host "  ────────────────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
 }
 
