@@ -1903,7 +1903,7 @@ export default function AssistantsPage() {
                                 .map((provider) => {
                                   const isSupported = supportedSTTProviders.has(provider.id)
                                   // AI4Bharat is on-prem, always available (no API key needed)
-                                  const isOnPrem = provider.id === "ai4bharat"
+                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
                                   // Check if provider has integration (API key configured)
                                   const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                                   // Determine availability status
@@ -1985,7 +1985,7 @@ export default function AssistantsPage() {
                                 .map((provider) => {
                                   const isSupported = supportedTTSProviders.has(provider.id)
                                   // AI4Bharat is on-prem, always available (no API key needed)
-                                  const isOnPrem = provider.id === "ai4bharat"
+                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
                                   // Check if provider has integration (API key configured)
                                   const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                                   // Determine availability status

@@ -1556,7 +1556,7 @@ export default function AgentDetailPage() {
                         {allSTTProviders
                           .filter((p) => supportedSTTProviders.has(p.id))
                           .map((provider) => {
-                            const isOnPrem = provider.id === "ai4bharat"
+                            const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
                             const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                             return (
                               <SelectItem key={provider.id} value={provider.id} disabled={!isIntegrated}>
@@ -1613,7 +1613,7 @@ export default function AgentDetailPage() {
                         {allTTSProviders
                           .filter((p) => supportedTTSProviders.has(p.id))
                           .map((provider) => {
-                            const isOnPrem = provider.id === "ai4bharat"
+                            const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
                             const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                             return (
                               <SelectItem key={provider.id} value={provider.id} disabled={!isIntegrated}>
