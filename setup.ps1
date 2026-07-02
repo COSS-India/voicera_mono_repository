@@ -6,9 +6,10 @@
 #   Set-ExecutionPolicy Bypass -Scope Process -Force; $s="$env:TEMP\voicera_setup.ps1"; Invoke-RestMethod https://raw.githubusercontent.com/COSS-India/voicera_mono_repository/dev/setup.ps1 -OutFile $s; &$s
 #
 # Optional env vars (set before running):
-#   $env:HF_TOKEN           (required for TTS — gated model)
-#   $env:VOBIZ_AUTH_ID      (telephony)
-#   $env:VOBIZ_AUTH_TOKEN   (telephony)
+#   $env:NGROK_TOKEN        get from https://dashboard.ngrok.com/get-started/your-authtoken
+#   $env:HF_TOKEN           (required for TTS — gated model) get from https://huggingface.co/settings/tokens
+#   $env:VOBIZ_AUTH_ID      (telephony) get from https://www.vobiz.in dashboard
+#   $env:VOBIZ_AUTH_TOKEN   (telephony) get from https://www.vobiz.in dashboard
 #   $env:ENABLE_STT         yes|no  (default: yes)
 #   $env:ENABLE_TTS         yes|no  (default: yes)
 #   $env:ENABLE_LLM         none|openai|grok|vllm  (default: none)
@@ -21,8 +22,8 @@ $ErrorActionPreference = "Stop"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-$NGROK_TOKEN    = if ($env:NGROK_TOKEN)     { $env:NGROK_TOKEN }     else { "38n07ZPka4Ra3hBJBnu5w45AMGr_2frPwYhkYHXDsuEE9WF6Q" }
-$HF_TOKEN       = if ($env:HF_TOKEN)        { $env:HF_TOKEN }        else { "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" }
+$NGROK_TOKEN    = if ($env:NGROK_TOKEN)     { $env:NGROK_TOKEN }     else { "" } # get from https://dashboard.ngrok.com/get-started/your-authtoken
+$HF_TOKEN       = if ($env:HF_TOKEN)        { $env:HF_TOKEN }        else { "" } # get from https://huggingface.co/settings/tokens
 $ENABLE_STT     = if ($env:ENABLE_STT)      { $env:ENABLE_STT }      else { "yes" }
 $ENABLE_TTS     = if ($env:ENABLE_TTS)      { $env:ENABLE_TTS }      else { "yes" }
 $ENABLE_LLM     = if ($env:ENABLE_LLM)      { $env:ENABLE_LLM }      else { "none" }
@@ -78,9 +79,11 @@ Write-Host "  Configure Services" -ForegroundColor White
 Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
 
 if ($NGROK_TOKEN -eq "") {
-    $NGROK_TOKEN = Read-Host "  ngrok authtoken (get from ngrok.com/authtokens)"
+    warn "No ngrok token found. Get one at: https://dashboard.ngrok.com/get-started/your-authtoken"
+    $NGROK_TOKEN = Read-Host "  ngrok authtoken"
 }
 if ($ENABLE_TTS -eq "yes" -and $HF_TOKEN -eq "") {
+    warn "No Hugging Face token found. Get one at: https://huggingface.co/settings/tokens"
     $HF_TOKEN = Read-Host "  Hugging Face token (required for TTS gated model)"
 }
 
@@ -97,13 +100,16 @@ $_llm = Read-Host "  LLM provider [default: $ENABLE_LLM]"
 if ($_llm -ne "") { $ENABLE_LLM = $_llm }
 
 if ($ENABLE_LLM -eq "openai" -and $OPENAI_API_KEY -eq "") {
+    warn "No OpenAI API key found. Get one at: https://platform.openai.com/api-keys"
     $OPENAI_API_KEY = Read-Host "  OpenAI API key"
 }
 if ($ENABLE_LLM -eq "grok" -and $XAI_API_KEY -eq "") {
+    warn "No xAI API key found. Get one at: https://console.x.ai"
     $XAI_API_KEY = Read-Host "  xAI API key"
 }
 
 if ($VOBIZ_AUTH_ID -eq "PLACEHOLDER") {
+    warn "No Vobiz credentials found. Get them at: https://www.vobiz.in dashboard"
     $v = Read-Host "  Vobiz Auth ID [Enter to skip]"
     if ($v -ne "") { $VOBIZ_AUTH_ID = $v }
 }
