@@ -63,6 +63,7 @@ import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
 import {
   type KenpathVariant,
+  isBharatVistaarLanguageSupported,
   kenpathLlmFieldsFromVariant,
   kenpathVariantHelpText,
   kenpathVariantLabel,
@@ -826,6 +827,22 @@ export default function AssistantsPage() {
         if ((value as string) !== "openai") {
           updated.knowledgeEnabled = false
           updated.knowledgeDocumentIds = []
+        }
+      }
+      if (key === "kenpathVariant") {
+        const variant = value as KenpathVariant
+        if (
+          updated.llmProvider === "kenpath" &&
+          updated.language &&
+          !isBharatVistaarLanguageSupported(variant, updated.language)
+        ) {
+          updated.language = ""
+          updated.sttProvider = ""
+          updated.sttModel = ""
+          updated.ttsProvider = ""
+          updated.ttsModel = ""
+          updated.ttsVoice = ""
+          updated.ttsDescription = ""
         }
       }
       if (key === "customLlmId") {
@@ -1592,6 +1609,9 @@ export default function AssistantsPage() {
                             <SelectItem value="bharatvistaar" className="py-2.5">
                               Bharat Vistaar
                             </SelectItem>
+                            <SelectItem value="bharatvistaar_dev" className="py-2.5">
+                              Bharat Vistaar Dev API
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       ) : config.llmProvider === "custom_llm" ? (
@@ -1817,19 +1837,38 @@ export default function AssistantsPage() {
                           <CommandList>
                             <CommandEmpty>No language found.</CommandEmpty>
                             <CommandGroup heading="Languages">
-                              {allLanguages.map((lang) => (
+                              {allLanguages.map((lang) => {
+                                const bharatBlocked =
+                                  config.llmProvider === "kenpath" &&
+                                  !isBharatVistaarLanguageSupported(
+                                    config.kenpathVariant,
+                                    lang.code
+                                  )
+                                return (
                                 <CommandItem
                                   key={lang.code}
                                   value={`${lang.code} ${lang.name}`}
+                                  disabled={bharatBlocked}
                                   onSelect={() => {
+                                    if (bharatBlocked) return
                                     updateConfig("language", lang.code)
                                     setLanguageOpen(false)
                                   }}
                                   className="py-2.5"
                                 >
-                                  <span className="font-medium">{lang.name}</span>
+                                  <span
+                                    className={`font-medium ${bharatBlocked ? "text-slate-400" : ""}`}
+                                  >
+                                    {lang.name}
+                                  </span>
+                                  {bharatBlocked && (
+                                    <span className="ml-2 text-xs text-slate-400">
+                                      (not supported)
+                                    </span>
+                                  )}
                                 </CommandItem>
-                              ))}
+                                )
+                              })}
                             </CommandGroup>
                           </CommandList>
                         </Command>

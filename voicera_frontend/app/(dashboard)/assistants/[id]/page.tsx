@@ -46,6 +46,7 @@ import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
 import {
   type KenpathVariant,
+  isBharatVistaarLanguageSupported,
   kenpathLlmFieldsFromVariant,
   kenpathVariantFromLlmModel,
   kenpathVariantHelpText,
@@ -1225,7 +1226,23 @@ export default function AgentDetailPage() {
                         </label>
                         <Select
                           value={kenpathVariant}
-                          onValueChange={(v) => setKenpathVariant(v as KenpathVariant)}
+                          onValueChange={(v) => {
+                            const variant = v as KenpathVariant
+                            setKenpathVariant(variant)
+                            if (
+                              llmProvider === "kenpath" &&
+                              language &&
+                              !isBharatVistaarLanguageSupported(variant, language)
+                            ) {
+                              setLanguage("")
+                              setSttProvider("")
+                              setSttModel("")
+                              setTtsProvider("")
+                              setTtsModel("")
+                              setTtsVoice("")
+                              setTtsDescription("")
+                            }
+                          }}
                         >
                           <SelectTrigger className="border-slate-200 h-11 shadow-sm rounded-md focus:ring-slate-300 transition focus:border-slate-500 bg-white">
                             <SelectValue placeholder="Select Kenpath environment" />
@@ -1239,6 +1256,9 @@ export default function AgentDetailPage() {
                             </SelectItem>
                             <SelectItem value="bharatvistaar" className="hover:bg-slate-100 transition">
                               Bharat Vistaar
+                            </SelectItem>
+                            <SelectItem value="bharatvistaar_dev" className="hover:bg-slate-100 transition">
+                              Bharat Vistaar Dev API
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -1428,11 +1448,20 @@ export default function AgentDetailPage() {
                           <CommandList>
                             <CommandEmpty>No language found.</CommandEmpty>
                             <CommandGroup heading="Languages">
-                              {allLanguages.map((lang) => (
+                              {allLanguages.map((lang) => {
+                                const bharatBlocked =
+                                  llmProvider === "kenpath" &&
+                                  !isBharatVistaarLanguageSupported(
+                                    kenpathVariant,
+                                    lang.code
+                                  )
+                                return (
                                 <CommandItem
                                   key={lang.code}
                                   value={`${lang.code} ${lang.label}`}
+                                  disabled={bharatBlocked}
                                   onSelect={() => {
+                                    if (bharatBlocked) return
                                     setLanguage(lang.code)
                                     if (lang.code && lang.code !== "English (United States)" && lang.code !== "English (India)") {
                                       const sttLangData = sttData.stt.languages[lang.code as keyof typeof sttData.stt.languages]
@@ -1478,9 +1507,19 @@ export default function AgentDetailPage() {
                                   }}
                                   className="py-2.5"
                                 >
-                                  <span className="font-medium">{lang.label}</span>
+                                  <span
+                                    className={`font-medium ${bharatBlocked ? "text-slate-400" : ""}`}
+                                  >
+                                    {lang.label}
+                                  </span>
+                                  {bharatBlocked && (
+                                    <span className="ml-2 text-xs text-slate-400">
+                                      (not supported)
+                                    </span>
+                                  )}
                                 </CommandItem>
-                              ))}
+                                )
+                              })}
                             </CommandGroup>
                           </CommandList>
                         </Command>

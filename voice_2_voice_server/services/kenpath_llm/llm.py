@@ -27,11 +27,28 @@ import os
 DEFAULT_VISTAAR_PROD_URL = "https://voice-prod.mahapocra.gov.in"
 DEFAULT_VISTAAR_DEV_URL = "https://vistaar-dev.mahapocra.gov.in"
 DEFAULT_BHARAT_VISTAAR_API_URL = "https://chat-vistaar.da.gov.in"
+DEFAULT_BHARAT_VISTAAR_DEV_API_URL = "https://dev-vistaar.da.gov.in"
 DEFAULT_BHARAT_VISTAAR_KEY_PATH = "services/kenpath_llm/prod_private_key_bh.pem"
+DEFAULT_BHARAT_VISTAAR_DEV_KEY_PATH = "services/kenpath_llm/dev_private_key_bh.pem"
 
-ENGLISH_LANGUAGE_LABELS = frozenset(
-    {"English", "English (India)", "English (United States)"}
-)
+BHARAT_VISTAAR_PROD_LANGUAGE_MAP = {
+    "English": "en",
+    "English (India)": "en",
+    "English (United States)": "en",
+    "Hindi": "hi",
+}
+
+BHARAT_VISTAAR_DEV_LANGUAGE_MAP = {
+    **BHARAT_VISTAAR_PROD_LANGUAGE_MAP,
+    "Bengali": "bn",
+    "Telugu": "te",
+    "Marathi": "mr",
+    "Tamil": "ta",
+    "Gujarati": "gu",
+    "Kannada": "kn",
+    "Malayalam": "ml",
+    "Assamese": "as",
+}
 
 
 def parse_bharat_vistaar_voice_delta(content: str) -> tuple[str, bool]:
@@ -97,14 +114,54 @@ def resolve_voice_bhili_url(environment: Optional[str]) -> str:
     return f"{resolve_vistaar_base_url(environment)}/api/voice-bhili"
 
 
-def resolve_bharat_vistaar_language(language: Optional[str]) -> str:
-    """Map agent language to Bharat Vistaar X-Language header (en or hi)."""
-    lang_lower = (language or "").strip().lower()
-    if lang_lower in ("english", "en") or language in ENGLISH_LANGUAGE_LABELS:
-        return "en"
-    if lang_lower == "hindi":
-        return "hi"
-    return "hi"
+def resolve_bharat_vistaar_api_url(environment: Optional[str]) -> str:
+    """Resolve Bharat Vistaar base URL from prod/dev environment."""
+    env = normalize_vistaar_environment(environment)
+    if env == "dev":
+        return os.environ.get(
+            "BHARAT_VISTAAR_DEV_API_URL", DEFAULT_BHARAT_VISTAAR_DEV_API_URL
+        )
+    return os.environ.get("BHARAT_VISTAAR_API_URL", DEFAULT_BHARAT_VISTAAR_API_URL)
+
+
+def resolve_bharat_vistaar_completions_path(environment: Optional[str]) -> str:
+    """Resolve Bharat Vistaar chat completions path for prod vs dev."""
+    if normalize_vistaar_environment(environment) == "dev":
+        return "/api/v1/chat-dev/completions"
+    return "/api/v1/chat/completions"
+
+
+def resolve_bharat_vistaar_key_path(environment: Optional[str]) -> str:
+    """Resolve Bharat Vistaar JWT private key path for prod vs dev."""
+    env = normalize_vistaar_environment(environment)
+    if env == "dev":
+        return os.environ.get(
+            "BHARAT_VISTAAR_DEV_JWT_PRIVATE_KEY_PATH",
+            DEFAULT_BHARAT_VISTAAR_DEV_KEY_PATH,
+        ).strip()
+    return os.environ.get(
+        "BHARAT_VISTAAR_JWT_PRIVATE_KEY_PATH", DEFAULT_BHARAT_VISTAAR_KEY_PATH
+    ).strip()
+
+
+def resolve_bharat_vistaar_language(
+    language: Optional[str], *, environment: Optional[str] = "prod"
+) -> Optional[str]:
+    """Map agent language to Bharat Vistaar X-Language header, or None if unsupported."""
+    lang_map = (
+        BHARAT_VISTAAR_DEV_LANGUAGE_MAP
+        if normalize_vistaar_environment(environment) == "dev"
+        else BHARAT_VISTAAR_PROD_LANGUAGE_MAP
+    )
+    if language in lang_map:
+        return lang_map[language]
+    return None
+
+
+def is_bharat_vistaar_language_supported(
+    language: Optional[str], *, environment: Optional[str] = "prod"
+) -> bool:
+    return resolve_bharat_vistaar_language(language, environment=environment) is not None
 
 
 class KenpathLLM(OpenAILLMService):
@@ -118,22 +175,45 @@ class KenpathLLM(OpenAILLMService):
         response_timeout: float = 0.3,
         **kwargs,
     ):
+        normalized_backend = normalize_kenpath_backend(kenpath_backend)
+        normalized_environment = normalize_vistaar_environment(vistaar_environment)
+        if normalized_backend == "bharatvistaar":
+            bharat_language = resolve_bharat_vistaar_language(
+                language, environment=normalized_environment
+            )
+            if not bharat_language:
+                raise ValueError(
+                    f"Language {language!r} is not supported by Bharat Vistaar "
+                    f"({normalized_environment})."
+                )
+
         super().__init__(**kwargs)
         self.response_timeout = max(0.05, float(response_timeout))
         self._vistaar_session_id = vistaar_session_id
         self._bhashini_fast_turn = False
-        self._kenpath_backend = normalize_kenpath_backend(kenpath_backend)
+        self._kenpath_backend = normalized_backend
         self._call_user_id = vistaar_session_id or str(uuid.uuid4())
 
         self._private_key: Optional[str] = None
         self._bharat_private_key: Optional[str] = None
         self._jwt_phone = os.environ.get("KENPATH_JWT_PHONE", "+91-9036722772")
-        self._vistaar_environment = normalize_vistaar_environment(vistaar_environment)
+        self._vistaar_environment = normalized_environment
         self._base_url = resolve_vistaar_base_url(self._vistaar_environment)
-        self._bharat_api_url = os.environ.get(
-            "BHARAT_VISTAAR_API_URL", DEFAULT_BHARAT_VISTAAR_API_URL
+        self._bharat_api_url = resolve_bharat_vistaar_api_url(
+            self._vistaar_environment
         ).rstrip("/")
-        self._bharat_language = resolve_bharat_vistaar_language(language)
+        self._bharat_completions_path = resolve_bharat_vistaar_completions_path(
+            self._vistaar_environment
+        )
+        self._bharat_key_path = resolve_bharat_vistaar_key_path(
+            self._vistaar_environment
+        )
+        self._bharat_language: Optional[str] = None
+
+        if self._kenpath_backend == "bharatvistaar":
+            self._bharat_language = resolve_bharat_vistaar_language(
+                language, environment=self._vistaar_environment
+            )
 
         if self._kenpath_backend == "vistaar":
             self._private_key = Path(os.environ["KENPATH_JWT_PRIVATE_KEY_PATH"]).read_text()
@@ -166,11 +246,13 @@ class KenpathLLM(OpenAILLMService):
 
         if self._kenpath_backend == "bharatvistaar":
             logger.info(
-                "KenpathLLM initialized | Bharat Vistaar | timeout={}s | hold_messages={} | "
-                "url={} | X-Language={}",
+                "KenpathLLM initialized | Bharat Vistaar | env={} | timeout={}s | "
+                "hold_messages={} | url={}{} | X-Language={}",
+                self._vistaar_environment,
                 self.response_timeout,
                 len(self.hold_messages),
                 self._bharat_api_url,
+                self._bharat_completions_path,
                 self._bharat_language,
             )
         elif self._use_voice_bhili:
@@ -227,14 +309,16 @@ class KenpathLLM(OpenAILLMService):
 
     def _load_bharat_private_key(self) -> str:
         if self._bharat_private_key is None:
-            key_path = os.environ.get(
-                "BHARAT_VISTAAR_JWT_PRIVATE_KEY_PATH", DEFAULT_BHARAT_VISTAAR_KEY_PATH
-            ).strip()
-            if not key_path:
-                raise ValueError(
-                    "Bharat Vistaar requires BHARAT_VISTAAR_JWT_PRIVATE_KEY_PATH in .env."
+            if not self._bharat_key_path:
+                env_var = (
+                    "BHARAT_VISTAAR_DEV_JWT_PRIVATE_KEY_PATH"
+                    if self._vistaar_environment == "dev"
+                    else "BHARAT_VISTAAR_JWT_PRIVATE_KEY_PATH"
                 )
-            self._bharat_private_key = Path(key_path).read_text()
+                raise ValueError(
+                    f"Bharat Vistaar requires {env_var} in .env."
+                )
+            self._bharat_private_key = Path(self._bharat_key_path).read_text()
         return self._bharat_private_key
 
     def _generate_jwt(self) -> str:
@@ -429,7 +513,7 @@ class KenpathLLM(OpenAILLMService):
     ) -> AsyncIterator[str]:
         """POST Bharat Vistaar chat completions with SSE streaming."""
         call_id = self._bharat_call_id()
-        url = f"{self._bharat_api_url}/api/v1/chat/completions"
+        url = f"{self._bharat_api_url}{self._bharat_completions_path}"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._generate_bharat_vistaar_jwt()}",

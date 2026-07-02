@@ -156,7 +156,7 @@ Agent configs are JSON files in `agent_configs/`. Example:
 | Provider | Name | Models |
 |----------|------|--------|
 | OpenAI | `openai` | gpt-4o, gpt-4o-mini, gpt-3.5-turbo |
-| Kenpath | `kenpath` | Vistaar streaming API (`kenpath_backend: vistaar`) or Bharat Vistaar chat API (`kenpath_backend: bharatvistaar`); **`bhb`** uses Voice Bhili |
+| Kenpath | `kenpath` | Vistaar streaming API (`kenpath_backend: vistaar`) or Bharat Vistaar chat API (`kenpath_backend: bharatvistaar`, prod or dev); **`bhb`** uses Voice Bhili |
 
 ### STT (Speech-to-Text)
 | Provider | Name | Models |
@@ -228,8 +228,10 @@ Agent configs are JSON files in `agent_configs/`. Example:
 | `KENPATH_VISTAAR_API_URL_DEV` | No | `https://vistaar-dev.mahapocra.gov.in` | Development base URL for Kenpath streaming (used when `vistaar_environment` is `dev`) |
 | `KENPATH_VISTAAR_API_URL` | No | (same as prod) | Legacy prod fallback if `KENPATH_VISTAAR_API_URL_PROD` is unset |
 | `KENPATH_VOICE_BHILI_URL` | No | `https://vistaar-dev.mahapocra.gov.in/api/voice-bhili` | Voice Bhili JSON API: when agent `language` is `bhb`, Kenpath LLM uses this GET endpoint (independent of prod/dev selector) |
-| `BHARAT_VISTAAR_JWT_PRIVATE_KEY_PATH` | * | `services/kenpath_llm/prod_private_key_bh.pem` | RS256 PEM for Bharat Vistaar (`iss: samvaad`). Place `prod_private_key_bh.pem` in `services/kenpath_llm/`. |
+| `BHARAT_VISTAAR_JWT_PRIVATE_KEY_PATH` | * | `services/kenpath_llm/prod_private_key_bh.pem` | RS256 PEM for Bharat Vistaar prod (`iss: samvaad`). Place `prod_private_key_bh.pem` in `services/kenpath_llm/`. |
 | `BHARAT_VISTAAR_API_URL` | No | `https://chat-vistaar.da.gov.in` | Bharat Vistaar prod base URL (`POST .../api/v1/chat/completions`). Session/user/tenant IDs use the telephony call ID. |
+| `BHARAT_VISTAAR_DEV_JWT_PRIVATE_KEY_PATH` | * | `services/kenpath_llm/dev_private_key_bh.pem` | RS256 PEM for Bharat Vistaar dev (`iss: samvaad`). Used when `kenpath_backend` is `bharatvistaar` and `vistaar_environment` is `dev`. |
+| `BHARAT_VISTAAR_DEV_API_URL` | No | `https://dev-vistaar.da.gov.in` | Bharat Vistaar dev base URL (`POST .../api/v1/chat-dev/completions`, SSE streaming only). |
 
 \* Required based on configured providers
 

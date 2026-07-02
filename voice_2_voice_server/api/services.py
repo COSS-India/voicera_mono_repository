@@ -25,7 +25,11 @@ from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 from pipecat.services.openai.base_llm import BaseOpenAILLMService
 
 # Local services
-from services.kenpath_llm.llm import KenpathLLM
+from services.kenpath_llm.llm import (
+    KenpathLLM,
+    is_bharat_vistaar_language_supported,
+    normalize_kenpath_backend,
+)
 from services.ai4bharat.tts import IndicParlerRESTTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
 from services.bhashini.stt import BhashiniSTTService
@@ -178,14 +182,24 @@ def create_llm_service(
             or llm_config.get("kenpath_backend")
             or "vistaar"
         )
-        return KenpathLLM(
-            vistaar_session_id=vistaar_session_id,
-            language=language,
-            vistaar_environment=vistaar_env,
-            kenpath_backend=kenpath_backend,
-            hold_messages=hold_messages or [],
-            response_timeout=hold_message_timeout_seconds,
-        )
+        kenpath_backend = normalize_kenpath_backend(kenpath_backend)
+        if kenpath_backend == "bharatvistaar" and not is_bharat_vistaar_language_supported(
+            language, environment=vistaar_env
+        ):
+            raise ServiceCreationError(
+                f"Language {language!r} is not supported by Bharat Vistaar ({vistaar_env})."
+            )
+        try:
+            return KenpathLLM(
+                vistaar_session_id=vistaar_session_id,
+                language=language,
+                vistaar_environment=vistaar_env,
+                kenpath_backend=kenpath_backend,
+                hold_messages=hold_messages or [],
+                response_timeout=hold_message_timeout_seconds,
+            )
+        except ValueError as e:
+            raise ServiceCreationError(str(e)) from e
     elif provider_normalized in ("Anthropic", "anthropic"):
         if not org_id:
             raise ServiceCreationError(
