@@ -2,7 +2,7 @@
 # VoicEra — Windows Full Setup & Go Live
 # One command to go from fresh Windows EC2 to running application.
 #
-# Usage (run as Administrator in PowerShell 7):
+# Usage (run as Administrator in PowerShell 7 — REQUIRED, the script hard-exits on PS5):
 #   Set-ExecutionPolicy Bypass -Scope Process -Force; $s="$env:TEMP\voicera_setup.ps1"; Invoke-RestMethod https://raw.githubusercontent.com/COSS-India/voicera_mono_repository/dev/setup.ps1 -OutFile $s; &$s
 #
 # Optional env vars (set before running):
@@ -19,7 +19,11 @@
 #Requires -RunAsAdministrator
 
 $ErrorActionPreference = "Stop"
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+try {
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop
+} catch {
+    Write-Host "  WARN Could not set execution policy (likely GPO-enforced at a stricter scope) — continuing, assuming Bypass at Process scope is already in effect." -ForegroundColor Yellow
+}
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 $NGROK_TOKEN    = if ($env:NGROK_TOKEN)     { $env:NGROK_TOKEN }     else { "" } # get from https://dashboard.ngrok.com/get-started/your-authtoken
@@ -131,10 +135,10 @@ if (-not $PRIVATE_IP) {
         Where-Object { $_.IPAddress -ne '127.0.0.1' } |
         Select-Object -First 1).IPAddress
 }
-$INTERNAL_KEY = python -c "import secrets; print(secrets.token_urlsafe(32))" 2>$null
-if (-not $INTERNAL_KEY) {
-    $INTERNAL_KEY = [System.Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
-}
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rngBytes = New-Object byte[] 32
+$rng.GetBytes($rngBytes)
+$INTERNAL_KEY = [System.Convert]::ToBase64String($rngBytes)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PHASE 1 — Instance Setup
@@ -162,7 +166,7 @@ Refresh-Path
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     warn "PowerShell 5 detected — installing PowerShell 7"
     winget install --id Microsoft.PowerShell --source winget --silent
-    warn "Relaunch this script in PowerShell 7 (black window) after install completes."
+    err "Relaunch this script in PowerShell 7 (search 'PowerShell 7' or run 'pwsh', not the blue Windows PowerShell 5 window) after install completes."
 }
 
 # ── GPU check ──
@@ -306,6 +310,10 @@ if ($ENABLE_TTS -eq "yes") {
         Set-Location $TTS_DIR
         py -3.10 -m venv venv
         & "$TTS_DIR\venv\Scripts\pip.exe" install -q --upgrade pip 2>&1 | Select-Object -Last 1
+        & "$TTS_DIR\venv\Scripts\pip.exe" install -q "flashinfer-python==0.6.7" "flashinfer-cubin==0.6.7" 2>&1 | Select-Object -Last 2
+        if ($LASTEXITCODE -ne 0) {
+            warn "flashinfer install failed — likely no Windows wheel for this CUDA-dependent package. TTS server needs flashinfer for paged-attention decode; consider running ai4bharat_tts_server under WSL2 (same approach used for vLLM) if native install doesn't work."
+        }
         & "$TTS_DIR\venv\Scripts\pip.exe" install -q torch transformers==4.46.1 sentencepiece protobuf scipy websockets python-dotenv numpy 2>&1 | Select-Object -Last 2
         & "$TTS_DIR\venv\Scripts\pip.exe" install -q gdown 2>&1 | Select-Object -Last 1
     }
