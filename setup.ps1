@@ -164,6 +164,9 @@ Refresh-Path
 
 # ── PowerShell 7 (install if running on PS5) ──
 if ($PSVersionTable.PSVersion.Major -lt 7) {
+    if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+        err "PowerShell 7 is already installed — relaunch this script with 'pwsh' (not the blue Windows PowerShell 5 window)."
+    }
     warn "PowerShell 5 detected — installing PowerShell 7"
     winget install --id Microsoft.PowerShell --source winget --silent
     err "Relaunch this script in PowerShell 7 (search 'PowerShell 7' or run 'pwsh', not the blue Windows PowerShell 5 window) after install completes."
