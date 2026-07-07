@@ -242,13 +242,21 @@ New-Item -ItemType Directory -Force -Path "C:\logs\mongodb" | Out-Null
 # Start MongoDB
 if (-not (Test-Port 27017)) {
     Start-Process mongod -ArgumentList "--dbpath C:\data\mongodb9 --logpath C:\logs\mongodb\mongod.log --port 27017" -WindowStyle Hidden
-    Start-Sleep -Seconds 4
 }
 
-# Create admin user (ignore error if already exists)
-try {
-    mongosh admin --eval "db.createUser({user:'admin',pwd:'admin123',roles:[{role:'root',db:'admin'}]})" 2>$null | Out-Null
-} catch {}
+# Wait for MongoDB to actually accept connections (WiredTiger init can outlast a fixed sleep)
+$mongoReady = $false
+for ($i = 0; $i -lt 30; $i++) {
+    mongosh --quiet --eval "db.runCommand('ping')" 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { $mongoReady = $true; break }
+    Start-Sleep -Seconds 1
+}
+if (-not $mongoReady) { err "MongoDB did not become ready on port 27017 after 30s" }
+
+# Create admin user — ok if it already exists, but a real failure must not proceed to --auth restart
+$createUserOutput = mongosh admin --quiet --eval "db.createUser({user:'admin',pwd:'admin123',roles:[{role:'root',db:'admin'}]})" 2>&1
+$userReady = ($LASTEXITCODE -eq 0) -or ($createUserOutput -match "already exists")
+if (-not $userReady) { err "Failed to create MongoDB admin user: $createUserOutput" }
 
 # Restart with --auth
 Stop-Process -Name mongod -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2
@@ -268,7 +276,8 @@ ok "MinIO binary ready"
 # ── STT venv ──
 if ($ENABLE_STT -eq "yes") {
     $STT_DIR = "$REPO_DIR\ai4bharat_stt_server"
-    if (-not (Test-Path "$STT_DIR\venv")) {
+    $sttMarker = "$STT_DIR\venv\.install_complete"
+    if (-not (Test-Path $sttMarker)) {
         Write-Host "  Creating STT venv..." -ForegroundColor DarkGray
         Set-Location $STT_DIR
         py -3.10 -m venv venv
@@ -285,6 +294,11 @@ if ($ENABLE_STT -eq "yes") {
         & "$STT_DIR\venv\Scripts\pip.exe" install -q -r requirements.txt 2>&1 | Select-Object -Last 2
         & "$STT_DIR\venv\Scripts\pip.exe" install -q numba ruamel.yaml scikit-learn tensorboard text-unidecode 2>&1 | Select-Object -Last 1
         & "$STT_DIR\venv\Scripts\pip.exe" install -q --no-deps "nemo_toolkit[asr] @ git+https://github.com/AI4Bharat/NeMo.git@nemo-v2" 2>&1 | Select-Object -Last 2
+        if ($LASTEXITCODE -eq 0) {
+            New-Item -ItemType File -Force -Path $sttMarker | Out-Null
+        } else {
+            warn "STT venv install did not complete cleanly — will retry on next run"
+        }
     }
 
     # Download STT checkpoint
@@ -308,7 +322,8 @@ HF_TOKEN=$HF_TOKEN
 # ── TTS venv ──
 if ($ENABLE_TTS -eq "yes") {
     $TTS_DIR = "$REPO_DIR\ai4bharat_tts_server"
-    if (-not (Test-Path "$TTS_DIR\venv")) {
+    $ttsMarker = "$TTS_DIR\venv\.install_complete"
+    if (-not (Test-Path $ttsMarker)) {
         Write-Host "  Creating TTS venv..." -ForegroundColor DarkGray
         Set-Location $TTS_DIR
         py -3.10 -m venv venv
@@ -319,6 +334,11 @@ if ($ENABLE_TTS -eq "yes") {
         }
         & "$TTS_DIR\venv\Scripts\pip.exe" install -q torch transformers==4.46.1 sentencepiece protobuf scipy websockets python-dotenv numpy 2>&1 | Select-Object -Last 2
         & "$TTS_DIR\venv\Scripts\pip.exe" install -q gdown 2>&1 | Select-Object -Last 1
+        if ($LASTEXITCODE -eq 0) {
+            New-Item -ItemType File -Force -Path $ttsMarker | Out-Null
+        } else {
+            warn "TTS venv install did not complete cleanly — will retry on next run"
+        }
     }
 
     # Download TTS checkpoints
@@ -326,7 +346,8 @@ if ($ENABLE_TTS -eq "yes") {
     $ckptFiles = Get-ChildItem "$TTS_DIR\checkpoints" -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 100MB }
     if (-not $ckptFiles) {
         Write-Host "  Downloading TTS checkpoints from Google Drive..." -ForegroundColor DarkGray
-        & "$TTS_DIR\venv\Scripts\python.exe" -m gdown --folder --fuzzy `
+        # --fuzzy is not supported together with --folder; drop it
+        & "$TTS_DIR\venv\Scripts\python.exe" -m gdown --folder `
             "https://drive.google.com/drive/folders/1qrh56MWXboiBO38gaWEcWhFl0NzlDiaT" `
             -O "$TTS_DIR\checkpoints" 2>&1 | Select-Object -Last 3
         # Flatten nested folder if gdown created one
@@ -335,6 +356,7 @@ if ($ENABLE_TTS -eq "yes") {
             Get-ChildItem $nested | Move-Item -Destination "$TTS_DIR\checkpoints\"
             Remove-Item $nested -Force
         }
+        $ckptFiles = Get-ChildItem "$TTS_DIR\checkpoints" -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 100MB }
     }
 
     Set-Content -Path "$TTS_DIR\.env" -Value @"
@@ -343,28 +365,44 @@ BHILI_ENABLE=no
 PORT=8002
 HF_TOKEN=$HF_TOKEN
 "@
-    ok "TTS ready"
+    if ($ckptFiles) {
+        ok "TTS ready"
+    } else {
+        warn "TTS checkpoint download failed — no checkpoint file found in $TTS_DIR\checkpoints"
+    }
 }
 
 # ── V2V venv ──
 $V2V_DIR = "$REPO_DIR\voice_2_voice_server"
-if (-not (Test-Path "$V2V_DIR\venv")) {
+$v2vMarker = "$V2V_DIR\venv\.install_complete"
+if (-not (Test-Path $v2vMarker)) {
     Write-Host "  Creating V2V venv..." -ForegroundColor DarkGray
     Set-Location $V2V_DIR
     py -3.10 -m venv venv
     & "$V2V_DIR\venv\Scripts\pip.exe" install -q --upgrade pip 2>&1 | Select-Object -Last 1
     & "$V2V_DIR\venv\Scripts\pip.exe" install -q -r requirements.txt 2>&1 | Select-Object -Last 2
+    if ($LASTEXITCODE -eq 0) {
+        New-Item -ItemType File -Force -Path $v2vMarker | Out-Null
+    } else {
+        warn "V2V venv install did not complete cleanly — will retry on next run"
+    }
 }
 ok "V2V venv ready"
 
 # ── Backend venv ──
 $BACKEND_DIR = "$REPO_DIR\voicera_backend"
-if (-not (Test-Path "$BACKEND_DIR\venv")) {
+$backendMarker = "$BACKEND_DIR\venv\.install_complete"
+if (-not (Test-Path $backendMarker)) {
     Write-Host "  Creating Backend venv..." -ForegroundColor DarkGray
     Set-Location $BACKEND_DIR
     py -3.10 -m venv venv
     & "$BACKEND_DIR\venv\Scripts\pip.exe" install -q --upgrade pip 2>&1 | Select-Object -Last 1
     & "$BACKEND_DIR\venv\Scripts\pip.exe" install -q -r requirements.txt 2>&1 | Select-Object -Last 2
+    if ($LASTEXITCODE -eq 0) {
+        New-Item -ItemType File -Force -Path $backendMarker | Out-Null
+    } else {
+        warn "Backend venv install did not complete cleanly — will retry on next run"
+    }
 }
 
 # Backend .env
@@ -394,10 +432,16 @@ ok "Backend ready"
 
 # ── Frontend npm install ──
 $FRONTEND_DIR = "$REPO_DIR\voicera_frontend"
-if (-not (Test-Path "$FRONTEND_DIR\node_modules")) {
+$frontendMarker = "$FRONTEND_DIR\node_modules\.install_complete"
+if (-not (Test-Path $frontendMarker)) {
     Write-Host "  Installing frontend node_modules..." -ForegroundColor DarkGray
     Set-Location $FRONTEND_DIR
     npm install --silent 2>&1 | Select-Object -Last 3
+    if ($LASTEXITCODE -eq 0) {
+        New-Item -ItemType File -Force -Path $frontendMarker | Out-Null
+    } else {
+        warn "Frontend npm install did not complete cleanly — will retry on next run"
+    }
 }
 Set-Content -Path "$FRONTEND_DIR\.env.local" -Value 'NEXT_PUBLIC_JOHNAIC_SERVER_URL="https://PENDING"'
 ok "Frontend ready"
