@@ -187,13 +187,24 @@ try {
 New-Item -ItemType Directory -Force -Path "C:\ngrok" | Out-Null
 if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
     step "Installing ngrok..."
-    Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "$env:TEMP\ngrok.zip"
-    Expand-Archive -Path "$env:TEMP\ngrok.zip" -DestinationPath "C:\ngrok\" -Force
-    [System.Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";C:\ngrok", [System.EnvironmentVariableTarget]::Machine)
-    Refresh-Path
+    # Windows Defender frequently flags the ngrok binary as PUA and quarantines it mid-download — exclude first, best-effort
+    try { Add-MpPreference -ExclusionPath "$env:TEMP\ngrok.zip", "C:\ngrok" -ErrorAction Stop } catch { warn "Could not add Defender exclusion for ngrok (continuing anyway): $($_.Exception.Message)" }
+    try {
+        Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "$env:TEMP\ngrok.zip"
+        Expand-Archive -Path "$env:TEMP\ngrok.zip" -DestinationPath "C:\ngrok\" -Force
+        [System.Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";C:\ngrok", [System.EnvironmentVariableTarget]::Machine)
+        Refresh-Path
+    } catch {
+        warn "ngrok install failed (often Windows Defender quarantining the download as PUA): $($_.Exception.Message)"
+        warn "Skipping ngrok — the app will still be reachable via the Cloudflare tunnel. To fix manually: allow C:\ngrok in Defender, then download from https://ngrok.com/download"
+    }
 }
-ngrok config add-authtoken $NGROK_TOKEN 2>$null | Out-Null
-ok "ngrok ready"
+if (Get-Command ngrok -ErrorAction SilentlyContinue) {
+    ngrok config add-authtoken $NGROK_TOKEN 2>$null | Out-Null
+    ok "ngrok ready"
+} else {
+    warn "ngrok not available — V2V tunnel via ngrok will be skipped"
+}
 
 # ── cloudflared ──
 New-Item -ItemType Directory -Force -Path "C:\cloudflared" | Out-Null
@@ -557,17 +568,21 @@ if (-not (Test-Port 3000)) {
 ok "Frontend started (port 3000)"
 
 # ── ngrok ──
-if (-not (Test-Port 4040)) {
-    Start-Process ngrok -ArgumentList "http 7860" -WindowStyle Minimized
-    Start-Sleep -Seconds 5
-}
 $NGROK_URL = ""
-try {
-    $tunnels = (Invoke-RestMethod "http://localhost:4040/api/tunnels").tunnels
-    $NGROK_URL = ($tunnels | Where-Object { $_.proto -eq "https" } | Select-Object -First 1).public_url
-    if (-not $NGROK_URL) { $NGROK_URL = $tunnels[0].public_url }
-} catch {}
-if ($NGROK_URL) { ok "ngrok started: $NGROK_URL" } else { ok "ngrok started (URL pending)" }
+if (Get-Command ngrok -ErrorAction SilentlyContinue) {
+    if (-not (Test-Port 4040)) {
+        Start-Process ngrok -ArgumentList "http 7860" -WindowStyle Minimized
+        Start-Sleep -Seconds 5
+    }
+    try {
+        $tunnels = (Invoke-RestMethod "http://localhost:4040/api/tunnels").tunnels
+        $NGROK_URL = ($tunnels | Where-Object { $_.proto -eq "https" } | Select-Object -First 1).public_url
+        if (-not $NGROK_URL) { $NGROK_URL = $tunnels[0].public_url }
+    } catch {}
+    if ($NGROK_URL) { ok "ngrok started: $NGROK_URL" } else { ok "ngrok started (URL pending)" }
+} else {
+    warn "ngrok not installed — skipping V2V tunnel (app still reachable via Cloudflare tunnel)"
+}
 
 # ── Cloudflare tunnel ──
 $CF_LOG = "$env:TEMP\voicera_cf.log"
