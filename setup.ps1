@@ -38,10 +38,12 @@ $XAI_API_KEY    = if ($env:XAI_API_KEY)     { $env:XAI_API_KEY }     else { "" }
 $REPO_DIR       = "C:\VoicEra"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-function log  { param($m) Write-Host "`n[VoicEra] $m" -ForegroundColor Green }
-function ok   { param($m) Write-Host "  OK  $m" -ForegroundColor Cyan }
-function warn { param($m) Write-Host "  WARN $m" -ForegroundColor Yellow }
-function err  { param($m) Write-Host "[ERROR] $m" -ForegroundColor Red; exit 1 }
+function Timestamp { (Get-Date).ToString("HH:mm:ss") }
+function log  { param($m) Write-Host "`n[$(Timestamp)] [VoicEra] $m" -ForegroundColor Green }
+function ok   { param($m) Write-Host "[$(Timestamp)]   OK  $m" -ForegroundColor Cyan }
+function warn { param($m) Write-Host "[$(Timestamp)]   WARN $m" -ForegroundColor Yellow }
+function err  { param($m) Write-Host "[$(Timestamp)] [ERROR] $m" -ForegroundColor Red; exit 1 }
+function step { param($m) Write-Host "[$(Timestamp)]  $m" -ForegroundColor DarkGray }
 
 function Refresh-Path {
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" +
@@ -156,7 +158,7 @@ $pkgs = @(
 foreach ($pkg in $pkgs) {
     try { & $pkg.check | Out-Null; ok "$($pkg.id) already installed" }
     catch {
-        Write-Host "  Installing $($pkg.id)..." -ForegroundColor DarkGray
+        step "Installing $($pkg.id)..."
         winget install --id $pkg.id -e --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1 | Select-Object -Last 2
     }
 }
@@ -184,7 +186,7 @@ try {
 # ── ngrok ──
 New-Item -ItemType Directory -Force -Path "C:\ngrok" | Out-Null
 if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
-    Write-Host "  Installing ngrok..." -ForegroundColor DarkGray
+    step "Installing ngrok..."
     Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "$env:TEMP\ngrok.zip"
     Expand-Archive -Path "$env:TEMP\ngrok.zip" -DestinationPath "C:\ngrok\" -Force
     [System.Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";C:\ngrok", [System.EnvironmentVariableTarget]::Machine)
@@ -196,7 +198,7 @@ ok "ngrok ready"
 # ── cloudflared ──
 New-Item -ItemType Directory -Force -Path "C:\cloudflared" | Out-Null
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
-    Write-Host "  Installing cloudflared..." -ForegroundColor DarkGray
+    step "Installing cloudflared..."
     Invoke-WebRequest "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" `
         -OutFile "C:\cloudflared\cloudflared.exe"
     [System.Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";C:\cloudflared", [System.EnvironmentVariableTarget]::Machine)
@@ -207,7 +209,7 @@ ok "cloudflared ready"
 # ── Clone repo ──
 New-Item -ItemType Directory -Force -Path $REPO_DIR | Out-Null
 if (-not (Test-Path "$REPO_DIR\.git")) {
-    Write-Host "  Cloning VoicEra repository..." -ForegroundColor DarkGray
+    step "Cloning VoicEra repository..."
     git clone -b dev https://github.com/COSS-India/voicera_mono_repository.git $REPO_DIR
 }
 ok "Repository at $REPO_DIR"
@@ -220,7 +222,7 @@ log "Phase 2/3: Application Deploy"
 # ── MongoDB 9.0 nightly ──
 $mongoPath = (Get-ChildItem "C:\mongodb9" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1)
 if (-not $mongoPath -or -not (Get-Command mongod -ErrorAction SilentlyContinue)) {
-    Write-Host "  Downloading MongoDB 9.0 nightly..." -ForegroundColor DarkGray
+    step "Downloading MongoDB 9.0 nightly..."
     $mongoZip = "$env:TEMP\mongodb.zip"
     Invoke-WebRequest "https://downloads.mongodb.org/windows/mongodb-windows-x86_64-latest.zip" -OutFile $mongoZip
     Expand-Archive -Path $mongoZip -DestinationPath "C:\mongodb9\" -Force
@@ -268,7 +270,7 @@ ok "MongoDB ready"
 New-Item -ItemType Directory -Force -Path "C:\minio" | Out-Null
 New-Item -ItemType Directory -Force -Path "C:\minio-data" | Out-Null
 if (-not (Test-Path "C:\minio\minio.exe")) {
-    Write-Host "  Downloading MinIO..." -ForegroundColor DarkGray
+    step "Downloading MinIO..."
     Invoke-WebRequest "https://dl.min.io/server/minio/release/windows-amd64/minio.exe" -OutFile "C:\minio\minio.exe"
 }
 ok "MinIO binary ready"
@@ -278,7 +280,7 @@ if ($ENABLE_STT -eq "yes") {
     $STT_DIR = "$REPO_DIR\ai4bharat_stt_server"
     $sttMarker = "$STT_DIR\venv\.install_complete"
     if (-not (Test-Path $sttMarker)) {
-        Write-Host "  Creating STT venv..." -ForegroundColor DarkGray
+        step "Creating STT venv..."
         Set-Location $STT_DIR
         py -3.10 -m venv venv
 
@@ -293,6 +295,8 @@ if ($ENABLE_STT -eq "yes") {
         & "$STT_DIR\venv\Scripts\pip.exe" install -q --upgrade pip 2>&1 | Select-Object -Last 1
         & "$STT_DIR\venv\Scripts\pip.exe" install -q -r requirements.txt 2>&1 | Select-Object -Last 2
         & "$STT_DIR\venv\Scripts\pip.exe" install -q numba ruamel.yaml scikit-learn tensorboard text-unidecode 2>&1 | Select-Object -Last 1
+        # nemo_toolkit installs --no-deps below, so pytorch-lightning (needed by server.py's compat patch) never lands unless installed explicitly
+        & "$STT_DIR\venv\Scripts\pip.exe" install -q pytorch-lightning 2>&1 | Select-Object -Last 1
         & "$STT_DIR\venv\Scripts\pip.exe" install -q --no-deps "nemo_toolkit[asr] @ git+https://github.com/AI4Bharat/NeMo.git@nemo-v2" 2>&1 | Select-Object -Last 2
         if ($LASTEXITCODE -eq 0) {
             New-Item -ItemType File -Force -Path $sttMarker | Out-Null
@@ -304,7 +308,7 @@ if ($ENABLE_STT -eq "yes") {
     # Download STT checkpoint
     New-Item -ItemType Directory -Force -Path "$STT_DIR\checkpoints" | Out-Null
     if (-not (Test-Path "$STT_DIR\checkpoints\indic_conformer.nemo")) {
-        Write-Host "  Downloading STT checkpoint (~2.4 GB)..." -ForegroundColor DarkGray
+        step "Downloading STT checkpoint (~2.4 GB)..."
         aria2c -x 16 -s 16 -k 1M `
             "https://objectstore.e2enetworks.net/indicconformer/models/indicconformer_stt_multi_hybrid_rnnt_600m.nemo" `
             -d "$STT_DIR\checkpoints" -o "indic_conformer.nemo"
@@ -324,7 +328,7 @@ if ($ENABLE_TTS -eq "yes") {
     $TTS_DIR = "$REPO_DIR\ai4bharat_tts_server"
     $ttsMarker = "$TTS_DIR\venv\.install_complete"
     if (-not (Test-Path $ttsMarker)) {
-        Write-Host "  Creating TTS venv..." -ForegroundColor DarkGray
+        step "Creating TTS venv..."
         Set-Location $TTS_DIR
         py -3.10 -m venv venv
         & "$TTS_DIR\venv\Scripts\pip.exe" install -q --upgrade pip 2>&1 | Select-Object -Last 1
@@ -345,7 +349,7 @@ if ($ENABLE_TTS -eq "yes") {
     New-Item -ItemType Directory -Force -Path "$TTS_DIR\checkpoints" | Out-Null
     $ckptFiles = Get-ChildItem "$TTS_DIR\checkpoints" -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 100MB }
     if (-not $ckptFiles) {
-        Write-Host "  Downloading TTS checkpoints from Google Drive..." -ForegroundColor DarkGray
+        step "Downloading TTS checkpoints from Google Drive..."
         # --fuzzy is not supported together with --folder; drop it
         & "$TTS_DIR\venv\Scripts\python.exe" -m gdown --folder `
             "https://drive.google.com/drive/folders/1qrh56MWXboiBO38gaWEcWhFl0NzlDiaT" `
@@ -376,7 +380,7 @@ HF_TOKEN=$HF_TOKEN
 $V2V_DIR = "$REPO_DIR\voice_2_voice_server"
 $v2vMarker = "$V2V_DIR\venv\.install_complete"
 if (-not (Test-Path $v2vMarker)) {
-    Write-Host "  Creating V2V venv..." -ForegroundColor DarkGray
+    step "Creating V2V venv..."
     Set-Location $V2V_DIR
     py -3.10 -m venv venv
     & "$V2V_DIR\venv\Scripts\pip.exe" install -q --upgrade pip 2>&1 | Select-Object -Last 1
@@ -393,7 +397,7 @@ ok "V2V venv ready"
 $BACKEND_DIR = "$REPO_DIR\voicera_backend"
 $backendMarker = "$BACKEND_DIR\venv\.install_complete"
 if (-not (Test-Path $backendMarker)) {
-    Write-Host "  Creating Backend venv..." -ForegroundColor DarkGray
+    step "Creating Backend venv..."
     Set-Location $BACKEND_DIR
     py -3.10 -m venv venv
     & "$BACKEND_DIR\venv\Scripts\pip.exe" install -q --upgrade pip 2>&1 | Select-Object -Last 1
@@ -432,9 +436,18 @@ ok "Backend ready"
 
 # ── Frontend npm install ──
 $FRONTEND_DIR = "$REPO_DIR\voicera_frontend"
+
+# package.json's "dev" script uses bash-style inline env var syntax, which cmd.exe can't parse — patch it to use cross-env
+$pkgJsonPath = "$FRONTEND_DIR\package.json"
+$pkgJson = Get-Content $pkgJsonPath -Raw
+if ($pkgJson -notmatch "cross-env WATCHPACK_POLLING") {
+    $pkgJson = $pkgJson -replace '"dev":\s*"WATCHPACK_POLLING=true next dev --webpack"', '"dev": "cross-env WATCHPACK_POLLING=true next dev --webpack"'
+    Set-Content -Path $pkgJsonPath -Value $pkgJson
+}
+
 $frontendMarker = "$FRONTEND_DIR\node_modules\.install_complete"
 if (-not (Test-Path $frontendMarker)) {
-    Write-Host "  Installing frontend node_modules..." -ForegroundColor DarkGray
+    step "Installing frontend node_modules..."
     Set-Location $FRONTEND_DIR
     npm install --silent 2>&1 | Select-Object -Last 3
     if ($LASTEXITCODE -eq 0) {
@@ -442,6 +455,11 @@ if (-not (Test-Path $frontendMarker)) {
     } else {
         warn "Frontend npm install did not complete cleanly — will retry on next run"
     }
+}
+
+# "npm run dev" resolves cross-env from node_modules/.bin — ensure it's present even on reruns where node_modules predates this fix
+if (-not (Test-Path "$FRONTEND_DIR\node_modules\cross-env")) {
+    & npm install --prefix $FRONTEND_DIR cross-env --save-dev --silent 2>&1 | Select-Object -Last 2
 }
 Set-Content -Path "$FRONTEND_DIR\.env.local" -Value 'NEXT_PUBLIC_JOHNAIC_SERVER_URL="https://PENDING"'
 ok "Frontend ready"
