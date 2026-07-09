@@ -162,10 +162,15 @@ async def run_bot(
         tts = create_tts_service(tts_config, sample_rate, org_id=org_id)
 
         stt_provider_name = str(stt_config.get("name") or "").strip().lower()
-        if stt_provider_name in ("bhashini", "ai4bharat") and llm_provider_name == "kenpath":
-            enable_fast_turn = getattr(llm, "enable_bhashini_fast_turn", None)
-            if callable(enable_fast_turn):
-                enable_fast_turn()
+        if llm_provider_name == "kenpath":
+            if stt_provider_name == "bhashini":
+                enable_fast_turn = getattr(llm, "enable_bhashini_fast_turn", None)
+                if callable(enable_fast_turn):
+                    enable_fast_turn()
+            elif stt_provider_name == "ai4bharat":
+                enable_fast_turn = getattr(llm, "enable_ai4bharat_fast_turn", None)
+                if callable(enable_fast_turn):
+                    enable_fast_turn()
         
         # Use fast aggregator (no lookahead/NLTK) for lower latency
         tts._aggregate_sentences = True

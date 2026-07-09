@@ -29,6 +29,7 @@ from pipecat.frames.frames import (
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
+from pipecat.services.openai.llm import OpenAIUserContextAggregator
 from pipecat.services.stt_service import STTService
 from pipecat.utils.time import time_now_iso8601
 
@@ -42,7 +43,7 @@ except ImportError:
     logger.warning("aiohttp package not installed. Install with: pip install aiohttp")
 
 
-_PRE_ROLL_MS = 400
+_PRE_ROLL_MS = 800
 
 
 @dataclass
@@ -379,3 +380,57 @@ class IndicConformerRESTSTTService(STTService):
 
     def can_generate_metrics(self) -> bool:
         return True
+
+
+class Ai4BharatKenpathUserContextAggregator(OpenAIUserContextAggregator):
+    """User aggregator for AI4Bharat STT + Kenpath LLM.
+
+    Pushes the user turn to the LLM as soon as a final AI4Bharat
+    ``TranscriptionFrame`` is received, without waiting for Silero
+    ``UserStoppedSpeakingFrame`` or Pipecat's ``aggregation_timeout``.
+    """
+
+    MIN_TEXT_CHARS = 2
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._silero_armed = False
+
+    async def _handle_user_started_speaking(self, frame: UserStartedSpeakingFrame):
+        await super()._handle_user_started_speaking(frame)
+        self._silero_armed = True
+
+    async def _handle_user_stopped_speaking(self, frame: UserStoppedSpeakingFrame):
+        await super()._handle_user_stopped_speaking(frame)
+
+    async def _handle_transcription(self, frame: TranscriptionFrame):
+        text = frame.text.strip()
+        if not text:
+            return
+
+        if len(text) < self.MIN_TEXT_CHARS:
+            logger.debug(
+                "AI4Bharat final too short for LLM ({} chars) — skipping: '{}'",
+                len(text),
+                text,
+            )
+            await self.reset()
+            self._silero_armed = False
+            return
+
+        if not self._silero_armed:
+            logger.debug(
+                "AI4Bharat final ignored for LLM — Silero did not detect speech: '{}'",
+                text[:80],
+            )
+            await self.reset()
+            return
+
+        await super()._handle_transcription(frame)
+        if len(self._aggregation) > 0:
+            logger.debug(
+                "AI4Bharat final transcript — pushing LLM immediately | text='{}'",
+                self._aggregation[:80],
+            )
+            await self.push_aggregation()
+        self._silero_armed = False

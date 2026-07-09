@@ -11,6 +11,7 @@ from pipecat.processors.aggregators.llm_response import (
     LLMAssistantAggregatorParams,
     LLMUserAggregatorParams,
 )
+from services.ai4bharat.stt import Ai4BharatKenpathUserContextAggregator
 from services.bhashini.stt import BhashiniKenpathUserContextAggregator
 import aiohttp
 import asyncio
@@ -191,6 +192,7 @@ class KenpathLLM(OpenAILLMService):
         self.response_timeout = max(0.05, float(response_timeout))
         self._vistaar_session_id = vistaar_session_id
         self._bhashini_fast_turn = False
+        self._ai4bharat_fast_turn = False
         self._kenpath_backend = normalized_backend
         self._call_user_id = vistaar_session_id or str(uuid.uuid4())
 
@@ -287,6 +289,16 @@ class KenpathLLM(OpenAILLMService):
             "Kenpath: enabled fast turn — LLM starts on Bhashini final transcript"
         )
 
+    def enable_ai4bharat_fast_turn(self) -> None:
+        """Use AI4Bharat final transcript as the sole LLM turn trigger (AI4Bharat+Kenpath only)."""
+        self._ai4bharat_fast_turn = True
+        self._user_aggregator_params = LLMUserAggregatorParams(
+            aggregation_timeout=0.05
+        )
+        logger.info(
+            "Kenpath: enabled fast turn — LLM starts on AI4Bharat final transcript"
+        )
+
     def create_context_aggregator(
         self,
         context: OpenAILLMContext,
@@ -294,6 +306,13 @@ class KenpathLLM(OpenAILLMService):
         user_params: LLMUserAggregatorParams = LLMUserAggregatorParams(),
         assistant_params: LLMAssistantAggregatorParams = LLMAssistantAggregatorParams(),
     ) -> OpenAIContextAggregatorPair:
+        if self._ai4bharat_fast_turn:
+            context.set_llm_adapter(self.get_llm_adapter())
+            user = Ai4BharatKenpathUserContextAggregator(context, params=user_params)
+            assistant = OpenAIAssistantContextAggregator(
+                context, params=assistant_params
+            )
+            return OpenAIContextAggregatorPair(_user=user, _assistant=assistant)
         if self._bhashini_fast_turn:
             context.set_llm_adapter(self.get_llm_adapter())
             user = BhashiniKenpathUserContextAggregator(context, params=user_params)
