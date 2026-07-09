@@ -71,6 +71,10 @@ class IndicParlerRESTTTSService(TTSService):
             self._session = None
         await super().stop(frame)
 
+    def set_language(self, language_id: str) -> None:
+        self._language_id = language_id
+        logger.info(f"TTS language changed to: {language_id}")
+
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         if not text.strip():
             return

@@ -387,6 +387,7 @@ export interface AgentConfig {
     name: string
     model?: string
     vistaar_environment?: "prod" | "dev"
+    kenpath_backend?: "vistaar" | "bharatvistaar"
     custom_llm_id?: string
   }
   stt_model?: {
