@@ -32,7 +32,7 @@ from .services import (
 )
 from utils.audio.greeting_interruption_filter import create_greeting_filters
 from utils.audio.user_online_detection_filter import UserOnlineDetectionFilter
-from utils.call_goodbye import GoodbyeHangupProcessor
+from utils.call_goodbye import GoodbyeHandlers
 from utils.call_management import UserSilenceHangupProcessor
 from utils.pipelines import run_alert_bot
 from services.vllm_qwen import ensure_no_think_suffix
@@ -162,7 +162,7 @@ async def run_bot(
         tts = create_tts_service(tts_config, sample_rate, org_id=org_id)
 
         stt_provider_name = str(stt_config.get("name") or "").strip().lower()
-        if stt_provider_name == "bhashini" and llm_provider_name == "kenpath":
+        if stt_provider_name in ("bhashini", "ai4bharat") and llm_provider_name == "kenpath":
             enable_fast_turn = getattr(llm, "enable_bhashini_fast_turn", None)
             if callable(enable_fast_turn):
                 enable_fast_turn()
@@ -221,7 +221,7 @@ async def run_bot(
             if pipeline_task is not None:
                 await pipeline_task.stop_when_done()
 
-        goodbye_processor = GoodbyeHangupProcessor(schedule_call_end)
+        goodbye = GoodbyeHandlers(schedule_call_end)
 
         user_online_detection_message = get_user_online_detection_message(agent_config)
         user_online_detection_enabled = (
@@ -233,7 +233,7 @@ async def run_bot(
             UserOnlineDetectionFilter(
                 prompt_text=user_online_detection_message,
                 timeout_secs=user_online_detection_seconds,
-                suppress_idle_when=goodbye_processor.should_suppress_idle,
+                suppress_idle_when=goodbye.should_suppress_idle,
             )
             if user_online_detection_enabled
             else None
@@ -249,7 +249,7 @@ async def run_bot(
             UserSilenceHangupProcessor(
                 timeout_secs=float(user_silence_hangup_secs),
                 schedule_call_end=schedule_call_end,
-                suppress_idle_when=goodbye_processor.should_suppress_idle,
+                suppress_idle_when=goodbye.should_suppress_idle,
             )
             if user_silence_hangup_secs > 0
             else None
@@ -268,8 +268,9 @@ async def run_bot(
             transcript.user(),
             context_aggregator.user(),
             llm,
-            goodbye_processor,
+            goodbye.detect,
             tts,
+            goodbye.hangup,
             greeting_completer,
         ]
         if user_online_detection_filter:
@@ -399,8 +400,7 @@ async def bot(
     
     stt_provider_name = str((agent_config.get("stt_model") or {}).get("name") or "").strip().lower()
 
-    if stt_provider_name == "bhashini":
-       
+    if stt_provider_name in ("bhashini", "ai4bharat"):
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=sample_rate,
             params=VADParams(
@@ -412,8 +412,9 @@ async def bot(
         )
         vad_analyzer._smoothing_factor = 0.15
         logger.info(
-            "Bhashini: using SileroVAD on transport for barge-in "
-            "(confidence=0.7, min_volume=0.6) — coughs/barks will be ignored"
+            "{}: using SileroVAD on transport for barge-in "
+            "(confidence=0.7, min_volume=0.6) — coughs/barks will be ignored",
+            stt_provider_name,
         )
     else:
         vad_analyzer = SileroVADAnalyzer(

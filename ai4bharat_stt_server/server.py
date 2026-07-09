@@ -47,8 +47,8 @@ QUEUE_MAXSIZE = 256
 MAX_BATCH_SIZE = 16
 BATCH_TIMEOUT = 0.100  # 100 ms
 
-# Set to "yes" or "no"
-BHILI_ENABLE = "no"
+# Set to "yes" or "no" in .env
+BHILI_ENABLE = os.environ.get("BHILI_ENABLE", "no").strip().lower()
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 main_model = None
@@ -285,4 +285,5 @@ def health():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    port = int(os.environ.get("PORT", "8001"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

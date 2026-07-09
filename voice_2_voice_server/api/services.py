@@ -470,7 +470,7 @@ def create_stt_service(
                 language_id=STT_LANGUAGE_MAP[provider][language],
                 sample_rate=16000,
                 input_sample_rate=sample_rate,
-                vad_analyzer=vad_analyzer
+                suppress_vad_frames=(vad_analyzer is not None),
             )
         else:
             raise ServiceCreationError(f"Unknown ai4bharat STT model: {model}. Expected 'indic-conformer-stt'")
