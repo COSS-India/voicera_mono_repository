@@ -263,6 +263,9 @@ export default function AgentDetailPage() {
   const [userOnlineDetectionEnabled, setUserOnlineDetectionEnabled] = useState(false)
   const [userOnlineDetectionMessage, setUserOnlineDetectionMessage] = useState("")
   const [userOnlineDetectionSeconds, setUserOnlineDetectionSeconds] = useState(10)
+  const [userOnlineDetectionRepeats, setUserOnlineDetectionRepeats] = useState(1)
+  const [userOnlineDetectionClosingMessage, setUserOnlineDetectionClosingMessage] =
+    useState("")
   const [agentType, setAgentType] = useState("")
   const [language, setLanguage] = useState("")
   const [llmProvider, setLlmProvider] = useState("")
@@ -592,6 +595,20 @@ export default function AgentDetailPage() {
               ? loadedUserOnlineDetectionSeconds
               : 10
           )
+          const loadedUserOnlineDetectionRepeats = Number(
+            (agentData.agent_config as any)?.user_online_detection_repeats
+          )
+          setUserOnlineDetectionRepeats(
+            Number.isFinite(loadedUserOnlineDetectionRepeats) &&
+              loadedUserOnlineDetectionRepeats >= 1
+              ? Math.floor(loadedUserOnlineDetectionRepeats)
+              : 1
+          )
+          setUserOnlineDetectionClosingMessage(
+            String(
+              (agentData.agent_config as any)?.user_online_detection_closing_message || ""
+            )
+          )
 
           // Load LLM settings - convert official name to internal ID
           const llmProviderName = agentData.agent_config?.llm_model?.name || ""
@@ -708,6 +725,19 @@ export default function AgentDetailPage() {
                     ? loadedUserOnlineDetectionSeconds
                     : 10
               }
+              if (normalizedOriginal.user_online_detection_repeats === undefined) {
+                normalizedOriginal.user_online_detection_repeats =
+                  Number.isFinite(loadedUserOnlineDetectionRepeats) &&
+                  loadedUserOnlineDetectionRepeats >= 1
+                    ? Math.floor(loadedUserOnlineDetectionRepeats)
+                    : 1
+              }
+              if (normalizedOriginal.user_online_detection_closing_message === undefined) {
+                normalizedOriginal.user_online_detection_closing_message = String(
+                  (agentData.agent_config as any)?.user_online_detection_closing_message ||
+                    ""
+                )
+              }
               setOriginalConfig(normalizedOriginal)
             } catch (e) {
               console.error("Error parsing Agent configuration on load:", e)
@@ -806,6 +836,8 @@ export default function AgentDetailPage() {
       user_online_detection_enabled: userOnlineDetectionEnabled,
       user_online_detection_message: userOnlineDetectionMessage.trim(),
       user_online_detection_seconds: userOnlineDetectionSeconds,
+      user_online_detection_repeats: userOnlineDetectionRepeats,
+      user_online_detection_closing_message: userOnlineDetectionClosingMessage.trim(),
       knowledge_base_enabled: llmProvider === "openai" ? knowledgeEnabled : false,
       knowledge_document_ids:
         llmProvider === "openai" && knowledgeEnabled ? knowledgeDocumentIds : [],
@@ -860,7 +892,7 @@ export default function AgentDetailPage() {
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
     const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, language, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, language, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -926,6 +958,8 @@ export default function AgentDetailPage() {
           user_online_detection_enabled: userOnlineDetectionEnabled,
           user_online_detection_message: userOnlineDetectionMessage.trim(),
           user_online_detection_seconds: userOnlineDetectionSeconds,
+          user_online_detection_repeats: userOnlineDetectionRepeats,
+          user_online_detection_closing_message: userOnlineDetectionClosingMessage.trim(),
           knowledge_base_enabled: llmProvider === "openai" ? knowledgeEnabled : false,
           knowledge_document_ids:
             llmProvider === "openai" && knowledgeEnabled ? knowledgeDocumentIds : [],
@@ -1939,6 +1973,44 @@ export default function AgentDetailPage() {
                         />
                         <p className="text-xs text-slate-500">
                           Seconds of user silence after the bot finishes speaking.
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <label className="text-sm font-semibold text-slate-800">
+                            Prompt repeats
+                          </label>
+                          <span className="text-sm font-semibold text-slate-700 whitespace-nowrap tabular-nums">
+                            {userOnlineDetectionRepeats}
+                          </span>
+                        </div>
+                        <Slider
+                          value={[userOnlineDetectionRepeats]}
+                          onValueChange={([value]) => setUserOnlineDetectionRepeats(value)}
+                          min={1}
+                          max={10}
+                          step={1}
+                          className="w-full"
+                        />
+                        <p className="text-xs text-slate-500">
+                          How many times to ask before the closing message and hangup.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-800">
+                          Closing message
+                        </label>
+                        <Textarea
+                          value={userOnlineDetectionClosingMessage}
+                          onChange={(e) =>
+                            setUserOnlineDetectionClosingMessage(e.target.value)
+                          }
+                          placeholder="e.g. We could not hear you. Ending the call now. Goodbye."
+                          rows={2}
+                        />
+                        <p className="text-xs text-slate-500">
+                          Spoken after the last detection prompt, then the call ends. Leave
+                          empty to hang up immediately after the last prompt.
                         </p>
                       </div>
                     </div>

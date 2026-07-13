@@ -241,6 +241,8 @@ interface AgentConfig {
   userOnlineDetectionEnabled: boolean
   userOnlineDetectionMessage: string
   userOnlineDetectionSeconds: number
+  userOnlineDetectionRepeats: number
+  userOnlineDetectionClosingMessage: string
   systemPrompt: string
   llmProvider: string
   llmModel: string
@@ -283,6 +285,8 @@ const defaultConfig: AgentConfig = {
   userOnlineDetectionEnabled: false,
   userOnlineDetectionMessage: "",
   userOnlineDetectionSeconds: 10,
+  userOnlineDetectionRepeats: 1,
+  userOnlineDetectionClosingMessage: "",
   systemPrompt: "You are a helpful agent. You will help the customer with their queries and doubts. You will never speak more than 2 sentences. Keep your responses concise",
   llmProvider: "openai",
   llmModel: "gpt-4o",
@@ -1004,6 +1008,9 @@ export default function AssistantsPage() {
                 user_online_detection_enabled: config.userOnlineDetectionEnabled,
                 user_online_detection_message: config.userOnlineDetectionMessage.trim(),
                 user_online_detection_seconds: config.userOnlineDetectionSeconds,
+                user_online_detection_repeats: config.userOnlineDetectionRepeats,
+                user_online_detection_closing_message:
+                  config.userOnlineDetectionClosingMessage.trim(),
                 language: languageName,
                 knowledge_base_enabled: config.llmProvider === "openai" ? config.knowledgeEnabled : false,
                 knowledge_document_ids:
@@ -2360,6 +2367,49 @@ export default function AssistantsPage() {
                             Seconds of user silence after the bot finishes speaking.
                           </p>
                         </div>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-4">
+                            <label className="text-base font-bold text-slate-900">
+                              Prompt repeats
+                            </label>
+                            <span className="text-sm font-semibold text-slate-700 whitespace-nowrap tabular-nums">
+                              {config.userOnlineDetectionRepeats}
+                            </span>
+                          </div>
+                          <Slider
+                            value={[config.userOnlineDetectionRepeats]}
+                            onValueChange={([value]) =>
+                              updateConfig("userOnlineDetectionRepeats", value)
+                            }
+                            min={1}
+                            max={10}
+                            step={1}
+                            className="w-full"
+                          />
+                          <p className="text-sm text-slate-500">
+                            How many times to ask before the closing message and hangup.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-base font-bold text-slate-900">
+                            Closing message
+                          </label>
+                          <Textarea
+                            value={config.userOnlineDetectionClosingMessage}
+                            onChange={(e) =>
+                              updateConfig(
+                                "userOnlineDetectionClosingMessage",
+                                e.target.value
+                              )
+                            }
+                            placeholder="e.g. We could not hear you. Ending the call now. Goodbye."
+                            rows={2}
+                          />
+                          <p className="text-sm text-slate-500">
+                            Spoken after the last detection prompt, then the call ends. Leave
+                            empty to hang up immediately after the last prompt.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2651,7 +2701,7 @@ export default function AssistantsPage() {
                         <span className="font-semibold">User online detection:</span>{" "}
                         {config.userOnlineDetectionEnabled &&
                         config.userOnlineDetectionMessage.trim()
-                          ? `Enabled (${formatDurationSeconds(config.userOnlineDetectionSeconds)})`
+                          ? `Enabled (${formatDurationSeconds(config.userOnlineDetectionSeconds)}, ${config.userOnlineDetectionRepeats}×)`
                           : "Disabled"}
                       </p>
                       <p className="text-sm text-slate-600 mb-1">

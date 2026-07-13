@@ -31,7 +31,10 @@ from .services import (
     ServiceCreationError,
 )
 from utils.audio.greeting_interruption_filter import create_greeting_filters
-from utils.audio.user_online_detection_filter import UserOnlineDetectionFilter
+from utils.audio.user_online_detection_filter import (
+    UserOnlineDetectionFilter,
+    UserOnlineDetectionInterruptionBlocker,
+)
 from utils.call_goodbye import GoodbyeHandlers
 from utils.call_management import UserSilenceHangupProcessor
 from utils.pipelines import run_alert_bot
@@ -49,6 +52,8 @@ from utils.bot_utils import (
     get_user_online_detection_enabled,
     get_user_online_detection_message,
     get_user_online_detection_seconds,
+    get_user_online_detection_repeats,
+    get_user_online_detection_closing_message,
     get_user_silence_hangup_seconds,
     is_non_conversational,
     patch_immediate_first_chunk,
@@ -234,10 +239,17 @@ async def run_bot(
             and bool(user_online_detection_message)
         )
         user_online_detection_seconds = get_user_online_detection_seconds(agent_config)
+        user_online_detection_repeats = get_user_online_detection_repeats(agent_config)
+        user_online_detection_closing_message = get_user_online_detection_closing_message(
+            agent_config
+        )
         user_online_detection_filter = (
             UserOnlineDetectionFilter(
                 prompt_text=user_online_detection_message,
                 timeout_secs=user_online_detection_seconds,
+                max_repeats=user_online_detection_repeats,
+                closing_message=user_online_detection_closing_message,
+                schedule_call_end=schedule_call_end,
                 suppress_idle_when=goodbye.should_suppress_idle,
             )
             if user_online_detection_enabled
@@ -245,8 +257,10 @@ async def run_bot(
         )
         if user_online_detection_enabled:
             logger.info(
-                "User online detection enabled ({}s silence after bot speech)",
+                "User online detection enabled ({}s silence, {} repeats{})",
                 user_online_detection_seconds,
+                user_online_detection_repeats,
+                ", with closing message" if user_online_detection_closing_message else "",
             )
 
         user_silence_hangup_secs = get_user_silence_hangup_seconds(agent_config)
@@ -269,6 +283,14 @@ async def run_bot(
             transport.input(),
             stt,
             greeting_blocker,
+        ]
+        if user_online_detection_filter:
+            pipeline_processors.append(
+                UserOnlineDetectionInterruptionBlocker(
+                    user_online_detection_filter.is_playing_detection_audio
+                )
+            )
+        pipeline_processors.extend([
             BargeInInterruptionProcessor(min_words=interruption_min_words),
             transcript.user(),
             context_aggregator.user(),
@@ -277,7 +299,7 @@ async def run_bot(
             tts,
             goodbye.hangup,
             greeting_completer,
-        ]
+        ])
         if user_online_detection_filter:
             pipeline_processors.append(user_online_detection_filter)
         if user_silence_hangup_filter:
@@ -448,7 +470,7 @@ async def bot(
             serializer=serializer,
             audio_in_passthrough=True,
             session_timeout=session_timeout,
-            audio_out_10ms_chunks=2,  # ADD THIS LINE - reduces from 4 to 1
+            audio_out_10ms_chunks=4,  # ADD THIS LINE - reduces from 4 to 1
         ),
     )
 
