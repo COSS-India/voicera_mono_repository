@@ -184,7 +184,7 @@ log "Phase 2/3: Application Deploy"
 
 # Clone repo
 if [ ! -d "$REPO_DIR/.git" ]; then
-  git clone -b dev https://github.com/PRANABraight/voicera_mono_repository.git "$REPO_DIR"
+  git clone -b dev https://github.com/COSS-India/voicera_mono_repository.git "$REPO_DIR"
 fi
 
 # MongoDB 7.0
