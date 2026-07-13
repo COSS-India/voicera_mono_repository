@@ -198,7 +198,7 @@ class BhashiniSTTService(STTService):
         self._audio_channels = audio_channels
         self._chunk_ms = chunk_ms
         self._telemetry_callback = telemetry_callback
-        self._pre_roll_ms = int(os.getenv("BHASHINI_PREROLL_MS", "400"))
+        self._pre_roll_ms = int(os.getenv("BHASHINI_PREROLL_MS", "800"))
         self._chunk_samples = int(self._input_sample_rate * self._chunk_ms / 1000)
         self._chunk_bytes = self._chunk_samples * self._audio_channels * 2
         self._pre_roll_bytes = max(0, int(self._input_sample_rate * self._pre_roll_ms / 1000) * self._audio_channels * 2)

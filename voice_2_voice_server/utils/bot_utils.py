@@ -129,6 +129,25 @@ def get_user_online_detection_seconds(agent_config: dict) -> float:
         return 10.0
 
 
+def get_user_online_detection_repeats(agent_config: dict) -> int:
+    """How many times to speak the online-detection prompt in one silence cycle."""
+    raw = agent_config.get("user_online_detection_repeats")
+    if raw is None:
+        return 1
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return 1
+
+
+def get_user_online_detection_closing_message(agent_config: dict) -> str:
+    """Message spoken after the last online-detection prompt, before hangup."""
+    raw = agent_config.get("user_online_detection_closing_message")
+    if raw is None:
+        return ""
+    return str(raw).strip()
+
+
 class FastPunctuationAggregator(BaseTextAggregator):
     """Fast aggregator that sends text immediately on punctuation - no lookahead/NLTK."""
 
