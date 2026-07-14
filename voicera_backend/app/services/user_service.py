@@ -3,6 +3,7 @@ User service for handling user-related database operations.
 """
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
+import os
 import uuid
 from app.database import get_database
 from app.models.schemas import UserCreate, UserResponse, UserLoginResponse
@@ -13,14 +14,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def sign_up_user(user_data: UserCreate) -> Dict[str, Any]:
+def sign_up_user(user_data: UserCreate, client_ip: Optional[str] = None) -> Dict[str, Any]:
     """
     Create a new user. If org_id is provided (from invite link), user joins that org as member.
     Otherwise, a new org is created and user becomes the owner.
-    
+
     Args:
         user_data: User creation data (optionally includes org_id for invite flow)
-        
+        client_ip: Requester IP, used to cap new-org creation per network (MAX_ORGS_PER_IP).
+            Not enforced for the invite-join flow, so it's fine to omit for internal callers.
+
     Returns:
         Dict with status and message
     """
@@ -51,7 +54,12 @@ def sign_up_user(user_data: UserCreate) -> Dict[str, Any]:
             if existing_member:
                 return {"status": "fail", "message": "User is already a member of this organization"}
         else:
-            # New user creating their own org
+            # New user creating their own org — cap org creations per requester IP
+            max_orgs_per_ip = int(os.getenv("MAX_ORGS_PER_IP", "1"))
+            existing_count = db["OrgSignupsByIp"].count_documents({"ip": client_ip})
+            if existing_count >= max_orgs_per_ip:
+                return {"status": "fail", "message": "Org creation limit reached for this network"}
+
             org_id = str(uuid.uuid4()).replace('-', '')[:6]
         
         # Hash password before storing
@@ -79,6 +87,11 @@ def sign_up_user(user_data: UserCreate) -> Dict[str, Any]:
             members_table.insert_one(member_mapping)
             logger.info(f"Member created successfully: {user_data.email} in org: {org_id}")
         else:
+            db["OrgSignupsByIp"].insert_one({
+                "ip": client_ip,
+                "org_id": org_id,
+                "created_at": datetime.now().isoformat(),
+            })
             logger.info(f"User (org owner) created successfully: {user_data.email}")
         
         return {"status": "success", "message": "User created successfully", "org_id": org_id}

@@ -1,7 +1,7 @@
 """
 User API routes.
 """
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from app.models.schemas import (
     UserCreate, UserResponse, UserLogin, UserLoginResponse,
     ForgotPasswordRequest, ResetPasswordRequest,
@@ -14,12 +14,15 @@ from typing import Dict, Any
 router = APIRouter(prefix="/users", tags=["users"])
 
 @router.post("/signup", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
-async def sign_up(user_data: UserCreate):
+async def sign_up(user_data: UserCreate, request: Request):
     """
     Create a new user account (public endpoint).
     Generates a new org_id for the user.
     """
-    result = user_service.sign_up_user(user_data)
+    # X-Real-IP is set by nginx from the actual TCP peer and is not client-settable,
+    # unlike X-Forwarded-For which a client can seed with an arbitrary value.
+    client_ip = request.headers.get("x-real-ip") or request.client.host
+    result = user_service.sign_up_user(user_data, client_ip)
     if result["status"] == "fail":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
