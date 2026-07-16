@@ -26,6 +26,7 @@ from utils.backend_utils import (
     fetch_integration_key,
 )
 from utils.batching import create_batch_router
+from utils.call_management import peek_capacity_available
 
 
 load_dotenv()
@@ -315,6 +316,16 @@ async def make_outbound_call(request: OutboundCallRequest):
         Call initiation result
     """
     try:
+        agent_config = await fetch_agent_config_from_backend(request.agent_id)
+        if not agent_config:
+            raise HTTPException(status_code=400, detail=f"Could not load agent config for agent_id={request.agent_id}")
+        org_id = agent_config.get("org_id")
+        if not peek_capacity_available(org_id):
+            raise HTTPException(
+                status_code=429,
+                detail="Org call budget or concurrency limit reached",
+            )
+
         result = await make_outbound_call_provider(
             request.customer_number,
             request.agent_id,
@@ -331,6 +342,8 @@ async def make_outbound_call(request: OutboundCallRequest):
                 "result": result,
             },
         )
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"❌ Invalid request: {e}")
         raise HTTPException(status_code=400, detail=str(e))

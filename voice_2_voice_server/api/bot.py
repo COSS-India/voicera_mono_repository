@@ -39,7 +39,12 @@ from utils.audio.user_online_detection_filter import (
     UserOnlineDetectionInterruptionBlocker,
 )
 from utils.call_goodbye import GoodbyeHandlers
-from utils.call_management import UserSilenceHangupProcessor
+from utils.call_management import (
+    UserSilenceHangupProcessor,
+    try_acquire_call_slot,
+    release_call_slot,
+    clamp_call_timeout,
+)
 from utils.pipelines import run_alert_bot
 from services.vllm_qwen import ensure_no_think_suffix
 from utils.bot_utils import (
@@ -386,7 +391,16 @@ async def bot(
 ) -> str:
     """Main bot entry point - sets up transport and runs the pipeline."""
     sample_rate = sample_rate or get_sample_rate()
-    session_timeout = (
+
+    org_id = agent_config.get("org_id")
+    if not await try_acquire_call_slot(org_id):
+        logger.warning(
+            f"Rejecting call for org_id={org_id}: concurrency or daily minute budget exceeded"
+        )
+        await websocket_client.close(code=1013, reason="capacity or budget exceeded")
+        return call_sid or "unknown"
+
+    session_timeout = clamp_call_timeout(
         get_alert_call_timeout_seconds(agent_config)
         if is_non_conversational(agent_config)
         else get_call_timeout_seconds(agent_config)
@@ -403,95 +417,12 @@ async def bot(
     
     # Track call start time
     call_start_time = time.monotonic()
-    
-    # Initialize MinIO storage
-    storage = MinIOStorage.from_env()
 
-    normalized_provider = (provider or "vobiz").strip().lower()
-    if normalized_provider == "plivo":
-        await websocket_client.accept()
-        _, telephony_call_data = await parse_telephony_websocket(websocket_client)
-        stream_sid = stream_sid or telephony_call_data.get("stream_id") or "unknown"
-        call_sid = call_sid or telephony_call_data.get("call_id") or "unknown"
-     
-        serializer = VobizFrameSerializer(
-            stream_sid=stream_sid,
-            call_sid=call_sid,
-            params=VobizFrameSerializer.InputParams(
-                vobiz_sample_rate=sample_rate,
-                sample_rate=sample_rate,
-                auto_hang_up=False,
-            ),
-        )
-    else:
-        stream_sid = stream_sid or "unknown"
-        call_sid = call_sid or "unknown"
-        serializer = VobizFrameSerializer(
-            stream_sid=stream_sid,
-            call_sid=call_sid,
-            params=VobizFrameSerializer.InputParams(
-                vobiz_sample_rate=sample_rate,
-                sample_rate=sample_rate
-            )
-        )
-    
-    
-    stt_provider_name = str((agent_config.get("stt_model") or {}).get("name") or "").strip().lower()
-
-    if stt_provider_name in ("bhashini", "ai4bharat"):
-        vad_analyzer = SileroVADAnalyzer(
-            sample_rate=sample_rate,
-            params=VADParams(
-                stop_secs=0.2,
-                min_volume=0.6,    # ignore very quiet background hiss
-                confidence=0.7,    # coughs/barks typically score < 0.4, real speech > 0.7
-                start_secs=0.2,    # require 200 ms of sustained speech onset
-            ),
-        )
-        vad_analyzer._smoothing_factor = 0.15
-        logger.info(
-            "{}: using SileroVAD on transport for barge-in "
-            "(confidence=0.7, min_volume=0.6) — coughs/barks will be ignored",
-            stt_provider_name,
-        )
-    else:
-        vad_analyzer = SileroVADAnalyzer(
-            sample_rate=sample_rate,
-            params=VADParams(
-                stop_secs=0.4,
-                min_volume=0.5,
-                confidence=0.3,
-                start_secs=0.1,
-            )
-        )
-        vad_analyzer._smoothing_factor = 0.1  # Faster volume change response
-    import pipecat.transports.base_input
-    pipecat.transports.base_input.AUDIO_INPUT_TIMEOUT_SECS = 0.1
-
-    import pipecat.transports.base_output
-    pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
-    
-    transport = FastAPIWebsocketTransport(
-        websocket=websocket_client,
-        params=FastAPIWebsocketParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            add_wav_header=False,
-            vad_analyzer=vad_analyzer,
-            serializer=serializer,
-            audio_in_passthrough=True,
-            session_timeout=session_timeout,
-            audio_out_10ms_chunks=4,  # ADD THIS LINE - reduces from 4 to 1
-        ),
-    )
-
-    # Optimized first audio chunk sending
-    patch_immediate_first_chunk(transport)
-    
-    use_vobiz_native_recording = normalized_provider == "vobiz"
-    audiobuffer = None if use_vobiz_native_recording else AudioBufferProcessor()
-
-    # Accumulate audio chunks and transcript lines in memory (deferred storage)
+    # Everything below acquires the call slot above, so it must all run inside this
+    # try/finally: any exception during setup (storage, transport, telephony parsing)
+    # must still release the slot, or the org's concurrency counter leaks forever.
+    storage = None
+    use_vobiz_native_recording = False
     call_data = {
         "audio_chunks": [],
         "audio_sample_rate": None,
@@ -499,51 +430,135 @@ async def bot(
         "transcript_lines": [],
         "vobiz_recording_id": None,
     }
-
-    if audiobuffer is not None:
-        @audiobuffer.event_handler("on_audio_data")
-        async def on_audio_data(buffer, audio, sample_rate, num_channels):
-            call_data["audio_chunks"].append(audio)
-            if call_data["audio_sample_rate"] is None:
-                call_data["audio_sample_rate"] = sample_rate
-                call_data["audio_num_channels"] = num_channels
-            total_bytes = sum(len(c) for c in call_data["audio_chunks"])
-            logger.debug(f"Accumulated audio chunk: {len(audio)} bytes (total: {total_bytes} bytes)")
-
-    on_client_connected_hook = None
-    if use_vobiz_native_recording:
-        org_id = agent_config.get("org_id")
-
-        async def start_vobiz_recording():
-            if not org_id:
-                logger.warning(f"No org_id for Vobiz recording on call {call_sid}")
-                return
-            recording_id = await start_vobiz_call_recording(
-                call_sid, org_id, session_timeout
-            )
-            call_data["vobiz_recording_id"] = recording_id
-
-        on_client_connected_hook = start_vobiz_recording
-    
-    # Create transcript processor
-    transcript = TranscriptProcessor()
-    
-    @transcript.event_handler("on_transcript_update")
-    async def on_transcript_update(processor, frame):
-        # Accumulate transcript lines in memory (no I/O during call)
-        for message in frame.messages:
-            timestamp = f"[{message.timestamp}] " if message.timestamp else ""
-            line = f"{timestamp}{message.role}: {message.content}"
-            logger.info(f"Transcript: {line}")
-            call_data["transcript_lines"].append(line)
-            if transcript_callback and message.content:
-                try:
-                    await transcript_callback(message.role, message.content, message.timestamp)
-                except Exception as callback_error:
-                    logger.debug(f"Transcript callback failed: {callback_error}")
-    
     metrics_observer = None
     try:
+        # Initialize MinIO storage
+        storage = MinIOStorage.from_env()
+
+        normalized_provider = (provider or "vobiz").strip().lower()
+        if normalized_provider == "plivo":
+            await websocket_client.accept()
+            _, telephony_call_data = await parse_telephony_websocket(websocket_client)
+            stream_sid = stream_sid or telephony_call_data.get("stream_id") or "unknown"
+            call_sid = call_sid or telephony_call_data.get("call_id") or "unknown"
+
+            serializer = VobizFrameSerializer(
+                stream_sid=stream_sid,
+                call_sid=call_sid,
+                params=VobizFrameSerializer.InputParams(
+                    vobiz_sample_rate=sample_rate,
+                    sample_rate=sample_rate,
+                    auto_hang_up=False,
+                ),
+            )
+        else:
+            stream_sid = stream_sid or "unknown"
+            call_sid = call_sid or "unknown"
+            serializer = VobizFrameSerializer(
+                stream_sid=stream_sid,
+                call_sid=call_sid,
+                params=VobizFrameSerializer.InputParams(
+                    vobiz_sample_rate=sample_rate,
+                    sample_rate=sample_rate
+                )
+            )
+
+
+        stt_provider_name = str((agent_config.get("stt_model") or {}).get("name") or "").strip().lower()
+
+        if stt_provider_name in ("bhashini", "ai4bharat"):
+            vad_analyzer = SileroVADAnalyzer(
+                sample_rate=sample_rate,
+                params=VADParams(
+                    stop_secs=0.2,
+                    min_volume=0.6,    # ignore very quiet background hiss
+                    confidence=0.7,    # coughs/barks typically score < 0.4, real speech > 0.7
+                    start_secs=0.2,    # require 200 ms of sustained speech onset
+                ),
+            )
+            vad_analyzer._smoothing_factor = 0.15
+            logger.info(
+                "{}: using SileroVAD on transport for barge-in "
+                "(confidence=0.7, min_volume=0.6) — coughs/barks will be ignored",
+                stt_provider_name,
+            )
+        else:
+            vad_analyzer = SileroVADAnalyzer(
+                sample_rate=sample_rate,
+                params=VADParams(
+                    stop_secs=0.4,
+                    min_volume=0.5,
+                    confidence=0.3,
+                    start_secs=0.1,
+                )
+            )
+            vad_analyzer._smoothing_factor = 0.1  # Faster volume change response
+        import pipecat.transports.base_input
+        pipecat.transports.base_input.AUDIO_INPUT_TIMEOUT_SECS = 0.1
+
+        import pipecat.transports.base_output
+        pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
+
+        transport = FastAPIWebsocketTransport(
+            websocket=websocket_client,
+            params=FastAPIWebsocketParams(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                add_wav_header=False,
+                vad_analyzer=vad_analyzer,
+                serializer=serializer,
+                audio_in_passthrough=True,
+                session_timeout=session_timeout,
+                audio_out_10ms_chunks=4,  # ADD THIS LINE - reduces from 4 to 1
+            ),
+        )
+
+        # Optimized first audio chunk sending
+        patch_immediate_first_chunk(transport)
+
+        use_vobiz_native_recording = normalized_provider == "vobiz"
+        audiobuffer = None if use_vobiz_native_recording else AudioBufferProcessor()
+
+        if audiobuffer is not None:
+            @audiobuffer.event_handler("on_audio_data")
+            async def on_audio_data(buffer, audio, sample_rate, num_channels):
+                call_data["audio_chunks"].append(audio)
+                if call_data["audio_sample_rate"] is None:
+                    call_data["audio_sample_rate"] = sample_rate
+                    call_data["audio_num_channels"] = num_channels
+                total_bytes = sum(len(c) for c in call_data["audio_chunks"])
+                logger.debug(f"Accumulated audio chunk: {len(audio)} bytes (total: {total_bytes} bytes)")
+
+        on_client_connected_hook = None
+        if use_vobiz_native_recording:
+            async def start_vobiz_recording():
+                if not org_id:
+                    logger.warning(f"No org_id for Vobiz recording on call {call_sid}")
+                    return
+                recording_id = await start_vobiz_call_recording(
+                    call_sid, org_id, session_timeout
+                )
+                call_data["vobiz_recording_id"] = recording_id
+
+            on_client_connected_hook = start_vobiz_recording
+
+        # Create transcript processor
+        transcript = TranscriptProcessor()
+
+        @transcript.event_handler("on_transcript_update")
+        async def on_transcript_update(processor, frame):
+            # Accumulate transcript lines in memory (no I/O during call)
+            for message in frame.messages:
+                timestamp = f"[{message.timestamp}] " if message.timestamp else ""
+                line = f"{timestamp}{message.role}: {message.content}"
+                logger.info(f"Transcript: {line}")
+                call_data["transcript_lines"].append(line)
+                if transcript_callback and message.content:
+                    try:
+                        await transcript_callback(message.role, message.content, message.timestamp)
+                    except Exception as callback_error:
+                        logger.debug(f"Transcript callback failed: {callback_error}")
+
         metrics_observer = await run_bot(
             transport,
             agent_config,
@@ -556,59 +571,62 @@ async def bot(
             on_client_connected_hook=on_client_connected_hook,
         )
     finally:
+        await release_call_slot(org_id, time.monotonic() - call_start_time)
         logger.info(f"Saving call data for {call_sid}...")
         recording_url = None
-        if use_vobiz_native_recording:
-            recording_id = call_data.get("vobiz_recording_id")
-            org_id = agent_config.get("org_id")
-            if recording_id and org_id:
+        if storage is None:
+            logger.error(f"Storage never initialized for {call_sid}; skipping call data save")
+        else:
+            if use_vobiz_native_recording:
+                recording_id = call_data.get("vobiz_recording_id")
+                if recording_id and org_id:
+                    try:
+                        audio_bytes = await wait_and_download_vobiz_recording(
+                            recording_id, org_id
+                        )
+                        if audio_bytes:
+                            await storage.save_recording_bytes(call_sid, audio_bytes, "mp3")
+                            recording_url = f"minio://recordings/{call_sid}.mp3"
+                        else:
+                            logger.warning(f"Vobiz recording download failed for {call_sid}")
+                    except Exception as e:
+                        logger.error(f"Failed to ingest Vobiz recording for {call_sid}: {e}")
+                else:
+                    logger.warning(f"No Vobiz recording_id to fetch for {call_sid}")
+            elif call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:
                 try:
-                    audio_bytes = await wait_and_download_vobiz_recording(
-                        recording_id, org_id
+                    await storage.save_recording_from_chunks(
+                        call_sid,
+                        call_data["audio_chunks"],
+                        call_data["audio_sample_rate"],
+                        call_data["audio_num_channels"],
                     )
-                    if audio_bytes:
-                        await storage.save_recording_bytes(call_sid, audio_bytes, "mp3")
-                        recording_url = f"minio://recordings/{call_sid}.mp3"
-                    else:
-                        logger.warning(f"Vobiz recording download failed for {call_sid}")
+                    total_bytes = sum(len(c) for c in call_data["audio_chunks"])
+                    logger.info(f" Saved {len(call_data['audio_chunks'])} audio chunks ({total_bytes} bytes)")
+                    recording_url = f"minio://recordings/{call_sid}.wav"
                 except Exception as e:
-                    logger.error(f"Failed to ingest Vobiz recording for {call_sid}: {e}")
+                    logger.error(f"Failed to save audio recording: {e}")
             else:
-                logger.warning(f"No Vobiz recording_id to fetch for {call_sid}")
-        elif call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:
-            try:
-                await storage.save_recording_from_chunks(
-                    call_sid,
-                    call_data["audio_chunks"],
-                    call_data["audio_sample_rate"],
-                    call_data["audio_num_channels"],
-                )
-                total_bytes = sum(len(c) for c in call_data["audio_chunks"])
-                logger.info(f" Saved {len(call_data['audio_chunks'])} audio chunks ({total_bytes} bytes)")
-                recording_url = f"minio://recordings/{call_sid}.wav"
-            except Exception as e:
-                logger.error(f"Failed to save audio recording: {e}")
-        else:
-            logger.warning(f"No audio data to save for {call_sid}")
+                logger.warning(f"No audio data to save for {call_sid}")
 
-        if call_data["transcript_lines"]:
-            try:
-                await storage.save_transcript_from_lines(call_sid, call_data["transcript_lines"])
-                logger.info(f" Saved {len(call_data['transcript_lines'])} transcript lines")
-            except Exception as e:
-                logger.error(f" Failed to save transcript: {e}")
-        else:
-            logger.warning(f"No transcript data to save for {call_sid}")
-        
-        latency_metrics = metrics_observer.to_dict() if metrics_observer else None
-        await submit_call_recording(
-            call_sid=call_sid,
-            agent_type=agent_type,
-            agent_config=agent_config,
-            storage=storage,
-            call_start_time=call_start_time,
-            latency_metrics=latency_metrics,
-            recording_url=recording_url,
-            omit_recording_url=use_vobiz_native_recording and not recording_url,
-        )
+            if call_data["transcript_lines"]:
+                try:
+                    await storage.save_transcript_from_lines(call_sid, call_data["transcript_lines"])
+                    logger.info(f" Saved {len(call_data['transcript_lines'])} transcript lines")
+                except Exception as e:
+                    logger.error(f" Failed to save transcript: {e}")
+            else:
+                logger.warning(f"No transcript data to save for {call_sid}")
+
+            latency_metrics = metrics_observer.to_dict() if metrics_observer else None
+            await submit_call_recording(
+                call_sid=call_sid,
+                agent_type=agent_type,
+                agent_config=agent_config,
+                storage=storage,
+                call_start_time=call_start_time,
+                latency_metrics=latency_metrics,
+                recording_url=recording_url,
+                omit_recording_url=use_vobiz_native_recording and not recording_url,
+            )
     return call_sid

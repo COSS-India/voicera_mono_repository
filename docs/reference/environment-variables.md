@@ -53,6 +53,7 @@ In Docker Compose deployments the same files are mounted via `env_file:` in `doc
 | `SECRET_KEY` | backend | `secret_key` | yes | JWT signing secret — must be changed in production |
 | `INTERNAL_API_KEY` | backend | – | yes | Shared secret for voice-server-to-backend calls. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `DEBUG` | backend | `False` | no | Enable verbose error responses |
+| `MAX_ORGS_PER_IP` | backend | `1` | no | Max orgs a single requester IP (`X-Real-IP`, set by nginx) may create via `/users/signup`. Durable in MongoDB (`OrgSignupsByIp`) — does not reset on service restart. Only counts new-org signups, not invite-link joins. |
 
 ### Email (Mailtrap)
 
@@ -150,10 +151,19 @@ Provider selection is per-agent in MongoDB. Per-org keys are stored in **Dashboa
 | `HOST` | voice server | `0.0.0.0` | no | Bind address |
 | `PORT` | voice server | `7860` | no | Listen port |
 | `SAMPLE_RATE` | voice server | `8000` | no | Telephony wire sample rate: `8000` = µ-law, `16000` = L16 PCM |
-| `MAX_CONCURRENT_CALLS` | voice server | `100` | no | Concurrency cap |
 | `LOG_LEVEL` | voice server | `INFO` | no | Logging level |
 | `DEBUG_MODE` | voice server | `false` | no | Verbose pipeline logs |
 | `ENABLE_AUDIO_LOGGING` | voice server | `false` | no | Log raw audio (CPU intensive) |
+
+### Usage guardrails
+
+In-memory, per-process, per-org state (see `utils/call_management/usage_guard.py`) — resets when the voice server restarts, which aligns with the sandbox's daily operational schedule.
+
+| Name | Service | Default | Required | Description |
+|------|---------|---------|----------|-------------|
+| `MAX_CONCURRENT_CALLS_PER_ORG` | voice server | `5` | no | Simultaneous calls one org may run. The 6th concurrent call attempt is rejected. |
+| `MAX_MINUTES_PER_ORG_PER_DAY` | voice server | `60` | no | Cumulative call minutes one org may use before new call attempts are rejected (existing calls are not cut off mid-call). Resets on process restart. |
+| `MAX_CALL_DURATION_SECONDS` | voice server | `600` | no | Hard per-call ceiling; overrides whatever `call_timeout_seconds` an agent owner configures. |
 
 ---
 
