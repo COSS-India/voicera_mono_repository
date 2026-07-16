@@ -43,7 +43,7 @@ const VOBIZ_AUTH_TOKEN_MODEL = "VobizAuthToken"
 const PLIVO_AUTH_ID_MODEL = "PlivoAuthId"
 const PLIVO_AUTH_TOKEN_MODEL = "PlivoAuthToken"
 
-/** Dummy value shown in the manage modal so the field looks filled — the real key is never loaded on the frontend. */
+/** Dummy value shown in the manage modal so the field looks filled */
 const MASKED_KEY_SENTINEL = "•".repeat(128)
 
 // Provider type definitions
@@ -288,7 +288,7 @@ export default function IntegrationsPage() {
     setIsModalOpen(true)
   }
 
-  // Open manage modal for connected provider (existing key is never shown)
+  // Open manage modal for connected provider
   const openManageModal = (provider: Provider) => {
     setSelectedProvider(provider)
     setModalApiKey(MASKED_KEY_SENTINEL)
@@ -374,7 +374,7 @@ export default function IntegrationsPage() {
         model: authIdModel,
         api_key: modalVobizAuthId.trim(),
       })
-      // Sentinel means "keep existing token" — never send the dots to the backend
+
       if (modalVobizAuthToken !== MASKED_KEY_SENTINEL) {
         await createIntegration({
           org_id: orgId,
@@ -463,7 +463,7 @@ export default function IntegrationsPage() {
           base_url: modalCustomLLMBaseUrl.trim(),
           model: modalCustomLLMModel.trim(),
         }
-        // Sentinel means "keep existing key" — never send the dots to the backend
+
         if (modalCustomLLMApiKey.trim() && modalCustomLLMApiKey !== MASKED_KEY_SENTINEL) {
           updatePayload.api_key = modalCustomLLMApiKey.trim()
         }
