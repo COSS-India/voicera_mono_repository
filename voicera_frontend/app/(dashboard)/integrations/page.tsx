@@ -24,8 +24,6 @@ import {
 } from "@/components/ui/tooltip"
 import {
   Search,
-  Eye,
-  EyeOff,
   Save,
   Mic,
   Volume2,
@@ -44,6 +42,9 @@ const VOBIZ_AUTH_ID_MODEL = "VobizAuthId"
 const VOBIZ_AUTH_TOKEN_MODEL = "VobizAuthToken"
 const PLIVO_AUTH_ID_MODEL = "PlivoAuthId"
 const PLIVO_AUTH_TOKEN_MODEL = "PlivoAuthToken"
+
+/** Dummy value shown in the manage modal so the field looks filled — the real key is never loaded on the frontend. */
+const MASKED_KEY_SENTINEL = "•".repeat(128)
 
 // Provider type definitions
 type ProviderCapability = "stt" | "tts" | "llm"
@@ -173,38 +174,30 @@ export default function IntegrationsPage() {
   // Connected providers state (fetched from backend)
   const [connectedProviders, setConnectedProviders] = useState<Record<string, boolean>>({})
   
-  // API keys state
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
-  const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({})
-  
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
   const [modalApiKey, setModalApiKey] = useState("")
-  const [isModalKeyVisible, setIsModalKeyVisible] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  // Telephony (Vobiz) — two integration rows in backend
+  // Telephony (Vobiz) — two integration rows in backend (auth ID is not secret; token is never read)
   const [vobizModalOpen, setVobizModalOpen] = useState(false)
+  const [vobizConnected, setVobizConnected] = useState(false)
+  const [plivoConnected, setPlivoConnected] = useState(false)
   const [vobizAuthId, setVobizAuthId] = useState("")
-  const [vobizAuthToken, setVobizAuthToken] = useState("")
   const [plivoAuthId, setPlivoAuthId] = useState("")
-  const [plivoAuthToken, setPlivoAuthToken] = useState("")
   const [modalVobizAuthId, setModalVobizAuthId] = useState("")
   const [modalVobizAuthToken, setModalVobizAuthToken] = useState("")
-  const [vobizTokenVisible, setVobizTokenVisible] = useState(false)
   const [telephonyProviderModal, setTelephonyProviderModal] = useState<"vobiz" | "plivo">("vobiz")
 
   // Custom LLM integrations
   const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
-  const [customLLMApiKeys, setCustomLLMApiKeys] = useState<Record<string, string>>({})
   const [customLLMModalOpen, setCustomLLMModalOpen] = useState(false)
   const [editingCustomLLM, setEditingCustomLLM] = useState<CustomLLMIntegration | null>(null)
   const [modalCustomLLMName, setModalCustomLLMName] = useState("")
   const [modalCustomLLMBaseUrl, setModalCustomLLMBaseUrl] = useState("")
   const [modalCustomLLMApiKey, setModalCustomLLMApiKey] = useState("")
   const [modalCustomLLMModel, setModalCustomLLMModel] = useState("")
-  const [customLLMApiKeyVisible, setCustomLLMApiKeyVisible] = useState(false)
   const [customLLMDocsOpen, setCustomLLMDocsOpen] = useState(false)
   
   // Loading state
@@ -223,42 +216,38 @@ export default function IntegrationsPage() {
         getCustomLLMIntegrations(),
       ])
       setCustomLLMIntegrations(customLlms)
-      const customKeys: Record<string, string> = {}
-      customLlms.forEach((llm) => {
-        if (llm.api_key) customKeys[llm.id] = llm.api_key
-      })
-      setCustomLLMApiKeys(customKeys)
-      
-      // Convert integrations array to connected providers map and api keys map
+
+      // Convert integrations array to connected providers map (API keys are never read on the frontend)
       const connected: Record<string, boolean> = {}
-      const keys: Record<string, string> = {}
-      setVobizAuthId("")
-      setVobizAuthToken("")
-      setPlivoAuthId("")
-      setPlivoAuthToken("")
-      
+      let fetchedVobizAuthId = ""
+      let hasVobizToken = false
+      let fetchedPlivoAuthId = ""
+      let hasPlivoToken = false
+
       integrations.forEach((integration: Integration) => {
         if (integration.model === VOBIZ_AUTH_ID_MODEL) {
-          setVobizAuthId(integration.api_key)
+          fetchedVobizAuthId = integration.api_key
         } else if (integration.model === VOBIZ_AUTH_TOKEN_MODEL) {
-          setVobizAuthToken(integration.api_key)
+          hasVobizToken = true
         } else if (integration.model === PLIVO_AUTH_ID_MODEL) {
-          setPlivoAuthId(integration.api_key)
+          fetchedPlivoAuthId = integration.api_key
         } else if (integration.model === PLIVO_AUTH_TOKEN_MODEL) {
-          setPlivoAuthToken(integration.api_key)
+          hasPlivoToken = true
         } else {
           const provider = providers.find(
             (p) => p.name.toLowerCase() === integration.model.toLowerCase()
           )
           if (provider) {
             connected[provider.id] = true
-            keys[provider.id] = integration.api_key
           }
         }
       })
-      
+
+      setVobizAuthId(fetchedVobizAuthId)
+      setPlivoAuthId(fetchedPlivoAuthId)
+      setVobizConnected(Boolean(fetchedVobizAuthId) && hasVobizToken)
+      setPlivoConnected(Boolean(fetchedPlivoAuthId) && hasPlivoToken)
       setConnectedProviders(connected)
-      setApiKeys(keys)
     } catch (error) {
       console.error("Error fetching integrations:", error)
     } finally {
@@ -296,21 +285,19 @@ export default function IntegrationsPage() {
     setSearchQuery("")
     setSelectedProvider(provider)
     setModalApiKey("")
-    setIsModalKeyVisible(false)
     setIsModalOpen(true)
   }
 
-  // Open manage modal for connected provider
+  // Open manage modal for connected provider (existing key is never shown)
   const openManageModal = (provider: Provider) => {
     setSelectedProvider(provider)
-    setModalApiKey(apiKeys[provider.id] || "••••••••••••••••")
-    setIsModalKeyVisible(false)
+    setModalApiKey(MASKED_KEY_SENTINEL)
     setIsModalOpen(true)
   }
 
   // Handle save from modal
   const handleModalSave = async () => {
-    if (!selectedProvider || !modalApiKey) return
+    if (!selectedProvider || !modalApiKey || modalApiKey === MASKED_KEY_SENTINEL) return
 
     setIsSaving(true)
 
@@ -327,7 +314,6 @@ export default function IntegrationsPage() {
       })
 
       // Update state
-      setApiKeys((prev) => ({ ...prev, [selectedProvider.id]: modalApiKey }))
       setConnectedProviders((prev) => ({ ...prev, [selectedProvider.id]: true }))
       setIsModalOpen(false)
     } catch (error) {
@@ -353,11 +339,6 @@ export default function IntegrationsPage() {
         delete updated[selectedProvider.id]
         return updated
       })
-      setApiKeys((prev) => {
-        const updated = { ...prev }
-        delete updated[selectedProvider.id]
-        return updated
-      })
       setIsModalOpen(false)
     } catch (error) {
       console.error("Error disconnecting integration:", error)
@@ -369,20 +350,12 @@ export default function IntegrationsPage() {
 
   const isEditing = selectedProvider && connectedProviders[selectedProvider.id]
 
-  const vobizConnected = Boolean(vobizAuthId && vobizAuthToken)
-  const plivoConnected = Boolean(plivoAuthId && plivoAuthToken)
-
   const openTelephonyModal = (provider: "vobiz" | "plivo") => {
     setSearchQuery("")
     setTelephonyProviderModal(provider)
-    if (provider === "vobiz") {
-      setModalVobizAuthId(vobizAuthId || "")
-      setModalVobizAuthToken(vobizAuthToken || "")
-    } else {
-      setModalVobizAuthId(plivoAuthId || "")
-      setModalVobizAuthToken(plivoAuthToken || "")
-    }
-    setVobizTokenVisible(false)
+    const connected = provider === "vobiz" ? vobizConnected : plivoConnected
+    setModalVobizAuthId(provider === "vobiz" ? vobizAuthId : plivoAuthId)
+    setModalVobizAuthToken(connected ? MASKED_KEY_SENTINEL : "")
     setVobizModalOpen(true)
   }
 
@@ -401,17 +374,20 @@ export default function IntegrationsPage() {
         model: authIdModel,
         api_key: modalVobizAuthId.trim(),
       })
-      await createIntegration({
-        org_id: orgId,
-        model: authTokenModel,
-        api_key: modalVobizAuthToken.trim(),
-      })
+      // Sentinel means "keep existing token" — never send the dots to the backend
+      if (modalVobizAuthToken !== MASKED_KEY_SENTINEL) {
+        await createIntegration({
+          org_id: orgId,
+          model: authTokenModel,
+          api_key: modalVobizAuthToken.trim(),
+        })
+      }
       if (telephonyProviderModal === "vobiz") {
         setVobizAuthId(modalVobizAuthId.trim())
-        setVobizAuthToken(modalVobizAuthToken.trim())
+        setVobizConnected(true)
       } else {
         setPlivoAuthId(modalVobizAuthId.trim())
-        setPlivoAuthToken(modalVobizAuthToken.trim())
+        setPlivoConnected(true)
       }
       setVobizModalOpen(false)
     } catch (error) {
@@ -432,10 +408,10 @@ export default function IntegrationsPage() {
       await deleteIntegration(authTokenModel)
       if (telephonyProviderModal === "vobiz") {
         setVobizAuthId("")
-        setVobizAuthToken("")
+        setVobizConnected(false)
       } else {
         setPlivoAuthId("")
-        setPlivoAuthToken("")
+        setPlivoConnected(false)
       }
       setVobizModalOpen(false)
     } catch (error) {
@@ -455,13 +431,8 @@ export default function IntegrationsPage() {
     setEditingCustomLLM(integration ?? null)
     setModalCustomLLMName(integration?.name ?? "")
     setModalCustomLLMBaseUrl(integration?.base_url ?? "")
-    setModalCustomLLMApiKey(
-      integration
-        ? customLLMApiKeys[integration.id] || integration.api_key || ""
-        : ""
-    )
+    setModalCustomLLMApiKey(integration ? MASKED_KEY_SENTINEL : "")
     setModalCustomLLMModel(integration?.model ?? "")
-    setCustomLLMApiKeyVisible(false)
     setCustomLLMDocsOpen(false)
     setCustomLLMModalOpen(true)
   }
@@ -492,30 +463,19 @@ export default function IntegrationsPage() {
           base_url: modalCustomLLMBaseUrl.trim(),
           model: modalCustomLLMModel.trim(),
         }
-        if (modalCustomLLMApiKey.trim()) {
+        // Sentinel means "keep existing key" — never send the dots to the backend
+        if (modalCustomLLMApiKey.trim() && modalCustomLLMApiKey !== MASKED_KEY_SENTINEL) {
           updatePayload.api_key = modalCustomLLMApiKey.trim()
         }
-        const updateResult = await updateCustomLLMIntegration(editingCustomLLM.id, updatePayload)
-        if (updateResult.integration?.api_key) {
-          setCustomLLMApiKeys((prev) => ({
-            ...prev,
-            [editingCustomLLM.id]: updateResult.integration.api_key,
-          }))
-        }
+        await updateCustomLLMIntegration(editingCustomLLM.id, updatePayload)
       } else {
-        const createResult = await createCustomLLMIntegration({
+        await createCustomLLMIntegration({
           org_id: orgId,
           name: modalCustomLLMName.trim(),
           base_url: modalCustomLLMBaseUrl.trim(),
           api_key: modalCustomLLMApiKey.trim(),
           model: modalCustomLLMModel.trim(),
         })
-        if (createResult.integration?.api_key) {
-          setCustomLLMApiKeys((prev) => ({
-            ...prev,
-            [createResult.integration.id]: createResult.integration.api_key,
-          }))
-        }
       }
 
       setCustomLLMModalOpen(false)
@@ -895,7 +855,10 @@ export default function IntegrationsPage() {
 
       {/* Connect/Manage Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {isEditing ? "Manage" : "Connect"} {selectedProvider?.name}
@@ -927,31 +890,20 @@ export default function IntegrationsPage() {
             {/* API Key Input */}
             <div className="space-y-2">
               <Label htmlFor="api-key">API Key</Label>
-              <div className="relative">
-                <Input
-                  id="api-key"
-                  type={isModalKeyVisible ? "text" : "password"}
-                  placeholder="Enter your API key"
-                  value={modalApiKey}
-                  onChange={(e) => setModalApiKey(e.target.value)}
-                  className="pr-10"
-                  autoComplete="off"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full w-10 hover:bg-transparent"
-                  onClick={() => setIsModalKeyVisible(!isModalKeyVisible)}
-                  tabIndex={-1}
-                >
-                  {isModalKeyVisible ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
+              <Input
+                id="api-key"
+                type="password"
+                placeholder={isEditing ? "Enter a new API key" : "Enter your API key"}
+                value={modalApiKey}
+                onChange={(e) => setModalApiKey(e.target.value)}
+                onFocus={() => {
+                  if (modalApiKey === MASKED_KEY_SENTINEL) setModalApiKey("")
+                }}
+                onBlur={() => {
+                  if (isEditing && !modalApiKey) setModalApiKey(MASKED_KEY_SENTINEL)
+                }}
+                autoComplete="off"
+              />
               <p className="text-xs text-muted-foreground">
                 Your API key is encrypted and stored securely.
               </p>
@@ -972,7 +924,7 @@ export default function IntegrationsPage() {
             )}
             <Button
               onClick={handleModalSave}
-              disabled={!modalApiKey || isSaving}
+              disabled={!modalApiKey || modalApiKey === MASKED_KEY_SENTINEL || isSaving}
             >
               {isSaving ? (
                 <>
@@ -992,7 +944,10 @@ export default function IntegrationsPage() {
 
       {/* Telephony Provider — Auth ID + Auth Token */}
       <Dialog open={vobizModalOpen} onOpenChange={setVobizModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Phone className="h-5 w-5" />
@@ -1019,32 +974,22 @@ export default function IntegrationsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="vobiz-auth-token">{telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"} Auth Token</Label>
-              <div className="relative">
-                <Input
-                  id="vobiz-auth-token"
-                  type={vobizTokenVisible ? "text" : "password"}
-                  placeholder="Your auth token"
-                  value={modalVobizAuthToken}
-                  onChange={(e) => setModalVobizAuthToken(e.target.value)}
-                  className="pr-10"
-                  autoComplete="off"
-                  name="vobiz-auth-token"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full w-10 hover:bg-transparent"
-                  onClick={() => setVobizTokenVisible(!vobizTokenVisible)}
-                  tabIndex={-1}
-                >
-                  {vobizTokenVisible ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
+              <Input
+                id="vobiz-auth-token"
+                type="password"
+                placeholder="Your auth token"
+                value={modalVobizAuthToken}
+                onChange={(e) => setModalVobizAuthToken(e.target.value)}
+                onFocus={() => {
+                  if (modalVobizAuthToken === MASKED_KEY_SENTINEL) setModalVobizAuthToken("")
+                }}
+                onBlur={() => {
+                  const connected = telephonyProviderModal === "vobiz" ? vobizConnected : plivoConnected
+                  if (connected && !modalVobizAuthToken) setModalVobizAuthToken(MASKED_KEY_SENTINEL)
+                }}
+                autoComplete="off"
+                name="vobiz-auth-token"
+              />
             </div>
           </div>
 
@@ -1084,7 +1029,10 @@ export default function IntegrationsPage() {
 
       {/* Custom LLM — endpoint, API key, model */}
       <Dialog open={customLLMModalOpen} onOpenChange={setCustomLLMModalOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent
+          className="sm:max-w-lg"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Brain className="h-5 w-5" />
@@ -1125,31 +1073,24 @@ export default function IntegrationsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="custom-llm-api-key">API key / Bearer token</Label>
-              <div className="relative">
-                <Input
-                  id="custom-llm-api-key"
-                  type={customLLMApiKeyVisible ? "text" : "password"}
-                  placeholder="Your API key or Bearer token"
-                  value={modalCustomLLMApiKey}
-                  onChange={(e) => setModalCustomLLMApiKey(e.target.value)}
-                  className="pr-10"
-                  autoComplete="off"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full w-10 hover:bg-transparent"
-                  onClick={() => setCustomLLMApiKeyVisible(!customLLMApiKeyVisible)}
-                  tabIndex={-1}
-                >
-                  {customLLMApiKeyVisible ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
+              <Input
+                id="custom-llm-api-key"
+                type="password"
+                placeholder={
+                  editingCustomLLM
+                    ? "Enter a new API key"
+                    : "Your API key or Bearer token"
+                }
+                value={modalCustomLLMApiKey}
+                onChange={(e) => setModalCustomLLMApiKey(e.target.value)}
+                onFocus={() => {
+                  if (modalCustomLLMApiKey === MASKED_KEY_SENTINEL) setModalCustomLLMApiKey("")
+                }}
+                onBlur={() => {
+                  if (editingCustomLLM && !modalCustomLLMApiKey) setModalCustomLLMApiKey(MASKED_KEY_SENTINEL)
+                }}
+                autoComplete="off"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="custom-llm-model">Model ID</Label>
