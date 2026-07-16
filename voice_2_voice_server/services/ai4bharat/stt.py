@@ -19,6 +19,8 @@ import numpy as np
 from loguru import logger
 from pipecat.audio.utils import create_stream_resampler
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     CancelFrame,
     EndFrame,
     ErrorFrame,
@@ -26,12 +28,16 @@ from pipecat.frames.frames import (
     InterimTranscriptionFrame,
     StartFrame,
     TranscriptionFrame,
+    TTSStartedFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.openai.llm import OpenAIUserContextAggregator
 from pipecat.services.stt_service import STTService
 from pipecat.utils.time import time_now_iso8601
+
+from utils.bot_utils import BotSpeakingLatch
 
 try:
     import aiohttp as _aiohttp_check
@@ -48,17 +54,26 @@ _PRE_ROLL_MS = 800
 
 @dataclass
 class VADProcessor:
-    """Energy-based VAD for AI4Bharat REST STT segment boundaries."""
+    """Energy-based VAD for AI4Bharat REST STT segment boundaries.
+
+    ``min_speech_ms`` (350) while the bot is talking — original barge-in gate.
+    ``min_speech_ms_idle`` (200) only when the bot is silent — short user turns.
+    """
 
     speech_start_rms: float = 0.035
     speech_end_rms: float = 0.012
     min_speech_ms: int = 350
+    min_speech_ms_idle: int = 200
     min_pause_ms: int = 400
     chunk_ms: int = 200
 
     is_speaking: bool = False
+    bot_speaking: bool = False
     speech_run_ms: int = 0
     silence_run_ms: int = 0
+
+    def _active_min_speech_ms(self) -> int:
+        return self.min_speech_ms if self.bot_speaking else self.min_speech_ms_idle
 
     def process_chunk(self, audio_data: bytes) -> str:
         samples = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
@@ -70,7 +85,7 @@ class VADProcessor:
         if not self.is_speaking:
             if rms > self.speech_start_rms:
                 self.speech_run_ms += self.chunk_ms
-                if self.speech_run_ms >= self.min_speech_ms:
+                if self.speech_run_ms >= self._active_min_speech_ms():
                     self.is_speaking = True
                     self.speech_run_ms = 0
                     self.silence_run_ms = 0
@@ -138,6 +153,7 @@ class IndicConformerRESTSTTService(STTService):
         self._session: Optional[aiohttp.ClientSession] = None
         self._resampler = create_stream_resampler()
         self._vad = VADProcessor(chunk_ms=self._chunk_ms)
+        self._bot_latch = BotSpeakingLatch()
         self._audio_buffer = bytearray()
         self._pre_roll_buffer = bytearray()
         self._segment_buffer = bytearray()
@@ -253,10 +269,15 @@ class IndicConformerRESTSTTService(STTService):
             self._speech_started_at = None
 
     async def _handle_audio_chunk(self, audio_chunk: bytes, pre_roll_bytes: bytes = b"") -> str:
+        self._vad.bot_speaking = self._bot_latch.speaking
         state = self._vad.process_chunk(audio_chunk)
 
         if state == "START":
-            logger.debug("AI4Bharat VAD detected speech start")
+            logger.debug(
+                "AI4Bharat VAD detected speech start (min_speech_ms={} bot_speaking={})",
+                self._vad._active_min_speech_ms(),
+                self._vad.bot_speaking,
+            )
             self._segment_active = True
             self._segment_buffer.clear()
             self._latest_transcript_text = ""
@@ -288,6 +309,13 @@ class IndicConformerRESTSTTService(STTService):
 
         return state
 
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        if isinstance(frame, (BotStartedSpeakingFrame, TTSStartedFrame)):
+            self._bot_latch.on_started()
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            self._bot_latch.on_stopped()
+        await super().process_frame(frame, direction)
+
     async def start(self, frame: StartFrame):
         await super().start(frame)
         self._session = aiohttp.ClientSession()
@@ -296,6 +324,7 @@ class IndicConformerRESTSTTService(STTService):
         self._pre_roll_buffer.clear()
         self._segment_buffer.clear()
         self._vad = VADProcessor(chunk_ms=self._chunk_ms)
+        self._bot_latch.reset()
         self._segment_active = False
         self._latest_transcript_text = ""
         self._bytes_since_last_interim = 0
@@ -314,6 +343,7 @@ class IndicConformerRESTSTTService(STTService):
             self._pre_roll_buffer.clear()
             self._segment_buffer.clear()
             self._vad = VADProcessor(chunk_ms=self._chunk_ms)
+            self._bot_latch.reset()
             self._segment_active = False
             self._latest_transcript_text = ""
             self._bytes_since_last_interim = 0
@@ -333,6 +363,7 @@ class IndicConformerRESTSTTService(STTService):
             self._pre_roll_buffer.clear()
             self._segment_buffer.clear()
             self._vad = VADProcessor(chunk_ms=self._chunk_ms)
+            self._bot_latch.reset()
             self._segment_active = False
             self._latest_transcript_text = ""
             self._bytes_since_last_interim = 0
@@ -388,6 +419,10 @@ class Ai4BharatKenpathUserContextAggregator(OpenAIUserContextAggregator):
     Pushes the user turn to the LLM as soon as a final AI4Bharat
     ``TranscriptionFrame`` is received, without waiting for Silero
     ``UserStoppedSpeakingFrame`` or Pipecat's ``aggregation_timeout``.
+
+    While the bot is speaking, Silero must have armed (noise guard).
+    While the bot is silent (user's turn), short replies like "hello" /
+    "nahi" are accepted without requiring Silero.
     """
 
     MIN_TEXT_CHARS = 2
@@ -418,7 +453,8 @@ class Ai4BharatKenpathUserContextAggregator(OpenAIUserContextAggregator):
             self._silero_armed = False
             return
 
-        if not self._silero_armed:
+        # Bot speaking: keep Silero gate. Bot silent: accept single-word turns.
+        if self._bot_speaking and not self._silero_armed:
             logger.debug(
                 "AI4Bharat final ignored for LLM — Silero did not detect speech: '{}'",
                 text[:80],
@@ -429,8 +465,9 @@ class Ai4BharatKenpathUserContextAggregator(OpenAIUserContextAggregator):
         await super()._handle_transcription(frame)
         if len(self._aggregation) > 0:
             logger.debug(
-                "AI4Bharat final transcript — pushing LLM immediately | text='{}'",
+                "AI4Bharat final transcript — pushing LLM immediately | text='{}' | bot_speaking={}",
                 self._aggregation[:80],
+                self._bot_speaking,
             )
             await self.push_aggregation()
         self._silero_armed = False

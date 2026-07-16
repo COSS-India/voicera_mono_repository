@@ -14,19 +14,25 @@ import numpy as np
 from loguru import logger
 from pipecat.audio.utils import create_stream_resampler
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     ErrorFrame,
     Frame,
     InterimTranscriptionFrame,
     StartFrame,
     EndFrame,
     CancelFrame,
+    TTSStartedFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
     TranscriptionFrame,
 )
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.stt_service import STTService
 from pipecat.services.openai.llm import OpenAIUserContextAggregator
 from pipecat.utils.time import time_now_iso8601
+
+from utils.bot_utils import BotSpeakingLatch
 
 try:
     import websockets
@@ -38,35 +44,26 @@ except ModuleNotFoundError as e:
 
 @dataclass
 class VADProcessor:
-    """Simple energy-based VAD matching the reference Bhashini client.
+    """Energy-based VAD for Bhashini websocket segment boundaries.
 
-    Threshold notes
-    ---------------
-    speech_start_rms  – RMS level above which sound is considered speech onset.
-                        Raised from 0.024 → 0.035 so that faint background
-                        noise and quiet cough overtones don't arm the detector.
-    min_speech_ms     – How long sustained energy must last before we call it
-                        speech START.  Raised from 250 → 350 ms: typical coughs
-                        and barks are impulsive (< 200 ms onset), so a slightly
-                        longer gate filters most of them out before they ever
-                        reach the Bhashini WebSocket.
-    min_pause_ms      – Kept at 950 ms so genuine speech segments with natural
-                        short pauses are not chopped up.
-
-    NOTE: Even when these thresholds are crossed by a non-speech sound, the
-    BargeInInterruptionProcessor in bot.py will NOT interrupt the bot unless
-    Bhashini actually returns a transcript — providing a second line of defence.
+    ``min_speech_ms`` (350) while the bot is talking — barge-in noise gate.
+    ``min_speech_ms_idle`` (200) only when the bot is silent — short user turns.
     """
 
-    speech_start_rms: float = 0.035   # raised from 0.024
+    speech_start_rms: float = 0.035
     speech_end_rms: float = 0.012
-    min_speech_ms: int = 350           # raised from 250
+    min_speech_ms: int = 350
+    min_speech_ms_idle: int = 200
     min_pause_ms: int = 400
     chunk_ms: int = 200
 
     is_speaking: bool = False
+    bot_speaking: bool = False
     speech_run_ms: int = 0
     silence_run_ms: int = 0
+
+    def _active_min_speech_ms(self) -> int:
+        return self.min_speech_ms if self.bot_speaking else self.min_speech_ms_idle
 
     def process_chunk(self, audio_data: bytes) -> str:
         samples = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
@@ -74,13 +71,11 @@ class VADProcessor:
             return "IDLE"
 
         rms = float(np.sqrt(np.mean(samples**2)))
-        meter = int(min(rms / 0.2, 1.0) * 20)
-        
 
         if not self.is_speaking:
             if rms > self.speech_start_rms:
                 self.speech_run_ms += self.chunk_ms
-                if self.speech_run_ms >= self.min_speech_ms:
+                if self.speech_run_ms >= self._active_min_speech_ms():
                     self.is_speaking = True
                     self.speech_run_ms = 0
                     self.silence_run_ms = 0
@@ -108,9 +103,9 @@ class BhashiniKenpathUserContextAggregator(OpenAIUserContextAggregator):
     ``TranscriptionFrame`` is received, without waiting for Silero
     ``UserStoppedSpeakingFrame`` or Pipecat's ``aggregation_timeout``.
 
-    Uses the same guards as ``BargeInInterruptionProcessor`` in ``bot.py``:
-    Silero must have seen real speech, and the final text must be long enough
-    to avoid cough/noise one-character ASR artefacts triggering Vistaar.
+    While the bot is speaking, Silero must have armed (noise guard).
+    While the bot is silent (user's turn), short replies like "hello" /
+    "nahi" are accepted without requiring Silero.
     """
 
     MIN_TEXT_CHARS = 2
@@ -141,7 +136,8 @@ class BhashiniKenpathUserContextAggregator(OpenAIUserContextAggregator):
             self._silero_armed = False
             return
 
-        if not self._silero_armed:
+        # Bot speaking: keep Silero gate. Bot silent: accept single-word turns.
+        if self._bot_speaking and not self._silero_armed:
             logger.debug(
                 "Bhashini final ignored for LLM — Silero did not detect speech: '{}'",
                 text[:80],
@@ -152,8 +148,9 @@ class BhashiniKenpathUserContextAggregator(OpenAIUserContextAggregator):
         await super()._handle_transcription(frame)
         if len(self._aggregation) > 0:
             logger.debug(
-                "Bhashini final transcript — pushing LLM immediately | text='{}'",
+                "Bhashini final transcript — pushing LLM immediately | text='{}' | bot_speaking={}",
                 self._aggregation[:80],
+                self._bot_speaking,
             )
             await self.push_aggregation()
         self._silero_armed = False
@@ -207,6 +204,7 @@ class BhashiniSTTService(STTService):
         self._suppress_vad_frames = suppress_vad_frames
         self._resampler = create_stream_resampler()
         self._vad = VADProcessor(chunk_ms=self._chunk_ms)
+        self._bot_latch = BotSpeakingLatch()
         self._audio_buffer = bytearray()
         self._pre_roll_buffer = bytearray()
         self._disabled = False
@@ -517,10 +515,15 @@ class BhashiniSTTService(STTService):
                     )
 
     async def _handle_audio_chunk(self, audio_chunk: bytes, pre_roll_bytes: bytes = b"") -> str:
+        self._vad.bot_speaking = self._bot_latch.speaking
         state = self._vad.process_chunk(audio_chunk)
 
         if state == "START":
-            logger.debug("Bhashini VAD detected speech start")
+            logger.debug(
+                "Bhashini VAD detected speech start (min_speech_ms={} bot_speaking={})",
+                self._vad._active_min_speech_ms(),
+                self._vad.bot_speaking,
+            )
             if not await self._open_websocket():
                 return "START_FAILED"
             self._segment_active = True
@@ -544,6 +547,13 @@ class BhashiniSTTService(STTService):
 
         return state
 
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        if isinstance(frame, (BotStartedSpeakingFrame, TTSStartedFrame)):
+            self._bot_latch.on_started()
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            self._bot_latch.on_stopped()
+        await super().process_frame(frame, direction)
+
     # ------------------------------------------------------------------
     # STTService implementation
     # ------------------------------------------------------------------
@@ -556,6 +566,7 @@ class BhashiniSTTService(STTService):
         self._audio_buffer.clear()
         self._pre_roll_buffer.clear()
         self._vad = VADProcessor(chunk_ms=self._chunk_ms)
+        self._bot_latch.reset()
         self._segment_active = False
         self._segment_started_at = None
         self._segment_ws_opened_at = None
@@ -575,6 +586,7 @@ class BhashiniSTTService(STTService):
             self._audio_buffer.clear()
             self._pre_roll_buffer.clear()
             self._vad = VADProcessor(chunk_ms=self._chunk_ms)
+            self._bot_latch.reset()
             self._segment_active = False
             self._stream_started = False
             self._disabled = False
@@ -597,6 +609,7 @@ class BhashiniSTTService(STTService):
             self._audio_buffer.clear()
             self._pre_roll_buffer.clear()
             self._vad = VADProcessor(chunk_ms=self._chunk_ms)
+            self._bot_latch.reset()
             self._segment_active = False
             self._stream_started = False
             self._disabled = False

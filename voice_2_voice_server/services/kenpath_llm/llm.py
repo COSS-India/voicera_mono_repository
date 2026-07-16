@@ -425,7 +425,8 @@ class KenpathLLM(OpenAILLMService):
                 await self.push_frame(TTSSpeakFrame(hold_msg))
 
         timer_task = None
-        if self.hold_messages:
+        # Short turns (≤2 words) are fillers/acks — skip hold audio and wait for LLM.
+        if self.hold_messages and len(user_message.split()) > 2:
             timer_task = asyncio.create_task(hold_message_timer())
 
         await self.start_ttfb_metrics()
