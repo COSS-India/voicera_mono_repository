@@ -25,10 +25,15 @@ from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 from pipecat.services.openai.base_llm import BaseOpenAILLMService
 
 # Local services
-from services.kenpath_llm.llm import KenpathLLM
+from services.kenpath_llm.llm import (
+    KenpathLLM,
+    is_bharat_vistaar_language_supported,
+    normalize_kenpath_backend,
+)
 from services.ai4bharat.tts import IndicParlerRESTTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
 from services.bhashini.stt import BhashiniSTTService
+from services.bhashini.socketio_stt import BhashiniSocketIOSTTService
 from services.bhashini.bhili_stt import BhashiniBhiliSTTService
 from services.bhashini.tts import BhashiniTTSService
 from services.openai_kb_llm import OpenAIKnowledgeLLMService
@@ -172,13 +177,29 @@ def create_llm_service(
             or llm_config.get("vistaar_environment")
             or "prod"
         )
-        return KenpathLLM(
-            vistaar_session_id=vistaar_session_id,
-            language=language,
-            vistaar_environment=vistaar_env,
-            hold_messages=hold_messages or [],
-            response_timeout=hold_message_timeout_seconds,
+        kenpath_backend = (
+            args.get("kenpath_backend")
+            or llm_config.get("kenpath_backend")
+            or "vistaar"
         )
+        kenpath_backend = normalize_kenpath_backend(kenpath_backend)
+        if kenpath_backend == "bharatvistaar" and not is_bharat_vistaar_language_supported(
+            language, environment=vistaar_env
+        ):
+            raise ServiceCreationError(
+                f"Language {language!r} is not supported by Bharat Vistaar ({vistaar_env})."
+            )
+        try:
+            return KenpathLLM(
+                vistaar_session_id=vistaar_session_id,
+                language=language,
+                vistaar_environment=vistaar_env,
+                kenpath_backend=kenpath_backend,
+                hold_messages=hold_messages or [],
+                response_timeout=hold_message_timeout_seconds,
+            )
+        except ValueError as e:
+            raise ServiceCreationError(str(e)) from e
     elif provider_normalized in ("Anthropic", "anthropic"):
         if not org_id:
             raise ServiceCreationError(
@@ -449,7 +470,7 @@ def create_stt_service(
                 language_id=STT_LANGUAGE_MAP[provider][language],
                 sample_rate=16000,
                 input_sample_rate=sample_rate,
-                vad_analyzer=vad_analyzer
+                suppress_vad_frames=(vad_analyzer is not None),
             )
         else:
             raise ServiceCreationError(f"Unknown ai4bharat STT model: {model}. Expected 'indic-conformer-stt'")
@@ -465,6 +486,28 @@ def create_stt_service(
             return BhashiniBhiliSTTService(
                 model=model,
                 language=lang_code,
+                sample_rate=sample_rate,
+                input_sample_rate=sample_rate,
+                suppress_vad_frames=(vad_analyzer is not None),
+            )
+
+        english_languages = {
+            "en",
+            "eng",
+            "English",
+            "English (India)",
+            "English (United States)",
+        }
+        if lang_code in ("en", "eng") or language in english_languages:
+            model = (
+                args.get("model")
+                or stt_config.get("model")
+                or "ai4bharat/whisper-medium-en--gpu--t4"
+            )
+            return BhashiniSocketIOSTTService(
+                api_key=api_key,
+                language="en",
+                service_id=model,
                 sample_rate=sample_rate,
                 input_sample_rate=sample_rate,
                 suppress_vad_frames=(vad_analyzer is not None),

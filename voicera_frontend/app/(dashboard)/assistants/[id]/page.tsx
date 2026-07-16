@@ -44,6 +44,13 @@ import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMInt
 // Import JSON data
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
+import {
+  type KenpathVariant,
+  isBharatVistaarLanguageSupported,
+  kenpathLlmFieldsFromVariant,
+  kenpathVariantFromLlmModel,
+  kenpathVariantHelpText,
+} from "@/lib/kenpath"
 import ttsData from "@/tts.json"
 import descriptionsData from "@/descriptions.json"
 import {
@@ -256,12 +263,15 @@ export default function AgentDetailPage() {
   const [userOnlineDetectionEnabled, setUserOnlineDetectionEnabled] = useState(false)
   const [userOnlineDetectionMessage, setUserOnlineDetectionMessage] = useState("")
   const [userOnlineDetectionSeconds, setUserOnlineDetectionSeconds] = useState(10)
+  const [userOnlineDetectionRepeats, setUserOnlineDetectionRepeats] = useState(1)
+  const [userOnlineDetectionClosingMessage, setUserOnlineDetectionClosingMessage] =
+    useState("")
   const [agentType, setAgentType] = useState("")
   const [language, setLanguage] = useState("")
   const [llmProvider, setLlmProvider] = useState("")
   const [llmModel, setLlmModel] = useState("")
   const [customLlmId, setCustomLlmId] = useState("")
-  const [kenpathEnvironment, setKenpathEnvironment] = useState<"prod" | "dev">("prod")
+  const [kenpathVariant, setKenpathVariant] = useState<KenpathVariant>("prod")
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false)
   const [knowledgeDocumentIds, setKnowledgeDocumentIds] = useState<string[]>([])
   const [knowledgeTopK, setKnowledgeTopK] = useState(3)
@@ -585,14 +595,29 @@ export default function AgentDetailPage() {
               ? loadedUserOnlineDetectionSeconds
               : 10
           )
+          const loadedUserOnlineDetectionRepeats = Number(
+            (agentData.agent_config as any)?.user_online_detection_repeats
+          )
+          setUserOnlineDetectionRepeats(
+            Number.isFinite(loadedUserOnlineDetectionRepeats) &&
+              loadedUserOnlineDetectionRepeats >= 1
+              ? Math.floor(loadedUserOnlineDetectionRepeats)
+              : 1
+          )
+          setUserOnlineDetectionClosingMessage(
+            String(
+              (agentData.agent_config as any)?.user_online_detection_closing_message || ""
+            )
+          )
 
           // Load LLM settings - convert official name to internal ID
           const llmProviderName = agentData.agent_config?.llm_model?.name || ""
           setLlmProvider(getProviderIdFromName(llmProviderName))
           setLlmModel(agentData.agent_config?.llm_model?.model || "")
           setCustomLlmId(agentData.agent_config?.llm_model?.custom_llm_id || "")
-          const vistaarEnv = agentData.agent_config?.llm_model?.vistaar_environment
-          setKenpathEnvironment(vistaarEnv === "dev" ? "dev" : "prod")
+          setKenpathVariant(
+            kenpathVariantFromLlmModel(agentData.agent_config?.llm_model)
+          )
           setKnowledgeEnabled(Boolean((agentData.agent_config as any)?.knowledge_base_enabled))
           setKnowledgeDocumentIds(
             Array.isArray((agentData.agent_config as any)?.knowledge_document_ids)
@@ -700,6 +725,19 @@ export default function AgentDetailPage() {
                     ? loadedUserOnlineDetectionSeconds
                     : 10
               }
+              if (normalizedOriginal.user_online_detection_repeats === undefined) {
+                normalizedOriginal.user_online_detection_repeats =
+                  Number.isFinite(loadedUserOnlineDetectionRepeats) &&
+                  loadedUserOnlineDetectionRepeats >= 1
+                    ? Math.floor(loadedUserOnlineDetectionRepeats)
+                    : 1
+              }
+              if (normalizedOriginal.user_online_detection_closing_message === undefined) {
+                normalizedOriginal.user_online_detection_closing_message = String(
+                  (agentData.agent_config as any)?.user_online_detection_closing_message ||
+                    ""
+                )
+              }
               setOriginalConfig(normalizedOriginal)
             } catch (e) {
               console.error("Error parsing Agent configuration on load:", e)
@@ -798,6 +836,8 @@ export default function AgentDetailPage() {
       user_online_detection_enabled: userOnlineDetectionEnabled,
       user_online_detection_message: userOnlineDetectionMessage.trim(),
       user_online_detection_seconds: userOnlineDetectionSeconds,
+      user_online_detection_repeats: userOnlineDetectionRepeats,
+      user_online_detection_closing_message: userOnlineDetectionClosingMessage.trim(),
       knowledge_base_enabled: llmProvider === "openai" ? knowledgeEnabled : false,
       knowledge_document_ids:
         llmProvider === "openai" && knowledgeEnabled ? knowledgeDocumentIds : [],
@@ -806,7 +846,7 @@ export default function AgentDetailPage() {
         name: llmProvider || "",
         ...(llmProvider === "custom_llm" && customLlmId && { custom_llm_id: customLlmId }),
         ...(llmProvider && llmProvider !== "kenpath" && llmModel && { model: llmModel }),
-        ...(llmProvider === "kenpath" && { vistaar_environment: kenpathEnvironment }),
+        ...(llmProvider === "kenpath" && kenpathLlmFieldsFromVariant(kenpathVariant)),
       },
       stt_model: {
         name: sttProvider || "",
@@ -852,7 +892,7 @@ export default function AgentDetailPage() {
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
     const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, language, llmProvider, llmModel, customLlmId, kenpathEnvironment, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, language, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -918,6 +958,8 @@ export default function AgentDetailPage() {
           user_online_detection_enabled: userOnlineDetectionEnabled,
           user_online_detection_message: userOnlineDetectionMessage.trim(),
           user_online_detection_seconds: userOnlineDetectionSeconds,
+          user_online_detection_repeats: userOnlineDetectionRepeats,
+          user_online_detection_closing_message: userOnlineDetectionClosingMessage.trim(),
           knowledge_base_enabled: llmProvider === "openai" ? knowledgeEnabled : false,
           knowledge_document_ids:
             llmProvider === "openai" && knowledgeEnabled ? knowledgeDocumentIds : [],
@@ -926,7 +968,7 @@ export default function AgentDetailPage() {
             name: getProviderOfficialName(llmProvider),
             ...(llmProvider === "custom_llm" && customLlmId && { custom_llm_id: customLlmId }),
             ...(llmProvider !== "kenpath" && { model: llmModel }),
-            ...(llmProvider === "kenpath" && { vistaar_environment: kenpathEnvironment }),
+            ...(llmProvider === "kenpath" && kenpathLlmFieldsFromVariant(kenpathVariant)),
           },
           stt_model: {
             name: getProviderOfficialName(sttProvider),
@@ -1171,7 +1213,7 @@ export default function AgentDetailPage() {
                         setLlmModel("");
                         setCustomLlmId("");
                         if (v === "kenpath") {
-                          setKenpathEnvironment("prod")
+                          setKenpathVariant("prod")
                         }
                         if (v !== "openai") {
                           setKnowledgeEnabled(false)
@@ -1211,30 +1253,52 @@ export default function AgentDetailPage() {
                   </div>
 
                   {llmProvider === "kenpath" && (
-                    <div>
-                      <label className="text-sm font-semibold text-slate-700 mb-2 block">
-                        <span className="inline-flex items-center gap-2">
-                          Vistaar API
-                        </span>
-                      </label>
-                      <Select
-                        value={kenpathEnvironment}
-                        onValueChange={(v) => setKenpathEnvironment(v as "prod" | "dev")}
-                      >
-                        <SelectTrigger className="border-slate-200 h-11 shadow-sm rounded-md focus:ring-slate-300 transition focus:border-slate-500 bg-white">
-                          <SelectValue placeholder="Select API environment" />
-                        </SelectTrigger>
-                        <SelectContent className="z-[100] rounded-md shadow-lg">
-                          <SelectItem value="prod" className="hover:bg-slate-100 transition">
-                            Production
-                          </SelectItem>
-                          <SelectItem value="dev" className="hover:bg-slate-100 transition">
-                            Development
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-slate-500 mt-2 pl-1">
-                        Environment for Hindi/Marathi streaming. Voice Bhili uses a separate endpoint.
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-semibold text-slate-700 mb-2 block">
+                          Kenpath environment
+                        </label>
+                        <Select
+                          value={kenpathVariant}
+                          onValueChange={(v) => {
+                            const variant = v as KenpathVariant
+                            setKenpathVariant(variant)
+                            if (
+                              llmProvider === "kenpath" &&
+                              language &&
+                              !isBharatVistaarLanguageSupported(variant, language)
+                            ) {
+                              setLanguage("")
+                              setSttProvider("")
+                              setSttModel("")
+                              setTtsProvider("")
+                              setTtsModel("")
+                              setTtsVoice("")
+                              setTtsDescription("")
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="border-slate-200 h-11 shadow-sm rounded-md focus:ring-slate-300 transition focus:border-slate-500 bg-white">
+                            <SelectValue placeholder="Select Kenpath environment" />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100] rounded-md shadow-lg">
+                            <SelectItem value="prod" className="hover:bg-slate-100 transition">
+                              Production
+                            </SelectItem>
+                            <SelectItem value="dev" className="hover:bg-slate-100 transition">
+                              Development
+                            </SelectItem>
+                            <SelectItem value="bharatvistaar" className="hover:bg-slate-100 transition">
+                              Bharat Vistaar
+                            </SelectItem>
+                            <SelectItem value="bharatvistaar_dev" className="hover:bg-slate-100 transition">
+                              Bharat Vistaar Dev API
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-xs text-slate-500 pl-1">
+                        {kenpathVariantHelpText(kenpathVariant)}
                       </p>
                     </div>
                   )}
@@ -1418,11 +1482,20 @@ export default function AgentDetailPage() {
                           <CommandList>
                             <CommandEmpty>No language found.</CommandEmpty>
                             <CommandGroup heading="Languages">
-                              {allLanguages.map((lang) => (
+                              {allLanguages.map((lang) => {
+                                const bharatBlocked =
+                                  llmProvider === "kenpath" &&
+                                  !isBharatVistaarLanguageSupported(
+                                    kenpathVariant,
+                                    lang.code
+                                  )
+                                return (
                                 <CommandItem
                                   key={lang.code}
                                   value={`${lang.code} ${lang.label}`}
+                                  disabled={bharatBlocked}
                                   onSelect={() => {
+                                    if (bharatBlocked) return
                                     setLanguage(lang.code)
                                     if (lang.code && lang.code !== "English (United States)" && lang.code !== "English (India)") {
                                       const sttLangData = sttData.stt.languages[lang.code as keyof typeof sttData.stt.languages]
@@ -1468,9 +1541,19 @@ export default function AgentDetailPage() {
                                   }}
                                   className="py-2.5"
                                 >
-                                  <span className="font-medium">{lang.label}</span>
+                                  <span
+                                    className={`font-medium ${bharatBlocked ? "text-slate-400" : ""}`}
+                                  >
+                                    {lang.label}
+                                  </span>
+                                  {bharatBlocked && (
+                                    <span className="ml-2 text-xs text-slate-400">
+                                      (not supported)
+                                    </span>
+                                  )}
                                 </CommandItem>
-                              ))}
+                                )
+                              })}
                             </CommandGroup>
                           </CommandList>
                         </Command>
@@ -1507,7 +1590,7 @@ export default function AgentDetailPage() {
                         {allSTTProviders
                           .filter((p) => supportedSTTProviders.has(p.id))
                           .map((provider) => {
-                            const isOnPrem = provider.id === "ai4bharat"
+                            const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
                             const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                             return (
                               <SelectItem key={provider.id} value={provider.id} disabled={!isIntegrated}>
@@ -1564,7 +1647,7 @@ export default function AgentDetailPage() {
                         {allTTSProviders
                           .filter((p) => supportedTTSProviders.has(p.id))
                           .map((provider) => {
-                            const isOnPrem = provider.id === "ai4bharat"
+                            const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
                             const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                             return (
                               <SelectItem key={provider.id} value={provider.id} disabled={!isIntegrated}>
@@ -1890,6 +1973,44 @@ export default function AgentDetailPage() {
                         />
                         <p className="text-xs text-slate-500">
                           Seconds of user silence after the bot finishes speaking.
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <label className="text-sm font-semibold text-slate-800">
+                            Prompt repeats
+                          </label>
+                          <span className="text-sm font-semibold text-slate-700 whitespace-nowrap tabular-nums">
+                            {userOnlineDetectionRepeats}
+                          </span>
+                        </div>
+                        <Slider
+                          value={[userOnlineDetectionRepeats]}
+                          onValueChange={([value]) => setUserOnlineDetectionRepeats(value)}
+                          min={1}
+                          max={10}
+                          step={1}
+                          className="w-full"
+                        />
+                        <p className="text-xs text-slate-500">
+                          How many times to ask before the closing message and hangup.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-800">
+                          Closing message
+                        </label>
+                        <Textarea
+                          value={userOnlineDetectionClosingMessage}
+                          onChange={(e) =>
+                            setUserOnlineDetectionClosingMessage(e.target.value)
+                          }
+                          placeholder="e.g. We could not hear you. Ending the call now. Goodbye."
+                          rows={2}
+                        />
+                        <p className="text-xs text-slate-500">
+                          Spoken after the last detection prompt, then the call ends. Leave
+                          empty to hang up immediately after the last prompt.
                         </p>
                       </div>
                     </div>

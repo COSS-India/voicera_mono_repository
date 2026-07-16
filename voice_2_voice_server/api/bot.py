@@ -16,6 +16,9 @@ from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.audio.interruptions.min_words_interruption_strategy import (
+    MinWordsInterruptionStrategy,
+)
 from typing import Any, Optional, Callable, Awaitable
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
@@ -31,8 +34,11 @@ from .services import (
     ServiceCreationError,
 )
 from utils.audio.greeting_interruption_filter import create_greeting_filters
-from utils.audio.user_online_detection_filter import UserOnlineDetectionFilter
-from utils.call_goodbye import GoodbyeHangupProcessor
+from utils.audio.user_online_detection_filter import (
+    UserOnlineDetectionFilter,
+    UserOnlineDetectionInterruptionBlocker,
+)
+from utils.call_goodbye import GoodbyeHandlers
 from utils.call_management import (
     UserSilenceHangupProcessor,
     try_acquire_call_slot,
@@ -54,9 +60,15 @@ from utils.bot_utils import (
     get_user_online_detection_enabled,
     get_user_online_detection_message,
     get_user_online_detection_seconds,
+    get_user_online_detection_repeats,
+    get_user_online_detection_closing_message,
     get_user_silence_hangup_seconds,
     is_non_conversational,
     patch_immediate_first_chunk,
+)
+from utils.language_switching import (
+    LANGUAGE_SWITCH_SYSTEM_PROMPT,
+    setup_language_switching,
 )
 from utils.call_recording_utils import submit_call_recording
 from utils.vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
@@ -163,19 +175,47 @@ async def run_bot(
         tts = create_tts_service(tts_config, sample_rate, org_id=org_id)
 
         stt_provider_name = str(stt_config.get("name") or "").strip().lower()
-        if stt_provider_name == "bhashini" and llm_provider_name == "kenpath":
-            enable_fast_turn = getattr(llm, "enable_bhashini_fast_turn", None)
-            if callable(enable_fast_turn):
-                enable_fast_turn()
+        if llm_provider_name == "kenpath":
+            if stt_provider_name == "bhashini":
+                enable_fast_turn = getattr(llm, "enable_bhashini_fast_turn", None)
+                if callable(enable_fast_turn):
+                    enable_fast_turn()
+            elif stt_provider_name == "ai4bharat":
+                enable_fast_turn = getattr(llm, "enable_ai4bharat_fast_turn", None)
+                if callable(enable_fast_turn):
+                    enable_fast_turn()
         
         # Use fast aggregator (no lookahead/NLTK) for lower latency
         tts._aggregate_sentences = True
         tts._text_aggregator = FastPunctuationAggregator()
 
+        tts_provider = str(tts_config.get("name") or "").strip().lower()
+        tts_model = (tts_config.get("args") or {}).get("model") or tts_config.get("model")
+        stt_model = (stt_config.get("args") or {}).get("model") or stt_config.get("model")
+        language_switching_enabled = (
+            llm_provider_name == "openai"
+            and tts_provider == "ai4bharat"
+            and stt_provider_name == "ai4bharat"
+            and tts_model == "indic-parler-tts"
+            and stt_model == "indic-conformer-stt"
+        )
+
         system_prompt = agent_config.get("system_prompt", None)
         if llm_provider_name in ("qwen", "localqwen", "vllm"):
             system_prompt = ensure_no_think_suffix(system_prompt or "")
+        if language_switching_enabled:
+            system_prompt = (system_prompt or "") + LANGUAGE_SWITCH_SYSTEM_PROMPT
+            logger.info("Language switching enabled (OpenAI + AI4Bharat STT/TTS)")
         context = OpenAILLMContext([{"role": "system", "content": system_prompt}])
+
+        if language_switching_enabled:
+            setup_language_switching(
+                llm=llm,
+                stt=stt,
+                tts=tts,
+                context=context,
+                default_language=language or "hi",
+            )
         
         # Use stored user aggregator params if available (for OpenAI services)
         user_params = getattr(llm, "_user_aggregator_params", None)
@@ -199,7 +239,7 @@ async def run_bot(
             if pipeline_task is not None:
                 await pipeline_task.stop_when_done()
 
-        goodbye_processor = GoodbyeHangupProcessor(schedule_call_end)
+        goodbye = GoodbyeHandlers(schedule_call_end)
 
         user_online_detection_message = get_user_online_detection_message(agent_config)
         user_online_detection_enabled = (
@@ -207,19 +247,28 @@ async def run_bot(
             and bool(user_online_detection_message)
         )
         user_online_detection_seconds = get_user_online_detection_seconds(agent_config)
+        user_online_detection_repeats = get_user_online_detection_repeats(agent_config)
+        user_online_detection_closing_message = get_user_online_detection_closing_message(
+            agent_config
+        )
         user_online_detection_filter = (
             UserOnlineDetectionFilter(
                 prompt_text=user_online_detection_message,
                 timeout_secs=user_online_detection_seconds,
-                suppress_idle_when=goodbye_processor.should_suppress_idle,
+                max_repeats=user_online_detection_repeats,
+                closing_message=user_online_detection_closing_message,
+                schedule_call_end=schedule_call_end,
+                suppress_idle_when=goodbye.should_suppress_idle,
             )
             if user_online_detection_enabled
             else None
         )
         if user_online_detection_enabled:
             logger.info(
-                "User online detection enabled ({}s silence after bot speech)",
+                "User online detection enabled ({}s silence, {} repeats{})",
                 user_online_detection_seconds,
+                user_online_detection_repeats,
+                ", with closing message" if user_online_detection_closing_message else "",
             )
 
         user_silence_hangup_secs = get_user_silence_hangup_seconds(agent_config)
@@ -227,7 +276,7 @@ async def run_bot(
             UserSilenceHangupProcessor(
                 timeout_secs=float(user_silence_hangup_secs),
                 schedule_call_end=schedule_call_end,
-                suppress_idle_when=goodbye_processor.should_suppress_idle,
+                suppress_idle_when=goodbye.should_suppress_idle,
             )
             if user_silence_hangup_secs > 0
             else None
@@ -242,14 +291,23 @@ async def run_bot(
             transport.input(),
             stt,
             greeting_blocker,
+        ]
+        if user_online_detection_filter:
+            pipeline_processors.append(
+                UserOnlineDetectionInterruptionBlocker(
+                    user_online_detection_filter.is_playing_detection_audio
+                )
+            )
+        pipeline_processors.extend([
             BargeInInterruptionProcessor(min_words=interruption_min_words),
             transcript.user(),
             context_aggregator.user(),
             llm,
-            goodbye_processor,
+            goodbye.detect,
             tts,
+            goodbye.hangup,
             greeting_completer,
-        ]
+        ])
         if user_online_detection_filter:
             pipeline_processors.append(user_online_detection_filter)
         if user_silence_hangup_filter:
@@ -272,7 +330,15 @@ async def run_bot(
 
         task = PipelineTask(
             pipeline,
-            params=PipelineParams(allow_interruptions=True, enable_metrics=True),
+            params=PipelineParams(
+                allow_interruptions=True,
+                enable_metrics=True,
+                # Defer transport Silero interrupt while bot speaks; barge-in is
+                # owned by BargeInInterruptionProcessor + this same min_words gate.
+                interruption_strategies=[
+                    MinWordsInterruptionStrategy(min_words=interruption_min_words)
+                ],
+            ),
             observers=[metrics_observer],
         )
         task_ref["task"] = task
@@ -400,8 +466,7 @@ async def bot(
 
         stt_provider_name = str((agent_config.get("stt_model") or {}).get("name") or "").strip().lower()
 
-        if stt_provider_name == "bhashini":
-
+        if stt_provider_name in ("bhashini", "ai4bharat"):
             vad_analyzer = SileroVADAnalyzer(
                 sample_rate=sample_rate,
                 params=VADParams(
@@ -413,15 +478,16 @@ async def bot(
             )
             vad_analyzer._smoothing_factor = 0.15
             logger.info(
-                "Bhashini: using SileroVAD on transport for barge-in "
-                "(confidence=0.7, min_volume=0.6) — coughs/barks will be ignored"
+                "{}: using SileroVAD on transport for barge-in "
+                "(confidence=0.7, min_volume=0.6) — coughs/barks will be ignored",
+                stt_provider_name,
             )
         else:
             vad_analyzer = SileroVADAnalyzer(
                 sample_rate=sample_rate,
                 params=VADParams(
                     stop_secs=0.4,
-                    min_volume=0.4,
+                    min_volume=0.5,
                     confidence=0.3,
                     start_secs=0.1,
                 )
@@ -443,7 +509,7 @@ async def bot(
                 serializer=serializer,
                 audio_in_passthrough=True,
                 session_timeout=session_timeout,
-                audio_out_10ms_chunks=2,  # ADD THIS LINE - reduces from 4 to 1
+                audio_out_10ms_chunks=4,  # ADD THIS LINE - reduces from 4 to 1
             ),
         )
 

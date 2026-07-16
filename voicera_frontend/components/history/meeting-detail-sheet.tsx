@@ -32,6 +32,7 @@ import {
   Zap,
   CalendarClock,
   MessageSquare,
+  Languages,
 } from "lucide-react"
 import { format } from "date-fns"
 import { toZonedTime } from "date-fns-tz"
@@ -39,6 +40,61 @@ import { getAuthToken } from "@/lib/api"
 import { useWavesurfer } from "@wavesurfer/react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Separator } from "@radix-ui/react-separator"
+
+/** Chrome built-in Translator / Language Detector (not in all TS libs yet). */
+type ChromeAvailability = "available" | "downloadable" | "downloading" | "unavailable"
+
+type ChromeTranslator = {
+  translate: (input: string) => Promise<string>
+  destroy?: () => void
+}
+
+type ChromeLanguageDetector = {
+  detect: (
+    input: string
+  ) => Promise<Array<{ detectedLanguage: string; confidence: number }>>
+  destroy?: () => void
+}
+
+type ChromeTranslatorCtor = {
+  availability: (options: {
+    sourceLanguage: string
+    targetLanguage: string
+  }) => Promise<ChromeAvailability>
+  create: (options: {
+    sourceLanguage: string
+    targetLanguage: string
+    monitor?: (m: {
+      addEventListener: (
+        type: "downloadprogress",
+        listener: (e: { loaded: number }) => void
+      ) => void
+    }) => void
+  }) => Promise<ChromeTranslator>
+}
+
+type ChromeLanguageDetectorCtor = {
+  availability: () => Promise<ChromeAvailability>
+  create: (options?: {
+    monitor?: (m: {
+      addEventListener: (
+        type: "downloadprogress",
+        listener: (e: { loaded: number }) => void
+      ) => void
+    }) => void
+  }) => Promise<ChromeLanguageDetector>
+}
+
+function getChromeTranslatorAPI(): ChromeTranslatorCtor | null {
+  const api = (globalThis as { Translator?: ChromeTranslatorCtor }).Translator
+  return api ?? null
+}
+
+function getChromeLanguageDetectorAPI(): ChromeLanguageDetectorCtor | null {
+  const api = (globalThis as { LanguageDetector?: ChromeLanguageDetectorCtor })
+    .LanguageDetector
+  return api ?? null
+}
 
 interface MeetingDetailSheetProps {
   open: boolean
@@ -62,6 +118,10 @@ export function MeetingDetailSheet({
   const [copiedLink, setCopiedLink] = useState(false)
   const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null)
   const [isLoadingWaveform, setIsLoadingWaveform] = useState(false)
+  const [showTranslated, setShowTranslated] = useState(false)
+  const [translatedContents, setTranslatedContents] = useState<string[] | null>(null)
+  const [isTranslating, setIsTranslating] = useState(false)
+  const [translateError, setTranslateError] = useState<string | null>(null)
   const waveformRef = useRef<HTMLDivElement>(null)
   const timeUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -196,6 +256,14 @@ export function MeetingDetailSheet({
     }
   }, [open, meeting, wavesurfer])
 
+  // Reset translation when meeting/sheet changes
+  useEffect(() => {
+    setShowTranslated(false)
+    setTranslatedContents(null)
+    setTranslateError(null)
+    setIsTranslating(false)
+  }, [meeting?.meeting_id, open])
+
   // Helper functions (defined before useMemo hooks that use them)
   const formatTime = (seconds: number) => {
     if (isNaN(seconds)) return "0:00"
@@ -312,6 +380,124 @@ export function MeetingDetailSheet({
     }
   }
 
+  const handleTranslateTranscript = async () => {
+    if (showTranslated) {
+      setShowTranslated(false)
+      return
+    }
+    if (translatedContents) {
+      setShowTranslated(true)
+      return
+    }
+
+    const TranslatorAPI = getChromeTranslatorAPI()
+    const LanguageDetectorAPI = getChromeLanguageDetectorAPI()
+    if (!TranslatorAPI) {
+      setTranslateError(
+        "Translation is not available in this browser."
+      )
+      return
+    }
+
+    setIsTranslating(true)
+    setTranslateError(null)
+
+    try {
+      const sample = transcriptMessages
+        .map((m) => m.content)
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, 2000)
+
+      let sourceLanguage = "auto"
+      if (LanguageDetectorAPI && sample.trim()) {
+        const detectorAvailability = await LanguageDetectorAPI.availability()
+        if (detectorAvailability !== "unavailable") {
+          const detector = await LanguageDetectorAPI.create({
+            monitor(m) {
+              m.addEventListener("downloadprogress", () => {})
+            },
+          })
+          try {
+            const detections = await detector.detect(sample)
+            const top = detections?.[0]
+            if (top?.detectedLanguage && top.detectedLanguage !== "und") {
+              sourceLanguage = top.detectedLanguage
+            }
+          } finally {
+            detector.destroy?.()
+          }
+        }
+      }
+
+      // Fallback: agent language name → BCP-47 when detector unavailable
+      if (sourceLanguage === "auto") {
+        const langName = String(
+          (meeting as { language?: string } | null)?.language ||
+            (meetingDetails as { language?: string } | null)?.language ||
+            ""
+        ).toLowerCase()
+        const nameToCode: Record<string, string> = {
+          hindi: "hi",
+          marathi: "mr",
+          tamil: "ta",
+          telugu: "te",
+          kannada: "kn",
+          bengali: "bn",
+          english: "en",
+        }
+        sourceLanguage = nameToCode[langName] || "hi"
+      }
+
+      if (sourceLanguage === "en") {
+        setTranslatedContents(transcriptMessages.map((m) => m.content))
+        setShowTranslated(true)
+        return
+      }
+
+      const options = { sourceLanguage, targetLanguage: "en" }
+      const availability = await TranslatorAPI.availability(options)
+      if (availability === "unavailable") {
+        setTranslateError(
+          "Translation to English is not supported for this language."
+        )
+        return
+      }
+
+      const translator = await TranslatorAPI.create({
+        ...options,
+        monitor(m) {
+          m.addEventListener("downloadprogress", () => {})
+        },
+      })
+
+      try {
+        const results: string[] = []
+        for (const message of transcriptMessages) {
+          const text = message.content?.trim()
+          if (!text) {
+            results.push(message.content || "")
+            continue
+          }
+          results.push(await translator.translate(text))
+        }
+        setTranslatedContents(results)
+        setShowTranslated(true)
+      } finally {
+        translator.destroy?.()
+      }
+    } catch (error) {
+      console.error("Transcript translation failed:", error)
+      setTranslateError(
+        error instanceof Error
+          ? error.message
+          : "Failed to translate transcript. Please try again."
+      )
+    } finally {
+      setIsTranslating(false)
+    }
+  }
+
   const copyMeetingId = async () => {
     if (!meeting?.meeting_id) return
     try {
@@ -383,7 +569,7 @@ export function MeetingDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-md sm:w-[480px] overflow-y-auto p-0 rounded-xl">
+      <SheetContent side="right" className="w-full sm:w-[560px] sm:max-w-[560px] overflow-y-auto p-0 rounded-xl">
         {/* HEADER - Minimal, action-focused */}
         <SheetHeader className="px-5 py-4 border-b border-slate-200 bg-white sticky top-0 z-10">
           <SheetTitle className="sr-only">Call Details</SheetTitle>
@@ -593,12 +779,12 @@ export function MeetingDetailSheet({
               className="flex-1 flex flex-col"
             >
               {/* Tab Bar - Integrated Actions */}
-              <div className="flex items-center justify-between px-5 border-b border-slate-200 bg-white sticky top-0 z-10">
-                <TabsList className="h-11 bg-transparent p-0 gap-1">
+              <div className="flex items-center justify-between gap-3 px-5 border-b border-slate-200 bg-white sticky top-0 z-10">
+                <TabsList className="h-11 bg-transparent p-0 gap-0 shrink-0">
                   {hasTranscript && (
                     <TabsTrigger 
                       value="transcript"
-                      className="relative h-11 px-4 rounded-none bg-transparent 
+                      className="relative h-11 px-3 rounded-none bg-transparent 
                                  data-[state=active]:bg-transparent
                                  data-[state=active]:shadow-none
                                  data-[state=inactive]:text-slate-500
@@ -614,7 +800,7 @@ export function MeetingDetailSheet({
                   )}
                   <TabsTrigger 
                     value="details"
-                    className="relative h-11 px-4 rounded-none bg-transparent 
+                    className="relative h-11 px-3 rounded-none bg-transparent 
                                data-[state=active]:bg-transparent
                                data-[state=active]:shadow-none
                                data-[state=inactive]:text-slate-500
@@ -631,18 +817,55 @@ export function MeetingDetailSheet({
                 
                 {/* Contextual Actions - Show based on active tab */}
                 {activeTab === "transcript" && hasTranscript && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={downloadTranscript}
-                    className="h-8 text-slate-600 hover:text-slate-900"
-                    disabled={!meetingDetails?.transcript_content}
-                  >
-                    <Download className="h-4 w-4 mr-1.5" />
-                    <span className="text-xs">Export</span>
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleTranslateTranscript}
+                      className="h-8 px-2.5 text-slate-600 hover:text-slate-900"
+                      disabled={isTranslating || transcriptMessages.length === 0}
+                      title="Translate transcript to English"
+                    >
+                      {isTranslating ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <Languages className="h-4 w-4 mr-1.5" />
+                      )}
+                      <span className="text-xs whitespace-nowrap">
+                        {isTranslating
+                          ? "Translating..."
+                          : showTranslated
+                            ? "Show original"
+                            : "Translate"}
+                      </span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={downloadTranscript}
+                      className="h-8 px-2.5 text-slate-600 hover:text-slate-900"
+                      disabled={!meetingDetails?.transcript_content}
+                    >
+                      <Download className="h-4 w-4 mr-1.5" />
+                      <span className="text-xs whitespace-nowrap">Export</span>
+                    </Button>
+                  </div>
                 )}
               </div>
+
+              {/* Translation status */}
+              {activeTab === "transcript" && showTranslated && (
+                <div className="px-5 py-2 border-b border-slate-100 bg-slate-50/80 flex items-center justify-end">
+                  <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-2 py-0.5 whitespace-nowrap">
+                    English
+                  </span>
+                </div>
+              )}
+              {activeTab === "transcript" && translateError && (
+                <div className="px-5 py-2 border-b border-red-100 bg-red-50">
+                  <p className="text-xs text-red-600">{translateError}</p>
+                </div>
+              )}
 
               {/* TRANSCRIPT TAB */}
               {hasTranscript && (
@@ -651,9 +874,13 @@ export function MeetingDetailSheet({
                   className="flex-1 overflow-y-auto m-0 p-0"
                 >
                   {transcriptMessages.length > 0 ? (
-                    <div className="px-5 py-6 space-y-5 bg-gradient-to-b from-slate-50 to-white min-h-full">
+                    <div className="px-5 py-5 space-y-5 bg-gradient-to-b from-slate-50 to-white min-h-full">
                       {transcriptMessages.map((message, idx) => {
                         const isUser = message.role === "user"
+                        const displayContent =
+                          showTranslated && translatedContents?.[idx] != null
+                            ? translatedContents[idx]
+                            : message.content
                         return (
                           <div
                             key={idx}
@@ -694,7 +921,7 @@ export function MeetingDetailSheet({
                                   }
                                 `}
                               >
-                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{displayContent}</p>
                               </div>
                             </div>
                           </div>

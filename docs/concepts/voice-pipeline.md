@@ -198,7 +198,7 @@ Activated when `ignore_user_speech_before_greeting=true` (default).
 
 ### UserOnlineDetectionFilter
 
-`utils/audio/user_online_detection_filter.py`. After `BotStoppedSpeakingFrame`, starts an `asyncio.sleep(timeout_secs)`. On timeout, sends `TTSSpeakFrame(prompt_text)` **upstream** so it reaches TTS. Reset by `UserStartedSpeakingFrame` or `BotStartedSpeakingFrame`. Configured via `user_online_detection_enabled`, `user_online_detection_message`, `user_online_detection_seconds` (default `10.0`).
+`utils/audio/user_online_detection_filter.py`. After an LLM response fully finishes playback, starts an `asyncio.sleep(timeout_secs)`. On timeout, sends `TTSSpeakFrame(prompt_text)` **upstream** so it reaches TTS. While that online-detection prompt is playing, `UserOnlineDetectionInterruptionBlocker` drops user speech, transcript, and interruption frames. The optional closing message is not blocked and can be interrupted normally. After the prompt finishes, raw VAD speech only pauses the countdown; a final transcript or confirmed interruption resets the silence cycle, and a no-transcript speech blip resumes the next repeat. Configured via `user_online_detection_enabled`, `user_online_detection_message`, `user_online_detection_seconds` (default `10.0`), and `user_online_detection_repeats`.
 
 ### UserSilenceHangupProcessor
 

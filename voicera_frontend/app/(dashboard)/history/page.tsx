@@ -40,9 +40,10 @@ import {
   X,
   ArrowUpDown,
   Filter,
+  RefreshCw,
 } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
-import { format } from "date-fns"
+import { format, formatDistanceToNow } from "date-fns"
 import { toZonedTime } from "date-fns-tz"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
@@ -113,9 +114,12 @@ function HistoryPageContent() {
     isPending,
     isFetching,
     isError,
+    refetch: refetchMeetings,
+    dataUpdatedAt,
   } = useMeetingsQuery(meetingsParams)
 
-  const { data: filterOptionsData } = useMeetingFilterOptionsQuery()
+  const { data: filterOptionsData, refetch: refetchFilterOptions } =
+    useMeetingFilterOptionsQuery()
 
   const paginatedMeetings = meetingsPage?.items ?? []
   const totalMeetings = meetingsPage?.total ?? 0
@@ -721,6 +725,28 @@ function HistoryPageContent() {
           </div>
 
           <div className="flex items-center gap-3">
+            {dataUpdatedAt > 0 && (
+              <span className="text-xs text-slate-500 whitespace-nowrap">
+                Last updated{" "}
+                {formatDistanceToNow(dataUpdatedAt, { addSuffix: true })}
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-lg border-slate-200"
+              aria-label="Refresh history"
+              disabled={isFetching}
+              onClick={() => {
+                void refetchMeetings()
+                void refetchFilterOptions()
+              }}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
+              />
+            </Button>
             {/* Export Button */}
             {mounted && (
             <DropdownMenu>

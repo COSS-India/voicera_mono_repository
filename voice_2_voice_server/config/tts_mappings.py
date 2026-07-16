@@ -163,6 +163,9 @@ TTS_LANGUAGE_MAP = {
         "Sindhi": "sd",
     },
     "Bhashini": {
+        "English": "en",
+        "English (India)": "en",
+        "English (United States)": "en",
         "Hindi": "hi",
         "Bengali": "bn",
         "bhb": "bhb",

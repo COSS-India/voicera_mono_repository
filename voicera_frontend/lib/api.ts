@@ -378,6 +378,8 @@ export interface AgentConfig {
   user_online_detection_enabled?: boolean
   user_online_detection_message?: string
   user_online_detection_seconds?: number
+  user_online_detection_repeats?: number
+  user_online_detection_closing_message?: string
   session_timeout_minutes?: number
   language: string
   knowledge_base_enabled?: boolean
@@ -387,6 +389,7 @@ export interface AgentConfig {
     name: string
     model?: string
     vistaar_environment?: "prod" | "dev"
+    kenpath_backend?: "vistaar" | "bharatvistaar"
     custom_llm_id?: string
   }
   stt_model?: {

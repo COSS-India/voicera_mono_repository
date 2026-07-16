@@ -61,6 +61,13 @@ import {
 // Import JSON data
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
+import {
+  type KenpathVariant,
+  isBharatVistaarLanguageSupported,
+  kenpathLlmFieldsFromVariant,
+  kenpathVariantHelpText,
+  kenpathVariantLabel,
+} from "@/lib/kenpath"
 import ttsData from "@/tts.json"
 import descriptionsData from "@/descriptions.json"
 
@@ -234,11 +241,13 @@ interface AgentConfig {
   userOnlineDetectionEnabled: boolean
   userOnlineDetectionMessage: string
   userOnlineDetectionSeconds: number
+  userOnlineDetectionRepeats: number
+  userOnlineDetectionClosingMessage: string
   systemPrompt: string
   llmProvider: string
   llmModel: string
   customLlmId: string
-  kenpathEnvironment: "prod" | "dev"
+  kenpathVariant: KenpathVariant
   knowledgeEnabled: boolean
   knowledgeDocumentIds: string[]
   knowledgeTopK: number
@@ -276,11 +285,13 @@ const defaultConfig: AgentConfig = {
   userOnlineDetectionEnabled: false,
   userOnlineDetectionMessage: "",
   userOnlineDetectionSeconds: 10,
+  userOnlineDetectionRepeats: 1,
+  userOnlineDetectionClosingMessage: "",
   systemPrompt: "You are a helpful agent. You will help the customer with their queries and doubts. You will never speak more than 2 sentences. Keep your responses concise",
   llmProvider: "openai",
   llmModel: "gpt-4o",
   customLlmId: "",
-  kenpathEnvironment: "prod",
+  kenpathVariant: "prod",
   knowledgeEnabled: false,
   knowledgeDocumentIds: [],
   knowledgeTopK: 3,
@@ -815,11 +826,27 @@ export default function AssistantsPage() {
         updated.llmModel = ""
         updated.customLlmId = ""
         if ((value as string) === "kenpath") {
-          updated.kenpathEnvironment = "prod"
+          updated.kenpathVariant = "prod"
         }
         if ((value as string) !== "openai") {
           updated.knowledgeEnabled = false
           updated.knowledgeDocumentIds = []
+        }
+      }
+      if (key === "kenpathVariant") {
+        const variant = value as KenpathVariant
+        if (
+          updated.llmProvider === "kenpath" &&
+          updated.language &&
+          !isBharatVistaarLanguageSupported(variant, updated.language)
+        ) {
+          updated.language = ""
+          updated.sttProvider = ""
+          updated.sttModel = ""
+          updated.ttsProvider = ""
+          updated.ttsModel = ""
+          updated.ttsVoice = ""
+          updated.ttsDescription = ""
         }
       }
       if (key === "customLlmId") {
@@ -871,6 +898,7 @@ export default function AssistantsPage() {
         model?: string
         custom_llm_id?: string
         vistaar_environment?: "prod" | "dev"
+        kenpath_backend?: "vistaar" | "bharatvistaar"
       } = {
         name: getProviderOfficialName(config.llmProvider),
       }
@@ -880,7 +908,7 @@ export default function AssistantsPage() {
       } else if (config.llmProvider !== "kenpath") {
         llmModel.model = config.llmModel
       } else {
-        llmModel.vistaar_environment = config.kenpathEnvironment
+        Object.assign(llmModel, kenpathLlmFieldsFromVariant(config.kenpathVariant))
       }
 
       // Build STT model object WITHOUT language inside, using official provider name
@@ -980,6 +1008,9 @@ export default function AssistantsPage() {
                 user_online_detection_enabled: config.userOnlineDetectionEnabled,
                 user_online_detection_message: config.userOnlineDetectionMessage.trim(),
                 user_online_detection_seconds: config.userOnlineDetectionSeconds,
+                user_online_detection_repeats: config.userOnlineDetectionRepeats,
+                user_online_detection_closing_message:
+                  config.userOnlineDetectionClosingMessage.trim(),
                 language: languageName,
                 knowledge_base_enabled: config.llmProvider === "openai" ? config.knowledgeEnabled : false,
                 knowledge_document_ids:
@@ -1567,11 +1598,13 @@ export default function AssistantsPage() {
 
                       {config.llmProvider === "kenpath" ? (
                         <Select
-                          value={config.kenpathEnvironment}
-                          onValueChange={(v) => updateConfig("kenpathEnvironment", v as "prod" | "dev")}
+                          value={config.kenpathVariant}
+                          onValueChange={(v) =>
+                            updateConfig("kenpathVariant", v as KenpathVariant)
+                          }
                         >
                           <SelectTrigger className="h-12 rounded-lg w-full border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
-                            <SelectValue placeholder="Select API environment" />
+                            <SelectValue placeholder="Select Kenpath environment" />
                           </SelectTrigger>
                           <SelectContent className="rounded-lg">
                             <SelectItem value="prod" className="py-2.5">
@@ -1579,6 +1612,12 @@ export default function AssistantsPage() {
                             </SelectItem>
                             <SelectItem value="dev" className="py-2.5">
                               Development
+                            </SelectItem>
+                            <SelectItem value="bharatvistaar" className="py-2.5">
+                              Bharat Vistaar
+                            </SelectItem>
+                            <SelectItem value="bharatvistaar_dev" className="py-2.5">
+                              Bharat Vistaar Dev API
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -1627,7 +1666,7 @@ export default function AssistantsPage() {
 
                   {config.llmProvider === "kenpath" && (
                     <p className="text-sm text-blue-600">
-                      Vistaar API environment for Hindi/Marathi streaming. Voice Bhili uses a separate endpoint.
+                      {kenpathVariantHelpText(config.kenpathVariant)}
                     </p>
                   )}
 
@@ -1805,19 +1844,38 @@ export default function AssistantsPage() {
                           <CommandList>
                             <CommandEmpty>No language found.</CommandEmpty>
                             <CommandGroup heading="Languages">
-                              {allLanguages.map((lang) => (
+                              {allLanguages.map((lang) => {
+                                const bharatBlocked =
+                                  config.llmProvider === "kenpath" &&
+                                  !isBharatVistaarLanguageSupported(
+                                    config.kenpathVariant,
+                                    lang.code
+                                  )
+                                return (
                                 <CommandItem
                                   key={lang.code}
                                   value={`${lang.code} ${lang.name}`}
+                                  disabled={bharatBlocked}
                                   onSelect={() => {
+                                    if (bharatBlocked) return
                                     updateConfig("language", lang.code)
                                     setLanguageOpen(false)
                                   }}
                                   className="py-2.5"
                                 >
-                                  <span className="font-medium">{lang.name}</span>
+                                  <span
+                                    className={`font-medium ${bharatBlocked ? "text-slate-400" : ""}`}
+                                  >
+                                    {lang.name}
+                                  </span>
+                                  {bharatBlocked && (
+                                    <span className="ml-2 text-xs text-slate-400">
+                                      (not supported)
+                                    </span>
+                                  )}
                                 </CommandItem>
-                              ))}
+                                )
+                              })}
                             </CommandGroup>
                           </CommandList>
                         </Command>
@@ -1852,7 +1910,7 @@ export default function AssistantsPage() {
                                 .map((provider) => {
                                   const isSupported = supportedSTTProviders.has(provider.id)
                                   // AI4Bharat is on-prem, always available (no API key needed)
-                                  const isOnPrem = provider.id === "ai4bharat"
+                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
                                   // Check if provider has integration (API key configured)
                                   const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                                   // Determine availability status
@@ -1934,7 +1992,7 @@ export default function AssistantsPage() {
                                 .map((provider) => {
                                   const isSupported = supportedTTSProviders.has(provider.id)
                                   // AI4Bharat is on-prem, always available (no API key needed)
-                                  const isOnPrem = provider.id === "ai4bharat"
+                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
                                   // Check if provider has integration (API key configured)
                                   const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                                   // Determine availability status
@@ -2309,6 +2367,49 @@ export default function AssistantsPage() {
                             Seconds of user silence after the bot finishes speaking.
                           </p>
                         </div>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-4">
+                            <label className="text-base font-bold text-slate-900">
+                              Prompt repeats
+                            </label>
+                            <span className="text-sm font-semibold text-slate-700 whitespace-nowrap tabular-nums">
+                              {config.userOnlineDetectionRepeats}
+                            </span>
+                          </div>
+                          <Slider
+                            value={[config.userOnlineDetectionRepeats]}
+                            onValueChange={([value]) =>
+                              updateConfig("userOnlineDetectionRepeats", value)
+                            }
+                            min={1}
+                            max={10}
+                            step={1}
+                            className="w-full"
+                          />
+                          <p className="text-sm text-slate-500">
+                            How many times to ask before the closing message and hangup.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-base font-bold text-slate-900">
+                            Closing message
+                          </label>
+                          <Textarea
+                            value={config.userOnlineDetectionClosingMessage}
+                            onChange={(e) =>
+                              updateConfig(
+                                "userOnlineDetectionClosingMessage",
+                                e.target.value
+                              )
+                            }
+                            placeholder="e.g. We could not hear you. Ending the call now. Goodbye."
+                            rows={2}
+                          />
+                          <p className="text-sm text-slate-500">
+                            Spoken after the last detection prompt, then the call ends. Leave
+                            empty to hang up immediately after the last prompt.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2531,7 +2632,7 @@ export default function AssistantsPage() {
                       <p className="text-sm font-medium text-slate-700">
                         {getProviderOfficialName(config.llmProvider) || "—"}
                         {config.llmProvider === "kenpath"
-                          ? ` / ${config.kenpathEnvironment === "dev" ? "Development" : "Production"}`
+                          ? ` / ${kenpathVariantLabel(config.kenpathVariant)}`
                           : ` / ${config.llmModel || "—"}`}
                       </p>
                       {config.llmProvider !== "kenpath" && (
@@ -2600,7 +2701,7 @@ export default function AssistantsPage() {
                         <span className="font-semibold">User online detection:</span>{" "}
                         {config.userOnlineDetectionEnabled &&
                         config.userOnlineDetectionMessage.trim()
-                          ? `Enabled (${formatDurationSeconds(config.userOnlineDetectionSeconds)})`
+                          ? `Enabled (${formatDurationSeconds(config.userOnlineDetectionSeconds)}, ${config.userOnlineDetectionRepeats}×)`
                           : "Disabled"}
                       </p>
                       <p className="text-sm text-slate-600 mb-1">
