@@ -16,6 +16,9 @@ from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.audio.interruptions.min_words_interruption_strategy import (
+    MinWordsInterruptionStrategy,
+)
 from typing import Any, Optional, Callable, Awaitable
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
@@ -322,7 +325,15 @@ async def run_bot(
 
         task = PipelineTask(
             pipeline,
-            params=PipelineParams(allow_interruptions=True, enable_metrics=True),
+            params=PipelineParams(
+                allow_interruptions=True,
+                enable_metrics=True,
+                # Defer transport Silero interrupt while bot speaks; barge-in is
+                # owned by BargeInInterruptionProcessor + this same min_words gate.
+                interruption_strategies=[
+                    MinWordsInterruptionStrategy(min_words=interruption_min_words)
+                ],
+            ),
             observers=[metrics_observer],
         )
         task_ref["task"] = task

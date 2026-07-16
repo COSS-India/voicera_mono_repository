@@ -1,10 +1,14 @@
 """Shared helpers, config parsers, and pipeline utilities for the voice bot."""
 
+import asyncio
 import os
 import time
+from typing import Optional
 
 from loguru import logger
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     InterimTranscriptionFrame,
     InterruptionFrame,
     TranscriptionFrame,
@@ -18,6 +22,48 @@ from pipecat.utils.text.base_text_aggregator import (
     AggregationType,
     BaseTextAggregator,
 )
+
+# Must exceed transport BOT_VAD_STOP_SECS (0.2) so streaming TTS chunk gaps
+# are not treated as end-of-turn.
+_BOT_SPEAKING_CLEAR_DELAY_SECS = 0.5
+
+
+class BotSpeakingLatch:
+    """True while bot audio is playing; ignores short BotStopped gaps from streaming TTS."""
+
+    def __init__(self, clear_delay_secs: float = _BOT_SPEAKING_CLEAR_DELAY_SECS):
+        self.speaking = False
+        self._clear_delay_secs = clear_delay_secs
+        self._clear_task: Optional[asyncio.Task] = None
+
+    def on_started(self) -> None:
+        self._cancel_clear()
+        self.speaking = True
+
+    def on_stopped(self) -> None:
+        self._schedule_clear()
+
+    def _cancel_clear(self) -> None:
+        task = self._clear_task
+        if task and not task.done():
+            task.cancel()
+        self._clear_task = None
+
+    def _schedule_clear(self) -> None:
+        self._cancel_clear()
+
+        async def _clear() -> None:
+            try:
+                await asyncio.sleep(self._clear_delay_secs)
+                self.speaking = False
+            except asyncio.CancelledError:
+                return
+
+        self._clear_task = asyncio.create_task(_clear())
+
+    def reset(self) -> None:
+        self._cancel_clear()
+        self.speaking = False
 
 
 def get_sample_rate() -> int:
@@ -149,7 +195,13 @@ def get_user_online_detection_closing_message(agent_config: dict) -> str:
 
 
 class FastPunctuationAggregator(BaseTextAggregator):
-    """Fast aggregator that sends text immediately on punctuation - no lookahead/NLTK."""
+    """Fast aggregator that flushes on punctuation - no lookahead/NLTK.
+
+    Punctuation (``.!?,`` and Indic ``।``) triggers a sentence yield for low-latency
+    TTS, but those characters are dropped and never sent to the TTS model.
+    """
+
+    _FLUSH_CHARS = frozenset(".!?,।")
 
     def __init__(self):
         self._text = ""
@@ -160,11 +212,12 @@ class FastPunctuationAggregator(BaseTextAggregator):
 
     async def aggregate(self, text: str):
         for char in text:
-            self._text += char
-            if char in ".!?,":
+            if char in self._FLUSH_CHARS:
                 if self._text.strip():
                     yield Aggregation(self._text.strip(), AggregationType.SENTENCE)
-                    self._text = ""
+                self._text = ""
+            else:
+                self._text += char
 
     async def flush(self):
         if self._text.strip():
@@ -186,20 +239,11 @@ class BargeInInterruptionProcessor(FrameProcessor):
     Three-layer noise filter
     ────────────────────────
     Layer 1 — SileroVAD (neural, transport level)
-        Runs a trained speech/non-speech classifier on every 30 ms audio window.
-        confidence=0.7 means the audio must be 70%+ speech-like before
-        UserStartedSpeakingFrame is emitted.
-        • Cough   → typically scores 0.1–0.3  → SILENT, no frame ✓
-        • Dog bark → typically scores 0.1–0.25 → SILENT, no frame ✓
-        • Background noise → scores ~0.0       → SILENT, no frame ✓
-        • Human speech     → scores 0.8–1.0    → UserStartedSpeakingFrame ✓
-
     Layer 2 — Speaking guard (_user_speaking flag)
-        Only armed when UserStartedSpeakingFrame is seen (Silero approved).
-
     Layer 3 — Transcript gate + minimum word count
-        Requires at least ``min_words`` spoken words before emitting InterruptionFrame.
-        A loud cough slipping Silero typically produces garbage with too few words.
+
+    InterruptionFrame is emitted only while the bot is speaking. When the bot is
+    silent, transcripts still flow to the LLM; this processor does not gate them.
     """
 
     def __init__(self, min_words: int = 1, **kwargs):
@@ -207,6 +251,7 @@ class BargeInInterruptionProcessor(FrameProcessor):
         self._min_words = max(1, min_words)
         self._user_speaking: bool = False
         self._interrupted: bool = False
+        self._bot_latch = BotSpeakingLatch()
 
     def _word_count(self, text: str) -> int:
         return len(text.split()) if text else 0
@@ -214,13 +259,19 @@ class BargeInInterruptionProcessor(FrameProcessor):
     async def process_frame(self, frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, UserStartedSpeakingFrame):
+        if isinstance(frame, (BotStartedSpeakingFrame, TTSStartedFrame)):
+            self._bot_latch.on_started()
+
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            self._bot_latch.on_stopped()
+
+        elif isinstance(frame, UserStartedSpeakingFrame):
             self._user_speaking = True
             self._interrupted = False
             logger.debug("Silero: speech detected — armed, waiting for transcript")
 
         elif isinstance(frame, UserStoppedSpeakingFrame):
-            if self._user_speaking and not self._interrupted:
+            if self._user_speaking and not self._interrupted and self._bot_latch.speaking:
                 logger.debug("Silero: speech ended with no valid transcript — no barge-in")
             self._user_speaking = False
             self._interrupted = False
@@ -228,7 +279,8 @@ class BargeInInterruptionProcessor(FrameProcessor):
         elif isinstance(frame, (InterimTranscriptionFrame, TranscriptionFrame)):
             text = frame.text.strip()
             if (
-                self._user_speaking
+                self._bot_latch.speaking
+                and self._user_speaking
                 and not self._interrupted
                 and self._word_count(text) >= self._min_words
             ):

@@ -48,7 +48,7 @@ class UserOnlineDetectionInterruptionBlocker(FrameProcessor):
 
 
 class UserOnlineDetectionFilter(FrameProcessor):
-    """Silence prompts after LLM TTS; repeats, closing message, then hangup."""
+    """Silence prompts after greeting/LLM TTS; repeats, closing message, then hangup."""
 
     def __init__(
         self,
@@ -71,6 +71,7 @@ class UserOnlineDetectionFilter(FrameProcessor):
         self._hangup_task: Optional[asyncio.Task] = None
         self._armed = False
         self._llm_turn_pending = False
+        self._pending_tts_stop = False  # greeting (or non-LLM) TTS finished synthesizing
         self._turn_interrupted = False
         self._user_speaking = False
         self._user_speech_confirmed = False
@@ -251,11 +252,12 @@ class UserOnlineDetectionFilter(FrameProcessor):
         if self._watching_own_speech() and self._own_tts_stopped and self._own_bot_stopped:
             await self._on_own_speech_complete()
 
-    def _arm_after_llm_bot_stop(self) -> None:
+    def _arm_and_schedule(self) -> None:
+        """Arm (if needed) and start a fresh silence cycle after bot speech ends."""
         self._llm_turn_pending = False
+        self._pending_tts_stop = False
         self._reset_cycle()
-        if not self._armed:
-            self._armed = True
+        self._armed = True
         self._maybe_schedule_idle_timer()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -296,6 +298,7 @@ class UserOnlineDetectionFilter(FrameProcessor):
             self._cancel_hangup()
             self._reset_cycle()
             self._llm_turn_pending = False
+            self._pending_tts_stop = False
             self._turn_interrupted = False
             self._user_speech_confirmed = False
             logger.info("LLM response started — online detection hangup cancelled, cycle reset")
@@ -307,6 +310,9 @@ class UserOnlineDetectionFilter(FrameProcessor):
             if self._watching_own_speech():
                 self._own_tts_stopped = True
                 await self._try_complete_own_speech()
+            elif not self._armed:
+                # Greeting / first non-LLM TTS finished synthesizing.
+                self._pending_tts_stop = True
 
         elif isinstance(frame, BotStartedSpeakingFrame):
             self._cancel_idle_timer()
@@ -319,8 +325,9 @@ class UserOnlineDetectionFilter(FrameProcessor):
                 await self._try_complete_own_speech()
             elif self._turn_interrupted:
                 self._turn_interrupted = False
-            elif self._llm_turn_pending:
-                self._arm_after_llm_bot_stop()
+            elif self._llm_turn_pending or (not self._armed and self._pending_tts_stop):
+                # LLM turn end, or greeting/first TTS fully played out.
+                self._arm_and_schedule()
 
         elif isinstance(frame, (EndFrame, CancelFrame)):
             self._cancel_idle_timer()

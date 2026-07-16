@@ -3,7 +3,7 @@ WebSocket TTS server: continuous batching with the same loop as test_parler_tts.
 (prefill when a request arrives, step all running requests together, stream PCM chunks).
 
 Client sends one JSON object per utterance:
-  {"prompt": "...", "description": "...", "language": "bhb"|"hi"|...}
+  {"prompt": "...", "description": "..."}
 
 Server first sends a small JSON metadata frame, then binary frames (float32 mono PCM),
 then a final JSON {"type": "done"}.
@@ -21,7 +21,6 @@ import uuid
 import numpy as np
 import torch
 import websockets
-from dotenv import load_dotenv
 
 from inference.runner import ParlerTTSModelRunner, TTSRequest
 
@@ -29,11 +28,6 @@ from inference.runner import ParlerTTSModelRunner, TTSRequest
 AUDIO_SAMPLE_RATE = 44100
 
 here = os.path.dirname(os.path.abspath(__file__))
-
-
-def _is_bhili_language(value: str | None) -> bool:
-    raw = (value or "").strip().lower()
-    return raw in {"bhb", "bhili"}
 
 
 @torch.no_grad()
@@ -99,8 +93,8 @@ def inference_worker(
 
 async def handle_client(
     websocket: websockets.ServerProtocol,
-    prefill_q_default: queue.Queue,
-    prefill_q_bhili: queue.Queue | None,
+    runner: ParlerTTSModelRunner,
+    prefill_q: queue.Queue,
 ) -> None:
     try:
         raw = await websocket.recv()
@@ -111,7 +105,6 @@ async def handle_client(
         msg = json.loads(raw)
         prompt = msg["prompt"]
         description = msg["description"]
-        language = msg.get("language") or msg.get("language_id") or msg.get("lang")
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         await websocket.send(json.dumps({"type": "error", "message": f"bad request: {e}"}))
         return
@@ -119,11 +112,7 @@ async def handle_client(
     out_q: queue.Queue = queue.Queue()
     pid = uuid.uuid4().hex[:8]
     req = TTSRequest(prompt=prompt, description=description, pid=pid)
-    if prefill_q_bhili is not None and _is_bhili_language(language):
-        target_q = prefill_q_bhili
-    else:
-        target_q = prefill_q_default
-    target_q.put((req, out_q))
+    prefill_q.put((req, out_q))
 
     await websocket.send(
         json.dumps(
@@ -152,79 +141,42 @@ async def handle_client(
 async def main_async(
     host: str,
     port: int,
-    checkpoint_path_default: str,
-    checkpoint_path_bhili: str | None,
+    checkpoint_path: str,
     decode_every: int,
-    bhili_enable: bool,
 ) -> None:
-    runner_default = ParlerTTSModelRunner(checkpoint_path_default, play_steps=decode_every)
-    prefill_q_default: queue.Queue = queue.Queue()
+    runner = ParlerTTSModelRunner(checkpoint_path, play_steps=decode_every)
+    prefill_q: queue.Queue = queue.Queue()
     stop_evt = threading.Event()
 
-    thread_default = threading.Thread(
+    thread = threading.Thread(
         target=inference_worker,
-        args=(runner_default, prefill_q_default, stop_evt, decode_every),
+        args=(runner, prefill_q, stop_evt, decode_every),
         daemon=True,
     )
-    thread_default.start()
-
-    if bhili_enable:
-        runner_bhili = ParlerTTSModelRunner(checkpoint_path_bhili, play_steps=decode_every)
-        prefill_q_bhili: queue.Queue | None = queue.Queue()
-        thread_bhili = threading.Thread(
-            target=inference_worker,
-            args=(runner_bhili, prefill_q_bhili, stop_evt, decode_every),
-            daemon=True,
-        )
-        thread_bhili.start()
-    else:
-        prefill_q_bhili = None
+    thread.start()
 
     async with websockets.serve(
-        lambda ws: handle_client(ws, prefill_q_default, prefill_q_bhili),
+        lambda ws: handle_client(ws, runner, prefill_q),
         host,
         port,
         max_size=None,
     ):
         print(
             f"TTS WebSocket server ws://{host}:{port} "
-            f"(default_checkpoints={checkpoint_path_default}, "
-            + (f"bhili_checkpoints={checkpoint_path_bhili}, " if bhili_enable else "bhili=disabled, ")
-            + f"decode_every={decode_every})"
+            f"(checkpoints={checkpoint_path}, decode_every={decode_every})"
         )
         await asyncio.Future()
 
 
 def main() -> None:
-    load_dotenv(os.path.join(here, ".env"))
-    bhili_enable = os.environ.get("BHILI_ENABLE", "yes").strip().lower() != "no"
-    checkpoint_path_bhili = os.environ.get("CHECKPOINT_PATH", "").strip()
-    checkpoint_path_default = os.environ.get("CHECKPOINT_PATH_DEFAULT", "").strip()
-    if not checkpoint_path_default:
-        raise SystemExit(
-            "CHECKPOINT_PATH_DEFAULT must be set in .env (same directory as server.py). "
-            "No default or CLI override is used."
-        )
-    if not os.path.isdir(checkpoint_path_default):
-        raise SystemExit(
-            f"Default checkpoint folder not found: {checkpoint_path_default}. "
-            "Set CHECKPOINT_PATH_DEFAULT in .env to a valid checkpoint directory."
-        )
-    if bhili_enable:
-        if not checkpoint_path_bhili:
-            raise SystemExit(
-                "CHECKPOINT_PATH must be set in .env (same directory as server.py). "
-                "No default or CLI override is used."
-            )
-        if not os.path.isdir(checkpoint_path_bhili):
-            raise SystemExit(
-                f"Bhili checkpoint folder not found: {checkpoint_path_bhili}. "
-                "Set CHECKPOINT_PATH in .env to a valid checkpoint directory."
-            )
-
     parser = argparse.ArgumentParser(description="Parler TTS WebSocket server (continuous batching)")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8002)
+    parser.add_argument(
+        "--checkpoint",
+        default=os.path.join(here, "checkpoints"),
+        help="Model checkpoint directory",
+    )
     parser.add_argument(
         "--decode-every",
         type=int,
@@ -239,14 +191,7 @@ def main() -> None:
     if args.decode_every < 1:
         parser.error("--decode-every must be >= 1")
     asyncio.run(
-        main_async(
-            args.host,
-            args.port,
-            checkpoint_path_default,
-            checkpoint_path_bhili if bhili_enable else None,
-            args.decode_every,
-            bhili_enable,
-        ),
+        main_async(args.host, args.port, args.checkpoint, args.decode_every),
     )
 
 
