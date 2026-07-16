@@ -1,0 +1,44 @@
+voicera_frontend/app/(dashboard)/integrations/page.tsx
+  s_c769ea66d219c1::t_9e446d4606cfb1 47
+  s_c769ea66d219c1::t_d9fdec3351c9a0 183
+  s_c769ea66d219c1::t_09e489e914a1c2 222,224,229,233
+  s_c769ea66d219c1::t_aa324b1979458d 893-898,905-906
+  s_c769ea66d219c1::t_ee935b69465eb7 899-904
+  s_c769ea66d219c1::t_a3a8f27a24a390 947-950
+  s_c769ea66d219c1::t_47a6e3380ee5a3 983-989
+  s_c769ea66d219c1::t_1c457f3648bacf 356-358
+  s_c769ea66d219c1::t_c5386f81cc9a14 466-467
+  s_c769ea66d219c1::t_a613a4bec46d43 927
+  s_c769ea66d219c1::t_29cfc25a5c973f 387,390
+  s_c769ea66d219c1::t_04345694077e2d 219-220,223,225-226,231,235,245
+  s_c769ea66d219c1::t_8692539a9e86f4 291
+  s_c769ea66d219c1::t_2c2394d5f35d96 1081,1086-1091
+  s_c769ea66d219c1::t_1e61c85de1f024 46,48
+  s_c769ea66d219c1::t_0bd8891d8c57fa 977-982,990-992
+  s_c769ea66d219c1::t_edf47a5dbc6a49 185-186
+  s_c769ea66d219c1::t_02af783e7f1008 377-384
+  s_c769ea66d219c1::t_15cd287dc7af76 411,414
+  s_c769ea66d219c1::t_f615f76f64c46c 470,472
+  s_c769ea66d219c1::t_871a71d0673494 1076-1080,1082-1085,1092-1093
+  s_c769ea66d219c1::t_f9f36ac08d1861 858-861
+  s_c769ea66d219c1::t_0425def8392bd4 1032-1035
+  s_c769ea66d219c1::t_9aca9fff3ce6b4 434
+  s_c769ea66d219c1::t_bd55532141137e 294,300
+  s_c769ea66d219c1::t_ae4a557b3bca14 246-249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "db85e11de96a292a41b706884eb7ddaa6b1e15da",
+  "prompts": {},
+  "sessions": {
+    "s_c769ea66d219c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f0212066-9e3f-4041-85c4-5cd86694bd52",
+        "model": "claude-fable-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
