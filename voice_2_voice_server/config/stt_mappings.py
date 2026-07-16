@@ -144,6 +144,9 @@ STT_LANGUAGE_MAP = {
         "Sindhi": "snd",
     },
     "Bhashini": {
+        "English": "en",
+        "English (India)": "en",
+        "English (United States)": "en",
         "bhb": "bhb",
         "Hindi": "hi",
         "Bengali": "bn",

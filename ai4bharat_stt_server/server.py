@@ -14,7 +14,6 @@ import uvicorn
 import torch
 import nemo.collections.asr as nemo_asr
 from nemo.collections.asr.models import EncDecHybridRNNTCTCBPEModel
-import torchaudio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -47,8 +46,8 @@ QUEUE_MAXSIZE = 256
 MAX_BATCH_SIZE = 16
 BATCH_TIMEOUT = 0.100  # 100 ms
 
-# Set to "yes" or "no"
-BHILI_ENABLE = "no"
+# Set to "yes" or "no" in .env
+BHILI_ENABLE = os.environ.get("BHILI_ENABLE", "no").strip().lower()
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 main_model = None
@@ -92,14 +91,24 @@ def load_main_model():
 
 def load_bhili_model():
     model_path = _required_model_path("BHILI_NEMO_PATH")
-    return (
-        EncDecHybridRNNTCTCBPEModel.restore_from(
-            str(model_path),
-            map_location=torch.device(device),   # <-- add this
-        )
-        .to(device)
-        .eval()
+    model = EncDecHybridRNNTCTCBPEModel.restore_from(
+        str(model_path),
+        map_location=torch.device(device),
     )
+    model = model.to(device)
+    model.freeze()
+    model.cur_decoder = "rnnt"
+    return model
+
+
+def _is_bhili_language(language_id: str) -> bool:
+    return (language_id or "").strip().lower() in {"bhb", "bhili"}
+
+
+def _nemo_language_id(language_id: str) -> str:
+    if _is_bhili_language(language_id):
+        return "mr"
+    return language_id or "hi"
 
 
 def _decode_audio_b64(audio_b64: str) -> np.ndarray:
@@ -133,50 +142,35 @@ bhili_request_queue = queue.Queue(maxsize=QUEUE_MAXSIZE)
 # Batcher + worker thread
 # =========================
 
-def _bhili_language_id(language_id: str) -> str:
-    if (language_id or "").strip().lower() == "bhb":
-        return "mr"
-    return language_id or "mr"
+def _transcribe_batch(model, audio_arrays, language_id: str):
+    valid_indices = [i for i, arr in enumerate(audio_arrays) if len(arr) >= MIN_SAMPLES]
+    if not valid_indices:
+        return [""] * len(audio_arrays)
+
+    valid_audio = [audio_arrays[i] for i in valid_indices]
+    with torch.no_grad():
+        transcriptions = model.transcribe(
+            audio=valid_audio,
+            batch_size=len(valid_audio),
+            language_id=language_id,
+        )[0]
+
+    results = [""] * len(audio_arrays)
+    for idx, text in zip(valid_indices, transcriptions):
+        results[idx] = str(text).strip() if text is not None else ""
+    return results
 
 
 def main_infer(audio_arrays, language_ids):
-    with torch.no_grad():
-        transcriptions = main_model.transcribe(
-            audio=audio_arrays,
-            batch_size=len(audio_arrays),
-            language_id=language_ids[0],
-        )[0]
-    return transcriptions
+    return _transcribe_batch(main_model, audio_arrays, language_ids[0])
 
 
 def bhili_infer(audio_arrays, language_ids):
-    results = []
-
-    for audio_np, language_id in zip(audio_arrays, language_ids):
-        if len(audio_np) < MIN_SAMPLES:
-            results.append("")
-            continue
-
-        waveform = torch.from_numpy(audio_np).float().unsqueeze(0)
-        tmp_path = f"/tmp/bhili_{threading.get_ident()}_{time.time_ns()}.wav"
-        torchaudio.save(tmp_path, waveform, TARGET_SAMPLE_RATE)
-        try:
-            nemo_lid = _bhili_language_id(language_id)
-            with torch.no_grad():
-                out = bhili_model.transcribe([tmp_path], language_id=nemo_lid)
-
-            if out and out[0]:
-                text = out[0][0]
-            else:
-                text = out
-            results.append(str(text).strip() if text is not None else "")
-        finally:
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
-
-    return results
+    return _transcribe_batch(
+        bhili_model,
+        audio_arrays,
+        _nemo_language_id(language_ids[0] if language_ids else "bhb"),
+    )
 
 
 def batch_worker(request_queue, infer_fn):
@@ -285,4 +279,5 @@ def health():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    port = int(os.environ.get("PORT", "8001"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
