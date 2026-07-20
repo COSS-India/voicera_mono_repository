@@ -45,6 +45,15 @@ import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMInt
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
 import {
+  getActiveLanguages,
+  getIntersectedSTTModels,
+  getIntersectedSTTProviders,
+  getIntersectedTTSModels,
+  getIntersectedTTSProviders,
+  isBilingual,
+} from "@/lib/languageModelSupport"
+import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
+import {
   type KenpathVariant,
   isBharatVistaarLanguageSupported,
   kenpathLlmFieldsFromVariant,
@@ -53,19 +62,6 @@ import {
 } from "@/lib/kenpath"
 import ttsData from "@/tts.json"
 import descriptionsData from "@/descriptions.json"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
 
 // Provider name mappings for official names (used for display and database)
 const getProviderOfficialName = (providerId: string): string => {
@@ -268,6 +264,7 @@ export default function AgentDetailPage() {
     useState("")
   const [agentType, setAgentType] = useState("")
   const [language, setLanguage] = useState("")
+  const [secondaryLanguage, setSecondaryLanguage] = useState("")
   const [llmProvider, setLlmProvider] = useState("")
   const [llmModel, setLlmModel] = useState("")
   const [customLlmId, setCustomLlmId] = useState("")
@@ -317,8 +314,37 @@ export default function AgentDetailPage() {
     const merged = new Set([...sttLangs, ...ttsLangs])
     return Array.from(merged)
       .sort()
-      .map((code) => ({ code, label: displayLanguageName(code) }))
+      .map((code) => ({ code, name: displayLanguageName(code) }))
   }, [])
+
+  const activeLanguages = useMemo(
+    () => getActiveLanguages(language, secondaryLanguage),
+    [language, secondaryLanguage]
+  )
+
+  // Get supported STT providers for all selected languages (intersection)
+  const supportedSTTProviders = useMemo(
+    () => getIntersectedSTTProviders(activeLanguages),
+    [activeLanguages]
+  )
+
+  // Get supported STT models for selected provider across all selected languages
+  const supportedSTTModels = useMemo(
+    () => getIntersectedSTTModels(activeLanguages, sttProvider),
+    [activeLanguages, sttProvider]
+  )
+
+  // Get supported TTS providers for all selected languages (intersection)
+  const supportedTTSProviders = useMemo(
+    () => getIntersectedTTSProviders(activeLanguages),
+    [activeLanguages]
+  )
+
+  // Get supported TTS models for selected provider across all selected languages
+  const supportedTTSModels = useMemo(
+    () => getIntersectedTTSModels(activeLanguages, ttsProvider),
+    [activeLanguages, ttsProvider]
+  )
 
   // Derive all STT providers from JSON (across all languages)
   const allSTTProviders = useMemo(() => {
@@ -348,73 +374,7 @@ export default function AgentDetailPage() {
     }))
   }, [])
 
-  // Get supported STT providers for selected language
-  const supportedSTTProviders = useMemo(() => {
-    if (!language) return new Set<string>()
-    const langData =
-      sttData.stt.languages[language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
-
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, models]) => Array.isArray(models) && models.length > 0)
-        .map(([provider]) => provider)
-    )
-  }, [language])
-
-  // Get supported STT models for selected provider
-  const supportedSTTModels = useMemo(() => {
-    if (!language || !sttProvider) return new Set<string>()
-    const langData =
-      sttData.stt.languages[language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
-
-    const models = langData.models[sttProvider as keyof typeof langData.models]
-    return new Set(Array.isArray(models) ? models : [])
-  }, [language, sttProvider])
-
-  // Get supported TTS providers for selected language
-  const supportedTTSProviders = useMemo(() => {
-    if (!language) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
-
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, data]) => {
-          const modelData = data as { available?: boolean }
-          return modelData.available === true
-        })
-        .map(([provider]) => provider)
-    )
-  }, [language])
-
-  // Get supported TTS models for selected provider
-  const supportedTTSModels = useMemo(() => {
-    if (!language || !ttsProvider) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
-
-    const providerData = langData.models[ttsProvider as keyof typeof langData.models] as {
-      model?: string
-      models?: string[]
-      available?: boolean
-    }
-    if (!providerData || !providerData.available) return new Set<string>()
-
-    const models: string[] = []
-    if (providerData.models && Array.isArray(providerData.models)) {
-      models.push(...providerData.models)
-    }
-    if (providerData.model) {
-      models.push(providerData.model)
-    }
-    return new Set(models)
-  }, [language, ttsProvider])
-
-  // Get available TTS voices for selected provider/model (Sarvam: voices vary by model)
+  // Get available TTS voices for primary language + selected provider/model
   const availableTTSVoices = useMemo(() => {
     if (!language || !ttsProvider) return []
     const langData =
@@ -461,6 +421,80 @@ export default function AgentDetailPage() {
     )
   }
 
+  const applyLanguageAudioDefaults = (primaryLanguage: string) => {
+    setSttProvider("")
+    setSttModel("")
+    setTtsProvider("")
+    setTtsModel("")
+    setTtsVoice("")
+    setTtsDescription("")
+
+    if (
+      primaryLanguage &&
+      primaryLanguage !== "English (United States)" &&
+      primaryLanguage !== "English (India)"
+    ) {
+      const sttLangData =
+        sttData.stt.languages[primaryLanguage as keyof typeof sttData.stt.languages]
+      if (
+        sttLangData?.models?.ai4bharat &&
+        Array.isArray(sttLangData.models.ai4bharat) &&
+        sttLangData.models.ai4bharat.length > 0
+      ) {
+        setSttProvider("ai4bharat")
+        setSttModel(sttLangData.models.ai4bharat[0])
+      }
+
+      const ttsLangData =
+        ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
+      const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as
+        | { available?: boolean; model?: string; voices?: string[] }
+        | undefined
+      if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
+        setTtsProvider("ai4bharat")
+        setTtsModel(ttsAi4bharatData.model)
+        if (
+          ttsAi4bharatData.voices &&
+          Array.isArray(ttsAi4bharatData.voices) &&
+          ttsAi4bharatData.voices.length > 0
+        ) {
+          setTtsVoice(ttsAi4bharatData.voices[0])
+          setTtsDescription(
+            descriptionsData.length > 0 ? descriptionsData[0].description : ""
+          )
+        }
+      }
+    }
+  }
+
+  const setPrimaryLanguage = (nextLanguage: string) => {
+    setLanguage(nextLanguage)
+    if (secondaryLanguage && secondaryLanguage === nextLanguage) {
+      setSecondaryLanguage("")
+    }
+    applyLanguageAudioDefaults(nextLanguage)
+  }
+
+  const setSecondaryLanguageValue = (nextSecondary: string) => {
+    setSecondaryLanguage(nextSecondary)
+    if (nextSecondary && nextSecondary !== language) {
+      applyLanguageAudioDefaults(language)
+    }
+  }
+
+  const swapLanguageRoles = () => {
+    if (!secondaryLanguage) return
+    setLanguage(secondaryLanguage)
+    setSecondaryLanguage(language)
+  }
+
+  const secondaryLanguagePayload = useMemo(() => {
+    if (secondaryLanguage && secondaryLanguage !== language) {
+      return secondaryLanguage
+    }
+    return undefined
+  }, [language, secondaryLanguage])
+
   // Load agent data
   useEffect(() => {
     // Reset all state when agentId changes
@@ -471,6 +505,7 @@ export default function AgentDetailPage() {
     setGreetingMessage("")
     setAgentType("")
     setLanguage("")
+    setSecondaryLanguage("")
     setLlmProvider("")
     setLlmModel("")
     setSttProvider("")
@@ -653,6 +688,19 @@ export default function AgentDetailPage() {
             setLanguage(selectedLanguage)
           }
 
+          const configSecondaryLang = String(
+            (agentData.agent_config as any)?.secondary_language || ""
+          ).trim()
+          if (
+            configSecondaryLang &&
+            languageExistsInJSON(configSecondaryLang) &&
+            configSecondaryLang.toLowerCase() !== selectedLanguage.toLowerCase()
+          ) {
+            setSecondaryLanguage(configSecondaryLang)
+          } else {
+            setSecondaryLanguage("")
+          }
+
           // Load STT settings - convert official name to internal ID
           const sttProviderName = agentData.agent_config?.stt_model?.name || ""
           setSttProvider(getProviderIdFromName(sttProviderName))
@@ -764,20 +812,22 @@ export default function AgentDetailPage() {
   // Only validate after initial load is complete (not during loading)
   useEffect(() => {
     // Don't validate during initial load
-    if (isLoading || isInitialLoadRef.current || !language) return
+    if (isLoading || isInitialLoadRef.current || activeLanguages.length === 0) return
 
-    // Clear STT model if it's not supported for current language/provider
-    if (sttProvider && sttModel) {
-      if (!supportedSTTModels.has(sttModel)) {
-        setSttModel("")
-      }
+    if (sttProvider && !supportedSTTProviders.has(sttProvider)) {
+      setSttProvider("")
+      setSttModel("")
+    } else if (sttProvider && sttModel && !supportedSTTModels.has(sttModel)) {
+      setSttModel("")
     }
 
-    // Clear TTS model if it's not supported for current language/provider
-    if (ttsProvider && ttsModel) {
-      if (!supportedTTSModels.has(ttsModel)) {
-        setTtsModel("")
-      }
+    if (ttsProvider && !supportedTTSProviders.has(ttsProvider)) {
+      setTtsProvider("")
+      setTtsModel("")
+      setTtsVoice("")
+      setTtsDescription("")
+    } else if (ttsProvider && ttsModel && !supportedTTSModels.has(ttsModel)) {
+      setTtsModel("")
     }
 
     // Clear TTS voice if it's not available for current provider; for Sarvam set to first voice of model
@@ -790,7 +840,20 @@ export default function AgentDetailPage() {
         }
       }
     }
-  }, [language, sttProvider, ttsProvider, ttsModel, supportedSTTModels, supportedTTSModels, availableTTSVoices, isLoading])
+  }, [
+    activeLanguages,
+    sttProvider,
+    sttModel,
+    ttsProvider,
+    ttsModel,
+    ttsVoice,
+    supportedSTTModels,
+    supportedSTTProviders,
+    supportedTTSModels,
+    supportedTTSProviders,
+    availableTTSVoices,
+    isLoading,
+  ])
 
   // Detect changes
   useEffect(() => {
@@ -801,6 +864,10 @@ export default function AgentDetailPage() {
 
     // Language is already a name, use it directly
     const languageName = language || ""
+    const languageFields =
+      secondaryLanguagePayload !== undefined
+        ? { secondary_language: secondaryLanguagePayload }
+        : {}
 
     // Build current config with same structure as original
     const currentConfig: any =
@@ -808,6 +875,7 @@ export default function AgentDetailPage() {
         ? {
             interaction_mode: "non_conversational",
             language: languageName || "",
+            ...languageFields,
             greeting_message: greetingMessage || "",
             tts_model: {
               name: ttsProvider || "",
@@ -823,7 +891,8 @@ export default function AgentDetailPage() {
             },
           }
         : {
-      language: languageName || "", // Include top-level language field
+      language: languageName || "",
+      ...languageFields,
       interaction_mode: "conversational",
       system_prompt: systemPrompt || "",
       greeting_message: greetingMessage || "",
@@ -892,7 +961,7 @@ export default function AgentDetailPage() {
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
     const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, language, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, language, secondaryLanguage, secondaryLanguagePayload, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -925,6 +994,9 @@ export default function AgentDetailPage() {
             ? {
                 interaction_mode: "non_conversational",
                 language: languageName,
+                ...(secondaryLanguagePayload && {
+                  secondary_language: secondaryLanguagePayload,
+                }),
                 greeting_message: greetingMessage,
                 tts_model: {
                   name: getProviderOfficialName(ttsProvider),
@@ -943,11 +1015,17 @@ export default function AgentDetailPage() {
                   ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
                 },
               }
-            : {
-          ...agent.agent_config,
-          interaction_mode: "conversational",
-          language: languageName, // Update the top-level language field
-          system_prompt: systemPrompt,
+            : (() => {
+                const baseConfig = { ...(agent.agent_config || {}) }
+                delete baseConfig.secondary_language
+                return {
+                  ...baseConfig,
+                  interaction_mode: "conversational",
+                  language: languageName,
+                  ...(secondaryLanguagePayload && {
+                    secondary_language: secondaryLanguagePayload,
+                  }),
+                  system_prompt: systemPrompt,
           greeting_message: greetingMessage,
           ignore_user_speech_before_greeting: ignoreUserSpeechBeforeGreeting,
           interruption_min_words: interruptionMinWords,
@@ -993,7 +1071,8 @@ export default function AgentDetailPage() {
             ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
             ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
           },
-        },
+                }
+              })(),
       }
 
       const updatedAgent = await updateAgent(originalAgentType, updatedConfig)
@@ -1269,6 +1348,7 @@ export default function AgentDetailPage() {
                               !isBharatVistaarLanguageSupported(variant, language)
                             ) {
                               setLanguage("")
+                              setSecondaryLanguage("")
                               setSttProvider("")
                               setSttModel("")
                               setTtsProvider("")
@@ -1455,119 +1535,33 @@ export default function AgentDetailPage() {
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-4 flex items-center gap-2">
                   <Languages className="h-5 w-5 text-slate-400" />
-                  Configure Language
+                  Configure Languages
                 </h3>
-                <div className="space-y-3">
-                  <label className="text-base font-bold text-slate-900">Language</label>
-                  {allLanguages.length > 0 ? (
-                    <Popover open={languageOpen} onOpenChange={setLanguageOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={languageOpen}
-                          className="w-full min-h-[48px] py-3 px-4 justify-between rounded-lg border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-left [&>div]:whitespace-normal"
-                        >
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <Languages className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                            <span className="truncate">
-                              {language ? displayLanguageName(language) : "Select language..."}
-                            </span>
-                          </div>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[400px] p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Search languages..." />
-                          <CommandList>
-                            <CommandEmpty>No language found.</CommandEmpty>
-                            <CommandGroup heading="Languages">
-                              {allLanguages.map((lang) => {
-                                const bharatBlocked =
-                                  llmProvider === "kenpath" &&
-                                  !isBharatVistaarLanguageSupported(
-                                    kenpathVariant,
-                                    lang.code
-                                  )
-                                return (
-                                <CommandItem
-                                  key={lang.code}
-                                  value={`${lang.code} ${lang.label}`}
-                                  disabled={bharatBlocked}
-                                  onSelect={() => {
-                                    if (bharatBlocked) return
-                                    setLanguage(lang.code)
-                                    if (lang.code && lang.code !== "English (United States)" && lang.code !== "English (India)") {
-                                      const sttLangData = sttData.stt.languages[lang.code as keyof typeof sttData.stt.languages]
-                                      if (sttLangData?.models?.ai4bharat && Array.isArray(sttLangData.models.ai4bharat) && sttLangData.models.ai4bharat.length > 0) {
-                                        setSttProvider("ai4bharat")
-                                        setSttModel(sttLangData.models.ai4bharat[0])
-                                      } else {
-                                        setSttProvider("")
-                                        setSttModel("")
-                                      }
-
-                                      const ttsLangData = ttsData.tts.languages[lang.code as keyof typeof ttsData.tts.languages]
-                                      const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as { available?: boolean; model?: string; voices?: string[] } | undefined
-                                      if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
-                                        setTtsProvider("ai4bharat")
-                                        setTtsModel(ttsAi4bharatData.model)
-                                        if (ttsAi4bharatData.voices && Array.isArray(ttsAi4bharatData.voices) && ttsAi4bharatData.voices.length > 0) {
-                                          setTtsVoice(ttsAi4bharatData.voices[0])
-                                          setTtsDescription(
-                                            descriptionsData && descriptionsData.length > 0
-                                              ? descriptionsData[0].description
-                                              : ""
-                                          )
-                                        } else {
-                                          setTtsVoice("")
-                                          setTtsDescription("")
-                                        }
-                                      } else {
-                                        setTtsProvider("")
-                                        setTtsModel("")
-                                        setTtsVoice("")
-                                        setTtsDescription("")
-                                      }
-                                    } else {
-                                      setSttProvider("")
-                                      setSttModel("")
-                                      setTtsProvider("")
-                                      setTtsModel("")
-                                      setTtsVoice("")
-                                      setTtsDescription("")
-                                    }
-                                    setLanguageOpen(false)
-                                  }}
-                                  className="py-2.5"
-                                >
-                                  <span
-                                    className={`font-medium ${bharatBlocked ? "text-slate-400" : ""}`}
-                                  >
-                                    {lang.label}
-                                  </span>
-                                  {bharatBlocked && (
-                                    <span className="ml-2 text-xs text-slate-400">
-                                      (not supported)
-                                    </span>
-                                  )}
-                                </CommandItem>
-                                )
-                              })}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  ) : (
-                    <div className="px-3 py-2 text-base text-slate-500 border border-slate-200 rounded-lg bg-slate-50">
-                      Loading languages...
-                    </div>
-                  )}
-                </div>
+                {allLanguages.length > 0 ? (
+                  <LanguageSelectionSection
+                    primaryLanguage={language}
+                    secondaryLanguage={secondaryLanguage}
+                    allLanguages={allLanguages}
+                    llmProvider={llmProvider}
+                    kenpathVariant={kenpathVariant}
+                    sttProvider={sttProvider}
+                    sttModel={sttModel}
+                    ttsProvider={ttsProvider}
+                    ttsModel={ttsModel}
+                    open={languageOpen}
+                    onOpenChange={setLanguageOpen}
+                    onPrimaryChange={setPrimaryLanguage}
+                    onSecondaryChange={setSecondaryLanguageValue}
+                    onSwapRoles={swapLanguageRoles}
+                  />
+                ) : (
+                  <div className="px-3 py-2 text-base text-slate-500 border border-slate-200 rounded-lg bg-slate-50">
+                    Loading languages...
+                  </div>
+                )}
               </div>
 
-              {interactionMode !== "non_conversational" && (
+              {interactionMode !== "non_conversational" && activeLanguages.length > 0 && (
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-5 flex items-center gap-2">
                   <Mic className="h-5 w-5 text-slate-400" />
@@ -1623,6 +1617,7 @@ export default function AgentDetailPage() {
               </div>
               )}
 
+              {activeLanguages.length > 0 && (
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-5 flex items-center gap-2">
                   <Volume2 className="h-5 w-5 text-slate-400" />
@@ -1738,6 +1733,7 @@ export default function AgentDetailPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           </div>
 

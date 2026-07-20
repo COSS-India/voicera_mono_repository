@@ -30,6 +30,23 @@ def _validate_agent_config_for_mode(agent_config: Dict[str, Any]) -> Optional[st
     return None
 
 
+def _normalize_agent_language_fields(agent_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep primary ``language`` and optional ``secondary_language`` in sync."""
+    config = dict(agent_config or {})
+    primary = str(config.get("language") or "").strip()
+    secondary = str(config.get("secondary_language") or "").strip()
+
+    if not secondary or (primary and secondary.lower() == primary.lower()):
+        config.pop("secondary_language", None)
+    else:
+        config["secondary_language"] = secondary
+
+    if primary:
+        config["language"] = primary
+
+    return config
+
+
 def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
     """
     Create a new agent type for a given org.
@@ -60,7 +77,7 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
         if existing_agent_by_id:
             return {"status": "fail", "message": "Agent ID already exists for this organization"}
 
-        agent_config = dict(agent_data.agent_config or {})
+        agent_config = _normalize_agent_language_fields(dict(agent_data.agent_config or {}))
         if not agent_config.get("interaction_mode"):
             agent_config["interaction_mode"] = "conversational"
         validation_error = _validate_agent_config_for_mode(agent_config)
@@ -211,7 +228,7 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
                 return {"status": "fail", "message": "Agent type already exists for this organization"}
 
         existing_mode = _get_interaction_mode(existing_agent.get("agent_config") or {})
-        incoming_config = dict(agent_data.agent_config or {})
+        incoming_config = _normalize_agent_language_fields(dict(agent_data.agent_config or {}))
         incoming_mode = _get_interaction_mode(incoming_config)
 
         if existing_mode == "non_conversational":
