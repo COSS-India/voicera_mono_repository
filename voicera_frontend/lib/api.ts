@@ -361,6 +361,7 @@ export interface Agent {
   vobiz_answer_url?: string
   plivo_app_id?: string
   plivo_answer_url?: string
+  vi_websocket_url?: string
 }
 
 export type InteractionMode = "conversational" | "non_conversational"
@@ -428,6 +429,7 @@ export interface CreateAgentRequest {
   vobiz_answer_url?: string
   plivo_app_id?: string
   plivo_answer_url?: string
+  vi_websocket_url?: string
 }
 
 export interface Campaign {

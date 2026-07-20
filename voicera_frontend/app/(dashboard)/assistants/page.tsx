@@ -203,6 +203,22 @@ const getAgentDescription = (agent: Agent): string => {
   return "Voice Assistant"
 }
 
+function getViWebsocketUrl(agentId: string): string {
+  const explicitWsBase = process.env.NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL
+  const serverBase = process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL
+
+  let wsBase = explicitWsBase || ""
+  if (!wsBase && serverBase) {
+    wsBase = serverBase.replace(/^http:\/\//i, "ws://").replace(/^https:\/\//i, "wss://")
+  }
+  return `${wsBase.replace(/\/$/, "")}/vi/agent/${encodeURIComponent(agentId)}`
+}
+
+function getViPostStreamUrl(): string {
+  const serverBase = process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL || ""
+  return `${serverBase.replace(/\/$/, "")}/vi/post-stream`
+}
+
 // Types
 type WizardStepKey = "type" | "agent" | "llm" | "audio" | "telephony" | "call_mgmt" | "review"
 
@@ -958,6 +974,7 @@ export default function AssistantsPage() {
       let vobizAnswerUrl: string | undefined
       let plivoAppId: string | undefined
       let plivoAnswerUrl: string | undefined
+      let viWebsocketUrl: string | undefined
       
       if (config.telephonyProvider === "Vobiz") {
         vobizAnswerUrl = `${process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL}/answer?agent_id=${agentId}`
@@ -980,6 +997,9 @@ export default function AssistantsPage() {
         } else {
           throw new Error(plivoAppResponse.message || "Failed to create Plivo application")
         }
+      }
+      if (config.telephonyProvider === "VI") {
+        viWebsocketUrl = getViWebsocketUrl(agentId)
       }
 
       const agentData: CreateAgentRequest = {
@@ -1030,6 +1050,9 @@ export default function AssistantsPage() {
         ...(config.telephonyProvider === "Plivo" && {
           plivo_app_id: plivoAppId,
           plivo_answer_url: plivoAnswerUrl,
+        }),
+        ...(config.telephonyProvider === "VI" && {
+          vi_websocket_url: viWebsocketUrl,
         }),
       }
 
@@ -2243,8 +2266,41 @@ export default function AssistantsPage() {
                         <SelectItem value="Plivo" className="py-3">
                           <span className="font-medium">Plivo</span>
                         </SelectItem>
+                        <SelectItem value="VI" className="py-3">
+                          <span className="font-medium">Vodafone Idea (VI)</span>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
+                    {config.telephonyProvider === "VI" && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+                        <p className="text-sm font-semibold text-slate-900">
+                          VI Voice Streaming setup
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          Configure a <strong>Bidirectional</strong> Streaming Object in the VI CPaaS DIY Flow
+                          with the WebSocket URL below. Numbers and call flows are managed in the VI portal.
+                        </p>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            WebSocket URL (share with VI for whitelisting)
+                          </p>
+                          <code className="block text-xs break-all rounded bg-white border border-slate-200 p-2 text-slate-800">
+                            {getViWebsocketUrl(nameSnakeCase || "your_agent_id")}
+                          </code>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            Optional post-stream callback (Option 2)
+                          </p>
+                          <code className="block text-xs break-all rounded bg-white border border-slate-200 p-2 text-slate-800">
+                            {getViPostStreamUrl()}
+                          </code>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Audio: 8 kHz, 16-bit PCM (Base64 JSON). Host must not use a .ai domain.
+                        </p>
+                      </div>
+                    )}
                     <p className="text-sm text-slate-500">
                       Choose the telephone provider for your agent calls.
                     </p>
@@ -2683,6 +2739,11 @@ export default function AssistantsPage() {
                       <p className="text-sm font-medium text-slate-700">
                         {config.telephonyProvider ? config.telephonyProvider.charAt(0).toUpperCase() + config.telephonyProvider.slice(1) : "—"}
                       </p>
+                      {config.telephonyProvider === "VI" && (
+                        <p className="text-xs text-slate-500 mt-2 break-all">
+                          WSS: {getViWebsocketUrl(nameSnakeCase || "your_agent_id")}
+                        </p>
+                      )}
                     </div>
                     <button onClick={() => setCreateStep(getStepIdByKey("telephony"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
                       Edit

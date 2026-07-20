@@ -99,6 +99,8 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
             agent_doc["plivo_app_id"] = agent_data.plivo_app_id
         if agent_data.plivo_answer_url:
             agent_doc["plivo_answer_url"] = agent_data.plivo_answer_url
+        if agent_data.vi_websocket_url:
+            agent_doc["vi_websocket_url"] = agent_data.vi_websocket_url
         
         agent_table.insert_one(agent_doc)
         logger.info(f"Agent created successfully: {agent_data.agent_type}")
@@ -255,6 +257,8 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
             update_doc["plivo_app_id"] = agent_data.plivo_app_id
         if agent_data.plivo_answer_url:
             update_doc["plivo_answer_url"] = agent_data.plivo_answer_url
+        if agent_data.vi_websocket_url:
+            update_doc["vi_websocket_url"] = agent_data.vi_websocket_url
 
         if existing_agent.get("created_at") is None:
             update_doc["created_at"] = (

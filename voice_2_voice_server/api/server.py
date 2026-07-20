@@ -75,6 +75,19 @@ class OutboundCallRequest(BaseModel):
     caller_id: Optional[str] = None
 
 
+class ViPostStreamRequest(BaseModel):
+    """VI post-stream callback payload (Option 2 in VI user manual)."""
+    Callid: str
+    dni: str
+    cli: str
+
+
+class ViPostStreamResponse(BaseModel):
+    """VI post-stream callback response."""
+    callstatus: str
+    rm_number: str = ""
+
+
 # === Helper Functions ===
 
 def _get_env_or_raise(key: str) -> str:
@@ -214,21 +227,65 @@ async def make_outbound_call_provider(
         raise ValueError(f"Could not load agent config for agent_id={agent_id}")
     provider = (agent_config.get("telephony_provider") or "Vobiz").strip().lower()
     logger.info(f"Outbound provider={provider} agent_id={agent_id}")
+    if provider == "vi":
+        raise ValueError(
+            "VI outbound calls are initiated via VI CPaaS APIs and DIY call flows, "
+            "not through this endpoint."
+        )
     if provider == "plivo":
         return await make_outbound_call_plivo(customer_number, agent_id, caller_id)
     return await make_outbound_call_vobiz(customer_number, agent_id, caller_id)
 
 
+def _build_vi_websocket_url(agent_id: str) -> str:
+    """Build the WSS URL VI configures in their Streaming Object."""
+    websocket_prefix = os.environ.get("JOHNAIC_WEBSOCKET_URL", "").rstrip("/")
+    return f"{websocket_prefix}/vi/agent/{agent_id}"
+
+
+def _build_vi_post_stream_url() -> str:
+    """Build the HTTPS callback URL for VI post-stream routing (Option 2)."""
+    server_url = os.environ.get("JOHNAIC_SERVER_URL", "").rstrip("/")
+    return f"{server_url}/vi/post-stream"
+
+
+async def _read_vi_start_message(websocket: WebSocket) -> tuple[dict, str, str]:
+    """Read VI WebSocket messages until the start event is received."""
+    while True:
+        message = await websocket.receive_text()
+        data = json.loads(message)
+        event = data.get("event")
+        if event == "connected":
+            logger.info("VI WebSocket connected event received")
+            continue
+        if event == "start":
+            start_info = data.get("start", {}) or {}
+            call_sid = (
+                start_info.get("call_id")
+                or data.get("call_id")
+                or start_info.get("callSid")
+                or "unknown"
+            )
+            stream_sid = (
+                data.get("room_id")
+                or start_info.get("room_id")
+                or start_info.get("streamSid")
+                or "unknown"
+            )
+            return data, str(call_sid), str(stream_sid)
+        logger.warning(f"VI WebSocket expected connected/start, got event={event}")
+
+
 def _build_stream_xml(websocket_url: str) -> str:
     """Build Vobiz XML response for WebSocket streaming."""
     sample_rate = int(os.environ.get("SAMPLE_RATE", "8000"))
-    
+
     # Use L16 for 16kHz per Vobiz spec (μ-law is 8kHz only)
     if sample_rate == 16000:
         content_type = "audio/x-l16;rate=16000"
     else:
         content_type = f"audio/x-mulaw;rate={sample_rate}"
-        
+
     logger.info(f"Sending XML with contentType: {content_type}")
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -514,6 +571,92 @@ async def plivo_websocket_endpoint(websocket: WebSocket, agent_id: str):
         logger.debug(traceback.format_exc())
     finally:
         logger.info(f"🔌 Plivo WebSocket closed: call_sid={call_sid}")
+
+
+@app.websocket("/vi/agent/{agent_id}")
+async def vi_websocket_endpoint(websocket: WebSocket, agent_id: str):
+    """WebSocket endpoint for Vodafone Idea (VI) bidirectional voice streaming."""
+    await websocket.accept()
+    logger.info(f"🔌 VI WebSocket connected: agent={agent_id}")
+
+    call_sid = None
+    stream_sid = None
+
+    try:
+        agent_config = await fetch_agent_config_from_backend(agent_id)
+        if not agent_config:
+            logger.error(f"❌ Failed to fetch agent config from backend: {agent_id}")
+            return
+
+        agent_type = agent_config.get("agent_type")
+        start_data, call_sid, stream_sid = await _read_vi_start_message(websocket)
+        start_info = start_data.get("start", {}) or {}
+
+        meeting_payload = {
+            "CallUUID": call_sid,
+            "Direction": "inbound",
+            "From": start_info.get("cli", "unknown"),
+            "To": start_info.get("dni", "unknown"),
+            "Event": "StartApp",
+        }
+        await log_meeting(agent_id, meeting_payload)
+
+        logger.info(
+            f"📞 VI call started: call_sid={call_sid}, room_id={stream_sid}, "
+            f"cli={start_info.get('cli')}, dni={start_info.get('dni')}"
+        )
+
+        await bot(
+            websocket,
+            stream_sid,
+            call_sid,
+            agent_type,
+            agent_config,
+            provider="vi",
+            sample_rate=8000,
+        )
+
+    except FileNotFoundError as e:
+        logger.error(f"❌ {e}")
+        await websocket.close(code=1008, reason="Agent config not found")
+    except Exception as e:
+        logger.error(f"❌ VI WebSocket error: {e}")
+        logger.debug(traceback.format_exc())
+    finally:
+        logger.info(f"🔌 VI WebSocket closed: call_sid={call_sid}")
+
+
+@app.get("/vi/integration-info/{agent_id}")
+async def vi_integration_info(agent_id: str):
+    """Return VI integration URLs for an agent (for dashboard / onboarding)."""
+    agent_config = await fetch_agent_config_from_backend(agent_id)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    return {
+        "agent_id": agent_id,
+        "telephony_provider": agent_config.get("telephony_provider"),
+        "websocket_url": _build_vi_websocket_url(agent_id),
+        "post_stream_callback_url": _build_vi_post_stream_url(),
+        "protocol": "VI Voice Streaming (bidirectional, 8kHz PCM16, JSON over WSS)",
+        "custom_parameters_supported": 3,
+    }
+
+
+@app.post("/vi/post-stream")
+async def vi_post_stream_callback(request: ViPostStreamRequest):
+    """VI post-stream routing callback (Option 2 in the VI user manual).
+
+    Default behaviour disconnects the call. Extend this to look up agent/session
+    state and return callstatus=1 with rm_number for agent transfer when needed.
+    """
+    logger.info(
+        "VI post-stream callback: Callid={} cli={} dni={}",
+        request.Callid,
+        request.cli,
+        request.dni,
+    )
+    return ViPostStreamResponse(callstatus="0", rm_number="")
 
 
 @app.websocket("/browser/agent/{agent_id}")

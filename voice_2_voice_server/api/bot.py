@@ -27,6 +27,7 @@ from pipecat.transports.websocket.fastapi import (
 from pipecat.runner.utils import parse_telephony_websocket
 from storage.minio_client import MinIOStorage
 from serializer.vobiz_serializer import VobizFrameSerializer
+from serializer.vi_serializer import ViFrameSerializer, VI_SAMPLE_RATE
 from .services import (
     create_llm_service,
     create_stt_service,
@@ -385,7 +386,11 @@ async def bot(
     sample_rate: Optional[int] = None,
 ) -> str:
     """Main bot entry point - sets up transport and runs the pipeline."""
-    sample_rate = sample_rate or get_sample_rate()
+    normalized_provider = (provider or "vobiz").strip().lower()
+    if normalized_provider == "vi":
+        sample_rate = VI_SAMPLE_RATE
+    else:
+        sample_rate = sample_rate or get_sample_rate()
     session_timeout = (
         get_alert_call_timeout_seconds(agent_config)
         if is_non_conversational(agent_config)
@@ -407,13 +412,12 @@ async def bot(
     # Initialize MinIO storage
     storage = MinIOStorage.from_env()
 
-    normalized_provider = (provider or "vobiz").strip().lower()
     if normalized_provider == "plivo":
         await websocket_client.accept()
         _, telephony_call_data = await parse_telephony_websocket(websocket_client)
         stream_sid = stream_sid or telephony_call_data.get("stream_id") or "unknown"
         call_sid = call_sid or telephony_call_data.get("call_id") or "unknown"
-     
+
         serializer = VobizFrameSerializer(
             stream_sid=stream_sid,
             call_sid=call_sid,
@@ -422,6 +426,14 @@ async def bot(
                 sample_rate=sample_rate,
                 auto_hang_up=False,
             ),
+        )
+    elif normalized_provider == "vi":
+        stream_sid = stream_sid or "unknown"
+        call_sid = call_sid or "unknown"
+        serializer = ViFrameSerializer(
+            room_id=stream_sid,
+            call_id=call_sid,
+            params=ViFrameSerializer.InputParams(sample_rate=VI_SAMPLE_RATE),
         )
     else:
         stream_sid = stream_sid or "unknown"

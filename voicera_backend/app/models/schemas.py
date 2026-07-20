@@ -61,6 +61,7 @@ class AgentConfigCreate(BaseModel):
     vobiz_answer_url: Optional[str] = None
     plivo_app_id: Optional[str] = None
     plivo_answer_url: Optional[str] = None
+    vi_websocket_url: Optional[str] = None
 
 class AgentConfigResponse(BaseModel):
     """Schema for agent config response."""
@@ -76,6 +77,7 @@ class AgentConfigResponse(BaseModel):
     vobiz_answer_url: Optional[str] = None
     plivo_app_id: Optional[str] = None
     plivo_answer_url: Optional[str] = None
+    vi_websocket_url: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -92,6 +94,7 @@ class AgentConfigUpdate(BaseModel):
     vobiz_answer_url: Optional[str] = None
     plivo_app_id: Optional[str] = None
     plivo_answer_url: Optional[str] = None
+    vi_websocket_url: Optional[str] = None
 
 # Meeting Models
 class MeetingCreate(BaseModel):
