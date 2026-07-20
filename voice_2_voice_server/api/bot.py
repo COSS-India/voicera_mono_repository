@@ -160,7 +160,8 @@ async def run_bot(
                 tts_config["language"] = language
 
         org_id = agent_config.get("org_id")
-     
+        is_default_agent = bool(agent_config.get("is_default"))
+
         llm = create_llm_service(
             llm_config,
             vistaar_session_id=vistaar_session_id,
@@ -170,6 +171,7 @@ async def run_bot(
             hold_message_timeout_seconds=get_hold_message_timeout_seconds(
                 agent_config
             ),
+            is_default_agent=is_default_agent,
         )
         stt = create_stt_service(stt_config, sample_rate, vad_analyzer=vad_analyzer, org_id=org_id)
         tts = create_tts_service(tts_config, sample_rate, org_id=org_id)

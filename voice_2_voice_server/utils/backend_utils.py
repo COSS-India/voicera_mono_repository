@@ -181,6 +181,7 @@ async def fetch_agent_config_from_backend(agent_id: str) -> dict:
             "greeting_message",
             "telephony_provider",
             "phone_number",
+            "is_default",
         ):
             if key in agent_data and agent_data[key] is not None:
                 agent_config[key] = agent_data[key]

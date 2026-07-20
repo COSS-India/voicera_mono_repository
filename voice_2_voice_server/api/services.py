@@ -51,6 +51,11 @@ class ServiceCreationError(Exception):
     pass
 
 
+def allow_platform_key_for_default_agents() -> bool:
+    """Whether default agents may fall back to platform-provided API keys when the org has none configured."""
+    return os.getenv("ALLOW_PLATFORM_KEY_FOR_DEFAULT_AGENTS", "true").strip().lower() in ("1", "true", "yes")
+
+
 def _normalize_provider_name(raw_provider: Any, provider_map: dict[str, str], kind: str) -> str:
     if not isinstance(raw_provider, str) or not raw_provider.strip():
         raise ServiceCreationError(f"{kind} provider is missing in agent configuration")
@@ -116,6 +121,7 @@ def create_llm_service(
     org_id: Optional[str] = None,
     hold_messages: Optional[list[str]] = None,
     hold_message_timeout_seconds: float = 0.3,
+    is_default_agent: bool = False,
 ) -> Any:
     """Create an LLM service based on configuration.
 
@@ -124,6 +130,9 @@ def create_llm_service(
         vistaar_session_id: Optional session ID for Kenpath/Vistaar
         language: Optional agent language (e.g. "hindi", "marathi") for Kenpath
         org_id: Optional organization ID to fetch integration API key from backend
+        is_default_agent: True for the platform-seeded demo agent, which may
+            fall back to the platform's .env OpenAI key when the org has no
+            integration configured
 
     Returns:
         Configured LLM service instance
@@ -142,6 +151,10 @@ def create_llm_service(
     if provider_normalized == "OpenAI":
         if org_id:
             api_key = fetch_integration_key(org_id, "OpenAI")
+            if not api_key and is_default_agent and allow_platform_key_for_default_agents():
+                api_key = os.getenv("OPENAI_API_KEY")
+                if api_key:
+                    logger.info("Using platform demo OpenAI key for default agent")
             if not api_key:
                 raise ServiceCreationError(
                     "OpenAI API key must be configured in Integrations for this organization."

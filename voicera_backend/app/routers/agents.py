@@ -120,7 +120,9 @@ async def get_agents_by_org(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this organization's agents"
         )
-    
+
+    # Lazy backfill: orgs created before the demo-agent feature get one on first listing
+    agent_service.ensure_default_agent_seeded(org_id)
     agents = agent_service.fetch_agents_of_org(org_id)
     return agents
 

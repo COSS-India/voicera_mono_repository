@@ -51,11 +51,14 @@ export function AgentCard({
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
   const isAlertAgent = agent.agent_config?.interaction_mode === "non_conversational"
+  const isDemoAgent = Boolean(agent.is_default)
   const fullPromptText = isAlertAgent
     ? (agent.agent_config?.greeting_message ?? "").trim()
     : (agent.agent_config?.system_prompt ?? "").trim()
 
   const isConnected = Boolean(agent?.phone_number)
+  // Demo agents can place outbound test calls via the platform's shared caller ID
+  const canTestCall = isConnected || isDemoAgent
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -108,6 +111,14 @@ export function AgentCard({
           {isAlertAgent && (
             <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
               Alert
+            </span>
+          )}
+          {isDemoAgent && (
+            <span
+              className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600"
+              title="Pre-configured demo agent with included credentials — try it right away"
+            >
+              Demo
             </span>
           )}
         </div>
@@ -230,16 +241,16 @@ export function AgentCard({
         <Button
           onClick={(e) => {
             e.stopPropagation()
-            if (isConnected) {
+            if (canTestCall) {
               onTestCall(agent)
             }
           }}
           variant="outline"
-          disabled={!isConnected}
+          disabled={!canTestCall}
           className={cn(
             "h-9 rounded-[7px] border-[0.5px] bg-transparent px-2 text-[13px] font-medium shadow-none",
             "hover:bg-[var(--color-background-secondary)] hover:border-[var(--color-border-secondary)] hover:text-[var(--color-text-primary)]",
-            isConnected
+            canTestCall
               ? "border-slate-300 text-slate-700"
               : "border-slate-200 text-slate-400"
           )}
@@ -247,7 +258,7 @@ export function AgentCard({
             transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
           }}
           title={
-            !isConnected
+            !canTestCall
               ? "Please attach a phone number to this agent first"
               : "Make a test call"
           }

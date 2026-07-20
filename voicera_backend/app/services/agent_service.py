@@ -1,16 +1,58 @@
 """
 Agent service for handling agent-related database operations.
 """
-from typing import Optional, Dict, Any, List
-from datetime import datetime
-from app.database import get_database
-from app.models.schemas import AgentConfigCreate, AgentConfigUpdate
+import json
 import logging
 import string
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, Any, List
+
+from pydantic import BaseModel
+
+from app.database import get_database
+from app.models.schemas import AgentConfigCreate, AgentConfigUpdate
 
 logger = logging.getLogger(__name__)
 
 VALID_INTERACTION_MODES = {"conversational", "non_conversational"}
+
+# Pre-configured demo agents, seeded once per org from app/config/default_agents.json.
+# They are the only agents allowed to fall back to the platform's .env credentials
+# on the voice server.
+DEFAULT_AGENTS_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "default_agents.json"
+
+
+class _ModelConfig(BaseModel):
+    name: str
+    model: str
+    speaker: Optional[str] = None
+    # Natural-language voice-style prompt for indic-parler-tts (drives pace/tone
+    # on the voice server; surfaced as the "voice description" in the frontend).
+    description: Optional[str] = None
+
+
+class DefaultAgentTemplate(BaseModel):
+    agent_type: str
+    # Stable prefix for this template's agent_id (agent_id = f"{id_prefix}_{org_id}"),
+    # kept separate from agent_type so renaming the display name never changes the id.
+    id_prefix: str
+    language: str
+    telephony_provider: str = "Vobiz"
+    system_prompt: str
+    greeting_message: str
+    llm_model: _ModelConfig
+    stt_model: _ModelConfig
+    tts_model: _ModelConfig
+
+
+def _load_default_agent_templates() -> List[DefaultAgentTemplate]:
+    raw = json.loads(DEFAULT_AGENTS_CONFIG_PATH.read_text(encoding="utf-8"))
+    return [DefaultAgentTemplate(**entry) for entry in raw]
+
+
+# Loaded once at process start; add/edit entries in default_agents.json, no code change needed.
+DEFAULT_AGENT_TEMPLATES = _load_default_agent_templates()
 
 
 def _get_interaction_mode(agent_config: Dict[str, Any]) -> str:
@@ -28,6 +70,83 @@ def _validate_agent_config_for_mode(agent_config: Dict[str, Any]) -> Optional[st
         if not isinstance(tts_model, dict) or not tts_model.get("name"):
             return "TTS configuration is required for non-conversational agents"
     return None
+
+
+def _create_default_agent(org_id: str, template: DefaultAgentTemplate) -> Dict[str, Any]:
+    """
+    Create one pre-configured default agent for an org from its template.
+
+    Uses env-less AI4Bharat STT/TTS; the OpenAI key is resolved on the voice
+    server (org integration first, platform .env fallback for default agents).
+    """
+    try:
+        db = get_database()
+        agent_table = db["AgentConfig"]
+
+        if agent_table.find_one({"agent_type": template.agent_type, "org_id": org_id}):
+            return {"status": "success", "message": "Default agent already exists"}
+
+        now_iso = datetime.now().isoformat()
+        agent_doc = {
+            "agent_type": template.agent_type,
+            # agent_id must be globally unique: the voice server looks agents
+            # up by agent_id without an org filter.
+            "agent_id": f"{template.id_prefix}_{org_id}",
+            "org_id": org_id,
+            "agent_category": "voicera_telephony",
+            "telephony_provider": template.telephony_provider,
+            "is_default": True,
+            "agent_config": {
+                "interaction_mode": "conversational",
+                "system_prompt": template.system_prompt,
+                "greeting_message": template.greeting_message,
+                "ignore_user_speech_before_greeting": True,
+                "interruption_min_words": 1,
+                "user_silence_hangup_seconds": 30,
+                "call_timeout_seconds": 300,
+                "hold_messages": [],
+                "hold_message_timeout_seconds": 0.3,
+                "language": template.language,
+                "knowledge_base_enabled": False,
+                "knowledge_document_ids": [],
+                "knowledge_top_k": 3,
+                "llm_model": template.llm_model.model_dump(exclude_none=True),
+                "stt_model": template.stt_model.model_dump(exclude_none=True),
+                "tts_model": template.tts_model.model_dump(exclude_none=True),
+            },
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+        agent_table.insert_one(agent_doc)
+        logger.info(f"Default agent '{template.agent_type}' created for org: {org_id}")
+        return {"status": "success", "message": "Default agent created"}
+    except Exception as e:
+        logger.error(f"Error creating default agent '{template.agent_type}' for org {org_id}: {str(e)}")
+        return {"status": "fail", "message": f"Error creating default agent: {str(e)}"}
+
+
+def ensure_default_agent_seeded(org_id: str) -> None:
+    """
+    Seed each platform default agent template once per org, tracked by a
+    marker collection so a deleted or renamed default agent stays gone (and
+    so a template added later still backfills existing orgs on their next
+    agent listing, per-template rather than all-or-nothing).
+    """
+    db = get_database()
+    marker_table = db["DefaultAgentSeeded"]
+    for template in DEFAULT_AGENT_TEMPLATES:
+        try:
+            if marker_table.find_one({"org_id": org_id, "agent_type": template.agent_type}):
+                continue
+            result = _create_default_agent(org_id, template)
+            if result["status"] == "success":
+                marker_table.insert_one({
+                    "org_id": org_id,
+                    "agent_type": template.agent_type,
+                    "created_at": datetime.now().isoformat(),
+                })
+        except Exception as e:
+            logger.error(f"Error seeding default agent '{template.agent_type}' for org {org_id}: {str(e)}")
 
 
 def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
@@ -61,6 +180,8 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
             return {"status": "fail", "message": "Agent ID already exists for this organization"}
 
         agent_config = dict(agent_data.agent_config or {})
+        # is_default is server-controlled (top-level doc field); never accept it from clients
+        agent_config.pop("is_default", None)
         if not agent_config.get("interaction_mode"):
             agent_config["interaction_mode"] = "conversational"
         validation_error = _validate_agent_config_for_mode(agent_config)
@@ -212,7 +333,21 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
 
         existing_mode = _get_interaction_mode(existing_agent.get("agent_config") or {})
         incoming_config = dict(agent_data.agent_config or {})
+        incoming_config.pop("is_default", None)
         incoming_mode = _get_interaction_mode(incoming_config)
+
+        if existing_agent.get("is_default"):
+            existing_llm = (existing_agent.get("agent_config") or {}).get("llm_model") or {}
+            incoming_llm = incoming_config.get("llm_model") or {}
+            llm_fields = ("name", "model", "custom_llm_id")
+            if any(existing_llm.get(f) != incoming_llm.get(f) for f in llm_fields):
+                return {
+                    "status": "fail",
+                    "message": (
+                        "The demo agent's LLM provider and model are fixed. "
+                        "Add your own API key in Integrations and create a new agent to use other models."
+                    ),
+                }
 
         if existing_mode == "non_conversational":
             if incoming_mode != "non_conversational":

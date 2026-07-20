@@ -93,6 +93,10 @@ def sign_up_user(user_data: UserCreate, client_ip: Optional[str] = None) -> Dict
                 "created_at": datetime.now().isoformat(),
             })
             logger.info(f"User (org owner) created successfully: {user_data.email}")
+
+            # Seed the pre-configured demo agent for the new org (never fail signup)
+            from app.services.agent_service import ensure_default_agent_seeded
+            ensure_default_agent_seeded(org_id)
         
         return {"status": "success", "message": "User created successfully", "org_id": org_id}
         
