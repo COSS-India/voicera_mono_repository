@@ -1,0 +1,93 @@
+voice_2_voice_server/.env.example
+  s_0b0c4aaba19282::t_b26849d5b65d9f 12-15,17
+  s_0b0c4aaba19282::t_000b69d839c80c 16
+voice_2_voice_server/api/services.py
+  s_bae29e13e8a728::t_5640e91dfbbebe 54,56
+  s_bae29e13e8a728::t_9244cd76fe08e3 55
+  s_0b0c4aaba19282::t_f1c42b2aa0ecac 57-58
+  s_bae29e13e8a728::t_cf868a3cdb5239 154
+  s_0b0c4aaba19282::t_d2af500db4757f 155-157
+  s_0b0c4aaba19282::t_0fca777c02b710 124,133-135
+voice_2_voice_server/api/bot.py
+  s_0b0c4aaba19282::t_b035e107e73209 163-164,174
+voicera_frontend/lib/api.ts
+  s_0b0c4aaba19282::t_acce25f1c18fd6 364-365
+voicera_backend/app/models/schemas.py
+  s_0b0c4aaba19282::t_0dbd1ce1374cd4 79
+voicera_frontend/.env.local
+  s_db1b6873d6035a::t_c8b9091694551f 1
+voicera_backend/app/config/default_agents.json
+  s_d762ddb3531b8f::t_2918e51ecf069c 1-2,133-134
+  s_d762ddb3531b8f::t_a0f618ad4bdf21 20,42,64
+  s_d762ddb3531b8f::t_0410fb02f5e227 23-24,28,31-41,44-46,49-50
+  s_d762ddb3531b8f::t_c72ab3b22a73fc 53-63,66
+  s_d762ddb3531b8f::t_e23580a2dc7163 67-90,93-94,97-108,110-112,116,119-130,132
+  s_d762ddb3531b8f::t_70913bbfc556b1 5-6,9-19,22
+  s_d762ddb3531b8f::t_85533f25c6929c 3-4,7-8,21,25-27,29-30,43,47-48,51-52,65,91-92,95-96,109,113-115,117-118,131
+voicera_frontend/components/assistants/agent-card.tsx
+  s_0b0c4aaba19282::t_5a6dc960bef2b0 54,60-61
+  s_d762ddb3531b8f::t_965f141c5a5e08 116,123
+  s_d762ddb3531b8f::t_4f52294458d5fe 118
+  s_0b0c4aaba19282::t_32347023054e3e 117,119-122
+  s_0b0c4aaba19282::t_7a0e58e109423a 244,249,253,261
+voicera_backend/app/routers/agents.py
+  s_0b0c4aaba19282::t_71bb7853ec2dfa 123-125
+voice_2_voice_server/api/server.py
+  s_d762ddb3531b8f::t_dbbcf017e7ed5e 21
+  s_0b0c4aaba19282::t_359c5d8e864a46 122-126
+  s_d762ddb3531b8f::t_e95b7defa67936 121
+voicera_backend/app/services/agent_service.py
+  s_0b0c4aaba19282::t_d212d9f23ad9ad 76,78-85,87-90,92-93,95-96,98-100,103-108,110-112,116-120,122-123,125-129,134,150-151
+  s_0b0c4aaba19282::t_405177a5beb402 183-184
+  s_0b0c4aaba19282::t_3a5bce2fc96e7f 339-351
+  s_d762ddb3531b8f::t_db618211ced070 94
+  s_d762ddb3531b8f::t_cc63808b9f5311 4-6,8-12,20-29,33-36,40-56
+  s_d762ddb3531b8f::t_9d5848a4f5444d 75,77,86,91,97,101-102,109,113-115,121,124,130-133,135-149
+  s_0b0c4aaba19282::t_fcae0239de05b8 336
+  s_d762ddb3531b8f::t_4938b0a3f78211 37-39
+  s_d762ddb3531b8f::t_8699d725ed2ec6 30-32
+voice_2_voice_server/utils/backend_utils.py
+  s_0b0c4aaba19282::t_3b71acf4e63d0f 184
+voicera_backend/app/services/user_service.py
+  s_0b0c4aaba19282::t_35c8d16e4c2790 96-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a1eed34afb6c8d7e7c4dbe9bdb43bb4f592de5ad",
+  "prompts": {},
+  "sessions": {
+    "s_0b0c4aaba19282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c08f591-7ede-4421-a3b9-62fd80dedde0",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_bae29e13e8a728": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84869145-c408-403e-b431-2f4a4377b4d4",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_d762ddb3531b8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f7ad40e-f8c1-4a88-a504-8df49c9747ab",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_db1b6873d6035a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f80c117-54a2-43b5-a9ca-62a1c8ee9a02",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": null
+    }
+  }
+}
