@@ -1,0 +1,19 @@
+voicera_backend/app/config/default_agents.json
+  s_d762ddb3531b8f::t_56cbd40143d8c7 8,30,52,74,96,118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "96f5ed0f20f093f3606b21bd17f1af47ff93a697",
+  "prompts": {},
+  "sessions": {
+    "s_d762ddb3531b8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f7ad40e-f8c1-4a88-a504-8df49c9747ab",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
