@@ -51,9 +51,12 @@ class ServiceCreationError(Exception):
     pass
 
 
-def allow_platform_key_for_default_agents() -> bool:
-    """Whether default agents may fall back to platform-provided API keys when the org has none configured."""
-    return os.getenv("ALLOW_PLATFORM_KEY_FOR_DEFAULT_AGENTS", "true").strip().lower() in ("1", "true", "yes")
+def platform_key_fallback_enabled() -> bool:
+    """Whether any agent may fall back to platform-provided API keys when its org has none configured.
+
+    Single global kill-switch: set ALLOW_PLATFORM_KEY_FALLBACK=false to disable instantly.
+    """
+    return os.getenv("ALLOW_PLATFORM_KEY_FALLBACK", "true").strip().lower() in ("1", "true", "yes")
 
 
 def _normalize_provider_name(raw_provider: Any, provider_map: dict[str, str], kind: str) -> str:
@@ -121,7 +124,6 @@ def create_llm_service(
     org_id: Optional[str] = None,
     hold_messages: Optional[list[str]] = None,
     hold_message_timeout_seconds: float = 0.3,
-    is_default_agent: bool = False,
 ) -> Any:
     """Create an LLM service based on configuration.
 
@@ -130,9 +132,6 @@ def create_llm_service(
         vistaar_session_id: Optional session ID for Kenpath/Vistaar
         language: Optional agent language (e.g. "hindi", "marathi") for Kenpath
         org_id: Optional organization ID to fetch integration API key from backend
-        is_default_agent: True for the platform-seeded demo agent, which may
-            fall back to the platform's .env OpenAI key when the org has no
-            integration configured
 
     Returns:
         Configured LLM service instance
@@ -149,18 +148,27 @@ def create_llm_service(
     model = args.get("model") or llm_config.get("model")
 
     if provider_normalized == "OpenAI":
+        used_platform_key = False
         if org_id:
             api_key = fetch_integration_key(org_id, "OpenAI")
-            if not api_key and is_default_agent and allow_platform_key_for_default_agents():
+            if not api_key and platform_key_fallback_enabled():
                 api_key = os.getenv("OPENAI_API_KEY")
                 if api_key:
-                    logger.info("Using platform demo OpenAI key for default agent")
+                    used_platform_key = True
+                    logger.info("Using platform OpenAI key (org has no integration configured)")
             if not api_key:
                 raise ServiceCreationError(
                     "OpenAI API key must be configured in Integrations for this organization."
                 )
         else:
             api_key = os.getenv("OPENAI_API_KEY")
+
+        # When falling back to the platform key, pin the model to PLATFORM_OPENAI_MODEL
+        # (if set) so shared-key usage stays on an approved model. Empty env = free choice.
+        if used_platform_key:
+            platform_model = os.getenv("PLATFORM_OPENAI_MODEL")
+            if platform_model:
+                model = platform_model
 
         # Extract user aggregator params from config, with defaults
         user_aggregator_params = LLMUserAggregatorParams(

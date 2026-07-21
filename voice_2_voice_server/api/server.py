@@ -18,7 +18,7 @@ from pydantic import BaseModel
 import requests
 
 from .bot import bot
-from .services import allow_platform_key_for_default_agents
+from .services import platform_key_fallback_enabled
 from utils.telemetry import router as telemetry_router
 from utils.backend_utils import (
     create_meeting_in_backend,
@@ -118,8 +118,8 @@ async def make_outbound_call_vobiz(
 
     auth_id = fetch_integration_key(org_id, "VobizAuthId")
     auth_token = fetch_integration_key(org_id, "VobizAuthToken")
-    if (not auth_id or not auth_token) and agent_config.get("is_default") and allow_platform_key_for_default_agents():
-        # Platform-seeded demo agent may use the shared .env Vobiz credentials
+    if (not auth_id or not auth_token) and platform_key_fallback_enabled():
+        # Any agent whose org has no Vobiz Integration may use the shared .env credentials
         auth_id = os.environ.get("VOBIZ_AUTH_ID")
         auth_token = os.environ.get("VOBIZ_AUTH_TOKEN")
         if auth_id and auth_token:

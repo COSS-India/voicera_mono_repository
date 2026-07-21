@@ -361,8 +361,6 @@ export interface Agent {
   vobiz_answer_url?: string
   plivo_app_id?: string
   plivo_answer_url?: string
-  /** Platform-seeded demo agent (uses included demo credentials) */
-  is_default?: boolean
 }
 
 export type InteractionMode = "conversational" | "non_conversational"
