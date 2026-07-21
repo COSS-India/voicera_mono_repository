@@ -1,0 +1,37 @@
+voice_2_voice_server/api/services.py
+  s_911e437174a254::t_30388197e68570 54-59
+  s_911e437174a254::t_47f0777e1b9dce 151,154,157-158,166-171
+  s_911e437174a254::t_52462eac720119 172
+voice_2_voice_server/.env.example
+  s_911e437174a254::t_cdbd7d5a34d9b3 12-18,20
+  s_911e437174a254::t_ec1d63e63611a4 19
+voicera_backend/app/services/agent_service.py
+  s_911e437174a254::t_7b64de367a627c 21-23
+  s_911e437174a254::t_92eb6fb4b37873 13
+  s_911e437174a254::t_096c276fb79c63 134-136,138-139
+voicera_backend/env.example
+  s_911e437174a254::t_949bd404bb078b 25-28
+voicera_frontend/components/assistants/agent-card.tsx
+  s_911e437174a254::t_599bb9f7b078e0 59-61
+voice_2_voice_server/api/server.py
+  s_911e437174a254::t_5778693b5bd057 21
+  s_911e437174a254::t_4969f37fc39b3b 121-122
+voicera_backend/app/config.py
+  s_911e437174a254::t_c41f3710e027ac 38-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "fc017898503567ea60a0fa0fd4d087906c791663",
+  "prompts": {},
+  "sessions": {
+    "s_911e437174a254": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72bd544d-9911-478d-a6e4-221ed98a997a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
