@@ -13,7 +13,8 @@ import {
 } from "recharts"
 import {
   Activity,
-  Clock,
+  ChevronLeft,
+  ChevronRight,
   Mic,
   MessageSquare,
   Search,
@@ -383,23 +384,11 @@ function CallMetricsDetail({
   )
 }
 
-function matchesSearch(meeting: Meeting, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  const parts = [
-    meeting.meeting_id,
-    meeting.agent_type,
-    meeting.from_number,
-    meeting.to_number,
-    meeting.inbound ? "inbound" : "outbound",
-  ]
-  return parts.some((p) => p && String(p).toLowerCase().includes(q))
-}
-
-const CALLS_WITH_METRICS_LIMIT = 10000
+const CALLS_PER_PAGE = 10
 
 export function CallLatencySection() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
@@ -411,25 +400,32 @@ export function CallLatencySection() {
   const meetingsParams = useMemo(
     () =>
       buildMeetingsParams(
-        1,
+        currentPage,
         [],
         { from: undefined, to: undefined },
         "latest",
         null,
-        { limit: CALLS_WITH_METRICS_LIMIT, forExport: true }
+        {
+          limit: CALLS_PER_PAGE,
+          has_latency_metrics: true,
+          search: searchQuery.trim() || undefined,
+        }
       ),
-    []
+    [currentPage, searchQuery]
   )
 
   const { data: meetingsPage, isPending, isError, isFetching } =
     useMeetingsQuery(meetingsParams)
 
-  const callsWithMetrics = useMemo(() => {
-    const withMetrics = (meetingsPage?.items ?? []).filter(
-      (m) => (m.latency_metrics?.turns?.length ?? 0) > 0
-    )
-    return withMetrics.filter((m) => matchesSearch(m, searchQuery))
-  }, [meetingsPage?.items, searchQuery])
+  const callsWithMetrics = meetingsPage?.items ?? []
+  const totalCalls = meetingsPage?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalCalls / CALLS_PER_PAGE))
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
 
   const loadCallDetail = useCallback(async (meeting: Meeting) => {
     setSelectedId(meeting.meeting_id)
@@ -515,7 +511,10 @@ export function CallLatencySection() {
               <Input
                 type="search"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setCurrentPage(1)
+                }}
                 placeholder="Search calls…"
                 className="h-9 pl-9 pr-9 bg-white border-slate-200"
                 aria-label="Search calls with latency data"
@@ -523,7 +522,10 @@ export function CallLatencySection() {
               {searchQuery.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery("")}
+                  onClick={() => {
+                    setSearchQuery("")
+                    setCurrentPage(1)
+                  }}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                   aria-label="Clear search"
                 >
@@ -533,9 +535,9 @@ export function CallLatencySection() {
             </div>
             {searchQuery.trim() && !isLoadingList && (
               <p className="text-xs text-slate-500">
-                {callsWithMetrics.length === 0
+                {totalCalls === 0
                   ? "No matching calls"
-                  : `${callsWithMetrics.length} match${callsWithMetrics.length === 1 ? "" : "es"}`}
+                  : `${totalCalls} match${totalCalls === 1 ? "" : "es"}`}
               </p>
             )}
           </div>
@@ -611,6 +613,37 @@ export function CallLatencySection() {
                 )
               })}
           </div>
+
+          {!isLoadingList && !isError && totalCalls > CALLS_PER_PAGE && (
+            <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 bg-slate-50">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-full shrink-0"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1 || isFetching}
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-xs text-slate-600 text-center">
+                Showing {(currentPage - 1) * CALLS_PER_PAGE + 1}–
+                {Math.min(currentPage * CALLS_PER_PAGE, totalCalls)} of {totalCalls} calls
+                <span className="text-slate-400"> · Page {currentPage} of {totalPages}</span>
+                {isFetching ? " (loading…)" : ""}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-full shrink-0"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages || isFetching}
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

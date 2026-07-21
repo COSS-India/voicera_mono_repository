@@ -17,6 +17,8 @@ const PAGINATION_PARAMS = [
   "date_to",
   "date_sort_order",
   "duration_sort_order",
+  "has_latency_metrics",
+  "search",
 ] as const
 
 function normalizeMeeting(meeting: Record<string, unknown>) {

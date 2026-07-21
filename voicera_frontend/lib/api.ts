@@ -471,6 +471,8 @@ export interface MeetingsPageParams {
   date_to?: string
   date_sort_order?: "latest" | "oldest"
   duration_sort_order?: "longest" | "shortest" | null
+  has_latency_metrics?: boolean
+  search?: string
 }
 
 export interface PaginatedMeetings {
@@ -502,6 +504,8 @@ function buildMeetingsQueryString(params: MeetingsPageParams): string {
   if (params.duration_sort_order) {
     q.set("duration_sort_order", params.duration_sort_order)
   }
+  if (params.has_latency_metrics) q.set("has_latency_metrics", "true")
+  if (params.search) q.set("search", params.search)
   return q.toString()
 }
 
