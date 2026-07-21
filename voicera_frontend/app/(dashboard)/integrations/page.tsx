@@ -518,20 +518,47 @@ export default function IntegrationsPage() {
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             <span className="ml-2 text-muted-foreground">Loading integrations...</span>
           </div>
-        ) : connectedProvidersList.length > 0 && (
+        ) : (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Connected
               </h2>
               <Badge variant="secondary" className="h-5 px-1.5 text-xs">
-                {connectedProvidersList.length}
+                {connectedProvidersList.length + (connectedProviders.openai ? 0 : 1)}
               </Badge>
             </div>
 
             <Card>
               <CardContent className="p-0">
                 <div className="divide-y">
+                  {/* Platform default: OpenAI runs on the platform key when the org has no own key (model pinned). Hidden once own key added. */}
+                  {!connectedProviders.openai && (
+                  <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-500/10">
+                        <Check className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">OpenAI</span>
+                          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                            Platform default
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={`${capabilityConfig.llm.badgeClass} text-[10px] px-1.5 py-0 cursor-default`}
+                          >
+                            {capabilityConfig.llm.label}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-snug">
+                          Includes GPT-4o mini with limited usage. Connect your own API key to use additional models.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  )}
                   {connectedProvidersList.map((provider) => (
                     <div
                       key={provider.id}
