@@ -1,0 +1,22 @@
+voicera_frontend/app/(dashboard)/integrations/page.tsx
+  s_d0d04fdf09bc3e::t_003c12fd4a1a20 528,535-536
+  s_d0d04fdf09bc3e::t_ed7c8861daf983 555
+  s_d0d04fdf09bc3e::t_41ad3605be1d9c 561
+  s_d0d04fdf09bc3e::t_6f7f19cab04ff7 521,537-554,556-560
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "20e4a1f7b357d5787875150a7a2a764b83224ba2",
+  "prompts": {},
+  "sessions": {
+    "s_d0d04fdf09bc3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2418c5c7-4c71-49c2-a18a-5c281279e331",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
