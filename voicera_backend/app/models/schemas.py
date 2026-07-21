@@ -76,7 +76,6 @@ class AgentConfigResponse(BaseModel):
     vobiz_answer_url: Optional[str] = None
     plivo_app_id: Optional[str] = None
     plivo_answer_url: Optional[str] = None
-    is_default: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

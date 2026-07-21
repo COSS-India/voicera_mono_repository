@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 
 from pydantic import BaseModel
 
+from app.config import settings
 from app.database import get_database
 from app.models.schemas import AgentConfigCreate, AgentConfigUpdate
 
@@ -17,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 VALID_INTERACTION_MODES = {"conversational", "non_conversational"}
 
-# Pre-configured demo agents, seeded once per org from app/config/default_agents.json.
-# They are the only agents allowed to fall back to the platform's .env credentials
-# on the voice server.
+# Pre-configured agents, seeded once per org from app/config/default_agents.json.
+# Platform .env credential fallback on the voice server is now available to all
+# agents (gated only by ALLOW_PLATFORM_KEY_FALLBACK), not just these.
 DEFAULT_AGENTS_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "default_agents.json"
 
 
@@ -95,7 +96,6 @@ def _create_default_agent(org_id: str, template: DefaultAgentTemplate) -> Dict[s
             "org_id": org_id,
             "agent_category": "voicera_telephony",
             "telephony_provider": template.telephony_provider,
-            "is_default": True,
             "agent_config": {
                 "interaction_mode": "conversational",
                 "system_prompt": template.system_prompt,
@@ -131,7 +131,12 @@ def ensure_default_agent_seeded(org_id: str) -> None:
     marker collection so a deleted or renamed default agent stays gone (and
     so a template added later still backfills existing orgs on their next
     agent listing, per-template rather than all-or-nothing).
+
+    Gated by DEMO_AGENTS_ENABLED: when disabled, no seeding/backfill runs and
+    already-seeded agents are left as-is.
     """
+    if not settings.DEMO_AGENTS_ENABLED:
+        return
     db = get_database()
     marker_table = db["DefaultAgentSeeded"]
     for template in DEFAULT_AGENT_TEMPLATES:
@@ -180,8 +185,6 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
             return {"status": "fail", "message": "Agent ID already exists for this organization"}
 
         agent_config = dict(agent_data.agent_config or {})
-        # is_default is server-controlled (top-level doc field); never accept it from clients
-        agent_config.pop("is_default", None)
         if not agent_config.get("interaction_mode"):
             agent_config["interaction_mode"] = "conversational"
         validation_error = _validate_agent_config_for_mode(agent_config)
@@ -333,21 +336,7 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
 
         existing_mode = _get_interaction_mode(existing_agent.get("agent_config") or {})
         incoming_config = dict(agent_data.agent_config or {})
-        incoming_config.pop("is_default", None)
         incoming_mode = _get_interaction_mode(incoming_config)
-
-        if existing_agent.get("is_default"):
-            existing_llm = (existing_agent.get("agent_config") or {}).get("llm_model") or {}
-            incoming_llm = incoming_config.get("llm_model") or {}
-            llm_fields = ("name", "model", "custom_llm_id")
-            if any(existing_llm.get(f) != incoming_llm.get(f) for f in llm_fields):
-                return {
-                    "status": "fail",
-                    "message": (
-                        "The demo agent's LLM provider and model are fixed. "
-                        "Add your own API key in Integrations and create a new agent to use other models."
-                    ),
-                }
 
         if existing_mode == "non_conversational":
             if incoming_mode != "non_conversational":

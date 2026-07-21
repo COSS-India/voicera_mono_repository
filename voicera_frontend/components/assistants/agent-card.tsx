@@ -51,14 +51,14 @@ export function AgentCard({
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
   const isAlertAgent = agent.agent_config?.interaction_mode === "non_conversational"
-  const isDemoAgent = Boolean(agent.is_default)
   const fullPromptText = isAlertAgent
     ? (agent.agent_config?.greeting_message ?? "").trim()
     : (agent.agent_config?.system_prompt ?? "").trim()
 
   const isConnected = Boolean(agent?.phone_number)
-  // Demo agents can place outbound test calls via the platform's shared caller ID
-  const canTestCall = isConnected || isDemoAgent
+  // Any agent can place outbound test calls: orgs without their own Vobiz
+  // Integration fall back to the platform's shared caller ID on the server.
+  const canTestCall = true
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -111,14 +111,6 @@ export function AgentCard({
           {isAlertAgent && (
             <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
               Alert
-            </span>
-          )}
-          {isDemoAgent && (
-            <span
-              className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600"
-              title="Pre-configured demo agent with included credentials — try it right away"
-            >
-              Demo
             </span>
           )}
         </div>

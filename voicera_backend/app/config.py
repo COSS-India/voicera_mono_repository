@@ -35,6 +35,11 @@ class Settings:
     
     # Internal API Key for service-to-service communication (bot -> backend)
     INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "")
+
+    # Default (demo) agents: when true, pre-configured agents from
+    # default_agents.json are seeded once per org. Set false to stop all
+    # seeding/backfill (existing seeded agents are left untouched).
+    DEMO_AGENTS_ENABLED: bool = os.getenv("DEMO_AGENTS_ENABLED", "True").lower() == "true"
     
     # RAG / Knowledge base — Chroma persistence (default: voicera_backend/rag_system/chroma_data)
     CHROMA_BASE_DIR: str = os.getenv(
