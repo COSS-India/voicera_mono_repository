@@ -382,6 +382,8 @@ export interface AgentConfig {
   user_online_detection_closing_message?: string
   session_timeout_minutes?: number
   language: string
+  languages?: string[]
+  secondary_languages?: string[]
   secondary_language?: string
   knowledge_base_enabled?: boolean
   knowledge_document_ids?: string[]

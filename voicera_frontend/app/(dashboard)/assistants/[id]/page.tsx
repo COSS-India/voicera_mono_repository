@@ -45,12 +45,14 @@ import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMInt
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
 import {
+  buildLanguageConfigFields,
+  dedupeLanguages,
   getActiveLanguages,
   getIntersectedSTTModels,
   getIntersectedSTTProviders,
   getIntersectedTTSModels,
   getIntersectedTTSProviders,
-  isBilingual,
+  loadSelectedLanguagesFromConfig,
 } from "@/lib/languageModelSupport"
 import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
 import {
@@ -263,8 +265,7 @@ export default function AgentDetailPage() {
   const [userOnlineDetectionClosingMessage, setUserOnlineDetectionClosingMessage] =
     useState("")
   const [agentType, setAgentType] = useState("")
-  const [language, setLanguage] = useState("")
-  const [secondaryLanguage, setSecondaryLanguage] = useState("")
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([])
   const [llmProvider, setLlmProvider] = useState("")
   const [llmModel, setLlmModel] = useState("")
   const [customLlmId, setCustomLlmId] = useState("")
@@ -318,9 +319,10 @@ export default function AgentDetailPage() {
   }, [])
 
   const activeLanguages = useMemo(
-    () => getActiveLanguages(language, secondaryLanguage),
-    [language, secondaryLanguage]
+    () => getActiveLanguages(selectedLanguages),
+    [selectedLanguages]
   )
+  const primaryLanguage = activeLanguages[0] || ""
 
   // Get supported STT providers for all selected languages (intersection)
   const supportedSTTProviders = useMemo(
@@ -376,9 +378,9 @@ export default function AgentDetailPage() {
 
   // Get available TTS voices for primary language + selected provider/model
   const availableTTSVoices = useMemo(() => {
-    if (!language || !ttsProvider) return []
+    if (!primaryLanguage || !ttsProvider) return []
     const langData =
-      ttsData.tts.languages[language as keyof typeof ttsData.tts.languages]
+      ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
     if (!langData) return []
 
     const providerData = langData.models[ttsProvider as keyof typeof langData.models] as {
@@ -394,7 +396,7 @@ export default function AgentDetailPage() {
       return providerData.voices
     }
     return []
-  }, [language, ttsProvider, ttsModel])
+  }, [primaryLanguage, ttsProvider, ttsModel])
 
   // Get available TTS descriptions for AI4Bharat and Bhashini providers
   const availableTTSDescriptions = useMemo(() => {
@@ -467,33 +469,17 @@ export default function AgentDetailPage() {
     }
   }
 
-  const setPrimaryLanguage = (nextLanguage: string) => {
-    setLanguage(nextLanguage)
-    if (secondaryLanguage && secondaryLanguage === nextLanguage) {
-      setSecondaryLanguage("")
-    }
-    applyLanguageAudioDefaults(nextLanguage)
-  }
-
-  const setSecondaryLanguageValue = (nextSecondary: string) => {
-    setSecondaryLanguage(nextSecondary)
-    if (nextSecondary && nextSecondary !== language) {
-      applyLanguageAudioDefaults(language)
+  const handleLanguagesChange = (languages: string[]) => {
+    setSelectedLanguages(languages)
+    if (languages[0]) {
+      applyLanguageAudioDefaults(languages[0])
     }
   }
 
-  const swapLanguageRoles = () => {
-    if (!secondaryLanguage) return
-    setLanguage(secondaryLanguage)
-    setSecondaryLanguage(language)
-  }
-
-  const secondaryLanguagePayload = useMemo(() => {
-    if (secondaryLanguage && secondaryLanguage !== language) {
-      return secondaryLanguage
-    }
-    return undefined
-  }, [language, secondaryLanguage])
+  const languageConfigFields = useMemo(
+    () => buildLanguageConfigFields(selectedLanguages),
+    [selectedLanguages]
+  )
 
   // Load agent data
   useEffect(() => {
@@ -504,8 +490,7 @@ export default function AgentDetailPage() {
     setSystemPrompt("")
     setGreetingMessage("")
     setAgentType("")
-    setLanguage("")
-    setSecondaryLanguage("")
+    setSelectedLanguages([])
     setLlmProvider("")
     setLlmModel("")
     setSttProvider("")
@@ -673,33 +658,25 @@ export default function AgentDetailPage() {
             return langName in sttData.stt.languages || langName in ttsData.tts.languages
           }
 
-          // Use the first available language name, verifying it exists in JSON
-          // Priority: agent_config.language > stt_model.language > tts_model.language
-          let selectedLanguage = ""
-          if (configLangName && languageExistsInJSON(configLangName)) {
-            selectedLanguage = configLangName.trim()
-          } else if (sttLangName && languageExistsInJSON(sttLangName)) {
-            selectedLanguage = sttLangName.trim()
-          } else if (ttsLangName && languageExistsInJSON(ttsLangName)) {
-            selectedLanguage = ttsLangName.trim()
+          let loadedLanguages = loadSelectedLanguagesFromConfig(
+            (agentData.agent_config as any) || {}
+          ).filter((langName) => languageExistsInJSON(langName))
+
+          if (loadedLanguages.length === 0) {
+            let selectedLanguage = ""
+            if (configLangName && languageExistsInJSON(configLangName)) {
+              selectedLanguage = configLangName.trim()
+            } else if (sttLangName && languageExistsInJSON(sttLangName)) {
+              selectedLanguage = sttLangName.trim()
+            } else if (ttsLangName && languageExistsInJSON(ttsLangName)) {
+              selectedLanguage = ttsLangName.trim()
+            }
+            if (selectedLanguage) {
+              loadedLanguages = [selectedLanguage]
+            }
           }
 
-          if (selectedLanguage) {
-            setLanguage(selectedLanguage)
-          }
-
-          const configSecondaryLang = String(
-            (agentData.agent_config as any)?.secondary_language || ""
-          ).trim()
-          if (
-            configSecondaryLang &&
-            languageExistsInJSON(configSecondaryLang) &&
-            configSecondaryLang.toLowerCase() !== selectedLanguage.toLowerCase()
-          ) {
-            setSecondaryLanguage(configSecondaryLang)
-          } else {
-            setSecondaryLanguage("")
-          }
+          setSelectedLanguages(loadedLanguages)
 
           // Load STT settings - convert official name to internal ID
           const sttProviderName = agentData.agent_config?.stt_model?.name || ""
@@ -863,19 +840,14 @@ export default function AgentDetailPage() {
     }
 
     // Language is already a name, use it directly
-    const languageName = language || ""
-    const languageFields =
-      secondaryLanguagePayload !== undefined
-        ? { secondary_language: secondaryLanguagePayload }
-        : {}
+    const languageName = primaryLanguage
 
     // Build current config with same structure as original
     const currentConfig: any =
       interactionMode === "non_conversational"
         ? {
             interaction_mode: "non_conversational",
-            language: languageName || "",
-            ...languageFields,
+            ...languageConfigFields,
             greeting_message: greetingMessage || "",
             tts_model: {
               name: ttsProvider || "",
@@ -891,8 +863,7 @@ export default function AgentDetailPage() {
             },
           }
         : {
-      language: languageName || "",
-      ...languageFields,
+      ...languageConfigFields,
       interaction_mode: "conversational",
       system_prompt: systemPrompt || "",
       greeting_message: greetingMessage || "",
@@ -961,7 +932,7 @@ export default function AgentDetailPage() {
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
     const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, language, secondaryLanguage, secondaryLanguagePayload, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -978,7 +949,6 @@ export default function AgentDetailPage() {
     setShowConfirmModal(false)
     setIsSaving(true)
     try {
-      const languageName = language || ""
       const originalAgentType = (agent.agent_type || agentId).trim()
       const agentIdSlug =
         agent.agent_id || originalAgentType.replace(/\s+/g, "_").toLowerCase()
@@ -993,10 +963,7 @@ export default function AgentDetailPage() {
           interactionMode === "non_conversational"
             ? {
                 interaction_mode: "non_conversational",
-                language: languageName,
-                ...(secondaryLanguagePayload && {
-                  secondary_language: secondaryLanguagePayload,
-                }),
+                ...languageConfigFields,
                 greeting_message: greetingMessage,
                 tts_model: {
                   name: getProviderOfficialName(ttsProvider),
@@ -1018,13 +985,12 @@ export default function AgentDetailPage() {
             : (() => {
                 const baseConfig = { ...(agent.agent_config || {}) }
                 delete baseConfig.secondary_language
+                delete baseConfig.secondary_languages
+                delete baseConfig.languages
                 return {
                   ...baseConfig,
                   interaction_mode: "conversational",
-                  language: languageName,
-                  ...(secondaryLanguagePayload && {
-                    secondary_language: secondaryLanguagePayload,
-                  }),
+                  ...languageConfigFields,
                   system_prompt: systemPrompt,
           greeting_message: greetingMessage,
           ignore_user_speech_before_greeting: ignoreUserSpeechBeforeGreeting,
@@ -1344,11 +1310,11 @@ export default function AgentDetailPage() {
                             setKenpathVariant(variant)
                             if (
                               llmProvider === "kenpath" &&
-                              language &&
-                              !isBharatVistaarLanguageSupported(variant, language)
+                              selectedLanguages.some(
+                                (lang) => !isBharatVistaarLanguageSupported(variant, lang)
+                              )
                             ) {
-                              setLanguage("")
-                              setSecondaryLanguage("")
+                              setSelectedLanguages([])
                               setSttProvider("")
                               setSttModel("")
                               setTtsProvider("")
@@ -1539,8 +1505,7 @@ export default function AgentDetailPage() {
                 </h3>
                 {allLanguages.length > 0 ? (
                   <LanguageSelectionSection
-                    primaryLanguage={language}
-                    secondaryLanguage={secondaryLanguage}
+                    selectedLanguages={selectedLanguages}
                     allLanguages={allLanguages}
                     llmProvider={llmProvider}
                     kenpathVariant={kenpathVariant}
@@ -1550,9 +1515,7 @@ export default function AgentDetailPage() {
                     ttsModel={ttsModel}
                     open={languageOpen}
                     onOpenChange={setLanguageOpen}
-                    onPrimaryChange={setPrimaryLanguage}
-                    onSecondaryChange={setSecondaryLanguageValue}
-                    onSwapRoles={swapLanguageRoles}
+                    onLanguagesChange={handleLanguagesChange}
                   />
                 ) : (
                   <div className="px-3 py-2 text-base text-slate-500 border border-slate-200 rounded-lg bg-slate-50">

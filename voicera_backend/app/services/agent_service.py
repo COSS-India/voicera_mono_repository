@@ -31,18 +31,64 @@ def _validate_agent_config_for_mode(agent_config: Dict[str, Any]) -> Optional[st
 
 
 def _normalize_agent_language_fields(agent_config: Dict[str, Any]) -> Dict[str, Any]:
-    """Keep primary ``language`` and optional ``secondary_language`` in sync."""
+    """Keep one primary ``language`` and optional ``secondary_languages`` in sync."""
     config = dict(agent_config or {})
-    primary = str(config.get("language") or "").strip()
-    secondary = str(config.get("secondary_language") or "").strip()
 
-    if not secondary or (primary and secondary.lower() == primary.lower()):
-        config.pop("secondary_language", None)
+    primary = ""
+    secondaries: List[str] = []
+
+    languages_list = config.get("languages")
+    secondary_languages_list = config.get("secondary_languages")
+
+    if isinstance(languages_list, list) and languages_list:
+        deduped: List[str] = []
+        seen: set[str] = set()
+        for item in languages_list:
+            value = str(item).strip()
+            if not value:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(value)
+        if deduped:
+            primary = deduped[0]
+            secondaries = deduped[1:]
+    elif isinstance(secondary_languages_list, list) and secondary_languages_list:
+        primary = str(config.get("language") or "").strip()
+        seen: set[str] = {primary.lower()} if primary else set()
+        for item in secondary_languages_list:
+            value = str(item).strip()
+            if not value:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            secondaries.append(value)
     else:
-        config["secondary_language"] = secondary
+        primary = str(config.get("language") or "").strip()
+        secondary = str(config.get("secondary_language") or "").strip()
+        if secondary and (not primary or secondary.lower() != primary.lower()):
+            secondaries = [secondary]
 
-    if primary:
-        config["language"] = primary
+    if not primary:
+        config.pop("language", None)
+        config.pop("languages", None)
+        config.pop("secondary_languages", None)
+        config.pop("secondary_language", None)
+        return config
+
+    config["language"] = primary
+    if secondaries:
+        config["secondary_languages"] = secondaries
+        config["languages"] = [primary, *secondaries]
+        config["secondary_language"] = secondaries[0]
+    else:
+        config.pop("languages", None)
+        config.pop("secondary_languages", None)
+        config.pop("secondary_language", None)
 
     return config
 

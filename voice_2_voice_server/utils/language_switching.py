@@ -65,9 +65,9 @@ def resolve_agent_language_codes(
 ) -> tuple[str, list[str]]:
     """Return (primary_code, allowed_codes) from agent language fields.
 
-    Reads ``language`` (primary) and optional ``secondary_language``. Falls back
-    to an ordered ``languages`` list when present. Single-language agents return
-    a one-item ``allowed_codes`` list.
+    Reads ``language`` (primary) and optional ``secondary_languages`` / legacy
+    ``secondary_language``. Falls back to an ordered ``languages`` list when
+    present. Single-language agents return a one-item ``allowed_codes`` list.
     """
     if not agent_config:
         return "hi", ["hi"]
@@ -79,11 +79,16 @@ def resolve_agent_language_codes(
         raw_values.extend(languages_list)
     else:
         primary = agent_config.get("language")
-        secondary = agent_config.get("secondary_language")
         if primary:
             raw_values.append(primary)
-        if secondary:
-            raw_values.append(secondary)
+
+        secondary_languages = agent_config.get("secondary_languages")
+        if isinstance(secondary_languages, list) and secondary_languages:
+            raw_values.extend(secondary_languages)
+        else:
+            secondary = agent_config.get("secondary_language")
+            if secondary:
+                raw_values.append(secondary)
 
     codes = _dedupe_language_codes(raw_values)
     if not codes:

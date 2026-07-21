@@ -17,9 +17,11 @@ import {
 } from "@/components/ui/popover"
 import { displayLanguageName } from "@/lib/languageLabels"
 import {
+  dedupeLanguages,
   getActiveLanguages,
-  isBilingual,
+  hasMultipleLanguages,
   languageSwitchingStackEligible,
+  splitPrimaryAndSecondary,
 } from "@/lib/languageModelSupport"
 import {
   type KenpathVariant,
@@ -27,20 +29,16 @@ import {
 } from "@/lib/kenpath"
 import { cn } from "@/lib/utils"
 import {
-  ArrowLeftRight,
   Check,
   Languages,
   Star,
   X,
 } from "lucide-react"
 
-const MAX_LANGUAGES = 2
-
 type LanguageOption = { code: string; name: string }
 
 type LanguageSelectionSectionProps = {
-  primaryLanguage: string
-  secondaryLanguage: string
+  selectedLanguages: string[]
   allLanguages: LanguageOption[]
   llmProvider: string
   kenpathVariant: KenpathVariant
@@ -50,14 +48,11 @@ type LanguageSelectionSectionProps = {
   ttsModel: string
   open: boolean
   onOpenChange: (open: boolean) => void
-  onPrimaryChange: (language: string) => void
-  onSecondaryChange: (language: string) => void
-  onSwapRoles: () => void
+  onLanguagesChange: (languages: string[]) => void
 }
 
 export function LanguageSelectionSection({
-  primaryLanguage,
-  secondaryLanguage,
+  selectedLanguages,
   allLanguages,
   llmProvider,
   kenpathVariant,
@@ -67,19 +62,15 @@ export function LanguageSelectionSection({
   ttsModel,
   open,
   onOpenChange,
-  onPrimaryChange,
-  onSecondaryChange,
-  onSwapRoles,
+  onLanguagesChange,
 }: LanguageSelectionSectionProps) {
-  const selectedSet = useMemo(() => {
-    const set = new Set<string>()
-    if (primaryLanguage) set.add(primaryLanguage)
-    if (secondaryLanguage) set.add(secondaryLanguage)
-    return set
-  }, [primaryLanguage, secondaryLanguage])
-
-  const bilingual = isBilingual(primaryLanguage, secondaryLanguage)
-  const activeLanguages = getActiveLanguages(primaryLanguage, secondaryLanguage)
+  const activeLanguages = getActiveLanguages(selectedLanguages)
+  const { primary, secondaryLanguages } = splitPrimaryAndSecondary(activeLanguages)
+  const selectedSet = useMemo(
+    () => new Set(activeLanguages.map((l) => l.toLowerCase())),
+    [activeLanguages]
+  )
+  const multiLanguage = hasMultipleLanguages(activeLanguages)
   const switchingEligible = languageSwitchingStackEligible(
     llmProvider,
     sttProvider,
@@ -89,52 +80,40 @@ export function LanguageSelectionSection({
   )
 
   const triggerLabel = useMemo(() => {
-    if (!primaryLanguage) return "Select languages..."
-    if (bilingual) {
-      return `${displayLanguageName(primaryLanguage)} + ${displayLanguageName(secondaryLanguage)}`
+    if (activeLanguages.length === 0) return "Select languages..."
+    if (activeLanguages.length === 1) {
+      return displayLanguageName(activeLanguages[0])
     }
-    return displayLanguageName(primaryLanguage)
-  }, [primaryLanguage, secondaryLanguage, bilingual])
+    if (activeLanguages.length === 2) {
+      return `${displayLanguageName(activeLanguages[0])} + ${displayLanguageName(activeLanguages[1])}`
+    }
+    return `${displayLanguageName(activeLanguages[0])} + ${activeLanguages.length - 1} more`
+  }, [activeLanguages])
 
   const toggleLanguage = (code: string) => {
-    const isSelected = selectedSet.has(code)
+    const isSelected = selectedSet.has(code.toLowerCase())
 
     if (isSelected) {
-      if (code === primaryLanguage) {
-        if (secondaryLanguage) {
-          onPrimaryChange(secondaryLanguage)
-          onSecondaryChange("")
-        } else {
-          onPrimaryChange("")
-          onSecondaryChange("")
-        }
-      } else {
-        onSecondaryChange("")
-      }
+      onLanguagesChange(
+        activeLanguages.filter((l) => l.toLowerCase() !== code.toLowerCase())
+      )
       return
     }
 
-    if (selectedSet.size >= MAX_LANGUAGES) return
-
-    if (!primaryLanguage) {
-      onPrimaryChange(code)
-      return
-    }
-
-    onSecondaryChange(code)
+    onLanguagesChange(dedupeLanguages([...activeLanguages, code]))
   }
 
   const removeLanguage = (code: string) => {
-    if (code === primaryLanguage) {
-      if (secondaryLanguage) {
-        onPrimaryChange(secondaryLanguage)
-        onSecondaryChange("")
-      } else {
-        onPrimaryChange("")
-      }
-    } else {
-      onSecondaryChange("")
-    }
+    onLanguagesChange(
+      activeLanguages.filter((l) => l.toLowerCase() !== code.toLowerCase())
+    )
+  }
+
+  const makePrimary = (code: string) => {
+    const rest = activeLanguages.filter(
+      (l) => l.toLowerCase() !== code.toLowerCase()
+    )
+    onLanguagesChange(dedupeLanguages([code, ...rest]))
   }
 
   return (
@@ -142,9 +121,9 @@ export function LanguageSelectionSection({
       <div className="space-y-1.5">
         <label className="text-base font-bold text-slate-900">Languages</label>
         <p className="text-sm text-slate-500">
-          Choose one language for single-language agents, or two to allow mid-call
-          switching. STT and TTS options reflect what works for every selected
-          language.
+          Pick one primary language (call start language). Any additional languages
+          are secondary and available for mid-call switching. STT and TTS options
+          reflect what works for every selected language.
         </p>
       </div>
 
@@ -160,9 +139,9 @@ export function LanguageSelectionSection({
               <Languages className="h-4 w-4 shrink-0 text-blue-500" />
               <span className="truncate">{triggerLabel}</span>
             </div>
-            {selectedSet.size > 0 && (
+            {activeLanguages.length > 0 && (
               <span className="ml-2 shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                {selectedSet.size}/{MAX_LANGUAGES}
+                {activeLanguages.length}
               </span>
             )}
           </Button>
@@ -172,22 +151,20 @@ export function LanguageSelectionSection({
             <CommandInput placeholder="Search languages..." />
             <CommandList>
               <CommandEmpty>No language found.</CommandEmpty>
-              <CommandGroup heading={`Languages (max ${MAX_LANGUAGES})`}>
+              <CommandGroup heading="Languages">
                 {allLanguages.map((lang) => {
                   const bharatBlocked =
                     llmProvider === "kenpath" &&
                     !isBharatVistaarLanguageSupported(kenpathVariant, lang.code)
-                  const isSelected = selectedSet.has(lang.code)
-                  const atCapacity =
-                    selectedSet.size >= MAX_LANGUAGES && !isSelected
+                  const isSelected = selectedSet.has(lang.code.toLowerCase())
 
                   return (
                     <CommandItem
                       key={lang.code}
                       value={`${lang.code} ${lang.name}`}
-                      disabled={bharatBlocked || atCapacity}
+                      disabled={bharatBlocked}
                       onSelect={() => {
-                        if (bharatBlocked || atCapacity) return
+                        if (bharatBlocked) return
                         toggleLanguage(lang.code)
                       }}
                       className="py-2.5"
@@ -205,7 +182,7 @@ export function LanguageSelectionSection({
                       <span
                         className={cn(
                           "font-medium",
-                          bharatBlocked || atCapacity ? "text-slate-400" : ""
+                          bharatBlocked ? "text-slate-400" : ""
                         )}
                       >
                         {lang.name}
@@ -213,11 +190,6 @@ export function LanguageSelectionSection({
                       {bharatBlocked && (
                         <span className="ml-2 text-xs text-slate-400">
                           (not supported)
-                        </span>
-                      )}
-                      {atCapacity && (
-                        <span className="ml-2 text-xs text-slate-400">
-                          (max reached)
                         </span>
                       )}
                     </CommandItem>
@@ -229,80 +201,74 @@ export function LanguageSelectionSection({
         </PopoverContent>
       </Popover>
 
-      {selectedSet.size > 0 && (
+      {activeLanguages.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {[primaryLanguage, secondaryLanguage].filter(Boolean).map((code) => (
-            <span
+          {primary && (
+            <LanguageChip
+              code={primary}
+              role="primary"
+              onRemove={() => removeLanguage(primary)}
+            />
+          )}
+          {secondaryLanguages.map((code) => (
+            <LanguageChip
               key={code}
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-700"
-            >
-              {displayLanguageName(code)}
-              <button
-                type="button"
-                onClick={() => removeLanguage(code)}
-                className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                aria-label={`Remove ${displayLanguageName(code)}`}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </span>
+              code={code}
+              role="secondary"
+              onMakePrimary={() => makePrimary(code)}
+              onRemove={() => removeLanguage(code)}
+            />
           ))}
         </div>
       )}
 
-      {bilingual && (
+      {multiLanguage && (
         <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-              Assign roles
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onSwapRoles}
-              className="h-8 gap-1.5 rounded-lg border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100"
-            >
-              <ArrowLeftRight className="h-3.5 w-3.5" />
-              Swap
-            </Button>
-          </div>
-
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            Language roles
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <RoleCard
               role="Primary"
-              language={primaryLanguage}
+              language={displayLanguageName(primary)}
               hint="Call starts in this language"
               accent="blue"
             />
             <RoleCard
               role="Secondary"
-              language={secondaryLanguage}
-              hint="Switch target during the call"
+              language={
+                secondaryLanguages.length === 1
+                  ? displayLanguageName(secondaryLanguages[0])
+                  : `${secondaryLanguages.length} languages`
+              }
+              hint={
+                secondaryLanguages.length === 1
+                  ? "Switch target during the call"
+                  : secondaryLanguages.map((l) => displayLanguageName(l)).join(", ")
+              }
               accent="emerald"
             />
           </div>
-
           <p className="text-sm text-slate-600">
             {switchingEligible ? (
               <>
                 <span className="font-medium text-emerald-700">
                   Language switching enabled
                 </span>{" "}
-                between {displayLanguageName(primaryLanguage)} and{" "}
-                {displayLanguageName(secondaryLanguage)}.
+                between {displayLanguageName(primary)} and{" "}
+                {secondaryLanguages.map((l) => displayLanguageName(l)).join(", ")}.
               </>
             ) : (
               <>
-                Bilingual selection saved. Mid-call switching activates with
-                OpenAI + AI4Bharat Indic STT/TTS models.
+                Multi-language selection saved. Mid-call switching activates
+                with OpenAI + AI4Bharat Indic STT/TTS models.
               </>
             )}
           </p>
         </div>
       )}
 
-      {primaryLanguage && !bilingual && (
+      {activeLanguages.length === 1 && (
         <p className="text-sm text-slate-500">
           Single language selected — no mid-call language switching.
         </p>
@@ -311,10 +277,68 @@ export function LanguageSelectionSection({
       {activeLanguages.length > 0 && (
         <p className="text-xs text-slate-400">
           Model options below are filtered to providers and models supported by{" "}
-          {activeLanguages.map((l) => displayLanguageName(l)).join(" and ")}.
+          {activeLanguages.map((l) => displayLanguageName(l)).join(", ")}.
         </p>
       )}
     </div>
+  )
+}
+
+function LanguageChip({
+  code,
+  role,
+  onMakePrimary,
+  onRemove,
+}: {
+  code: string
+  role: "primary" | "secondary"
+  onMakePrimary?: () => void
+  onRemove: () => void
+}) {
+  const isPrimary = role === "primary"
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium",
+        isPrimary
+          ? "border-blue-200 bg-blue-50 text-blue-800"
+          : "border-emerald-200 bg-emerald-50 text-emerald-800"
+      )}
+    >
+      {isPrimary ? (
+        <Star className="h-3 w-3 text-amber-500 fill-amber-400" />
+      ) : null}
+      <span>{displayLanguageName(code)}</span>
+      <span
+        className={cn(
+          "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          isPrimary
+            ? "bg-blue-100 text-blue-700"
+            : "bg-emerald-100 text-emerald-700"
+        )}
+      >
+        {isPrimary ? "Primary" : "Secondary"}
+      </span>
+      {!isPrimary && onMakePrimary && (
+        <button
+          type="button"
+          onClick={onMakePrimary}
+          className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-white/80 hover:text-slate-700"
+          aria-label={`Make ${displayLanguageName(code)} primary`}
+        >
+          Set primary
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded-full p-0.5 text-slate-400 hover:bg-white/80 hover:text-slate-600"
+        aria-label={`Remove ${displayLanguageName(code)}`}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </span>
   )
 }
 
@@ -333,11 +357,9 @@ function RoleCard({
     accent === "blue"
       ? {
           dot: "bg-blue-500",
-          badge: "bg-blue-50 border-blue-200 text-blue-700",
         }
       : {
           dot: "bg-emerald-500",
-          badge: "bg-emerald-50 border-emerald-200 text-emerald-700",
         }
 
   return (
@@ -356,9 +378,7 @@ function RoleCard({
           <Star className="h-3 w-3 text-amber-500 fill-amber-400" />
         )}
       </div>
-      <p className="text-sm font-semibold text-slate-900">
-        {displayLanguageName(language)}
-      </p>
+      <p className="text-sm font-semibold text-slate-900">{language}</p>
       <p className="text-xs text-slate-500 mt-1">{hint}</p>
     </div>
   )

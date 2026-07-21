@@ -10,16 +10,103 @@ function intersectSets<T>(sets: Set<T>[]): Set<T> {
   )
 }
 
-/** Languages used for provider/model intersection (primary + optional secondary). */
-export function getActiveLanguages(primary: string, secondary: string): string[] {
-  const langs: string[] = []
-  if (primary) langs.push(primary)
-  if (secondary && secondary !== primary) langs.push(secondary)
-  return langs
+/** Dedupe language names while preserving order. */
+export function dedupeLanguages(languages: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const lang of languages) {
+    const trimmed = lang.trim()
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(trimmed)
+  }
+  return result
 }
 
+/** Languages used for provider/model intersection. */
+export function getActiveLanguages(languages: string[]): string[] {
+  return dedupeLanguages(languages)
+}
+
+export function hasMultipleLanguages(languages: string[]): boolean {
+  return getActiveLanguages(languages).length >= 2
+}
+
+/** @deprecated Use hasMultipleLanguages(getActiveLanguages([primary, secondary])) */
 export function isBilingual(primary: string, secondary: string): boolean {
-  return Boolean(primary && secondary && secondary !== primary)
+  return hasMultipleLanguages([primary, secondary])
+}
+
+/** Split ordered selection into one primary and all remaining secondaries. */
+export function splitPrimaryAndSecondary(languages: string[]): {
+  primary: string
+  secondaryLanguages: string[]
+  allLanguages: string[]
+} {
+  const allLanguages = dedupeLanguages(languages)
+  return {
+    primary: allLanguages[0] || "",
+    secondaryLanguages: allLanguages.slice(1),
+    allLanguages,
+  }
+}
+
+/** Reconstruct ordered selection from stored agent language fields. */
+export function loadSelectedLanguagesFromConfig(config: {
+  language?: string
+  languages?: string[]
+  secondary_languages?: string[]
+  secondary_language?: string
+}): string[] {
+  if (Array.isArray(config.languages) && config.languages.length > 0) {
+    return dedupeLanguages(config.languages.map((lang) => String(lang)))
+  }
+
+  const primary = String(config.language || "").trim()
+  const secondaryLanguages = Array.isArray(config.secondary_languages)
+    ? config.secondary_languages
+        .map((lang) => String(lang).trim())
+        .filter(Boolean)
+    : []
+
+  if (primary || secondaryLanguages.length > 0) {
+    return dedupeLanguages([primary, ...secondaryLanguages].filter(Boolean))
+  }
+
+  const legacySecondary = String(config.secondary_language || "").trim()
+  if (primary && legacySecondary) {
+    return dedupeLanguages([primary, legacySecondary])
+  }
+
+  return primary ? [primary] : []
+}
+
+/** Build agent_config language fields from an ordered selection. */
+export function buildLanguageConfigFields(selectedLanguages: string[]): {
+  language: string
+  secondary_languages?: string[]
+  languages?: string[]
+  secondary_language?: string
+} {
+  const { primary, secondaryLanguages, allLanguages } =
+    splitPrimaryAndSecondary(selectedLanguages)
+
+  const fields: {
+    language: string
+    secondary_languages?: string[]
+    languages?: string[]
+    secondary_language?: string
+  } = { language: primary }
+
+  if (secondaryLanguages.length > 0) {
+    fields.secondary_languages = secondaryLanguages
+    fields.languages = allLanguages
+    fields.secondary_language = secondaryLanguages[0]
+  }
+
+  return fields
 }
 
 export function languageSwitchingStackEligible(
