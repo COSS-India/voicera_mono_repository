@@ -340,6 +340,7 @@ export default function AssistantsPage() {
   const [isTestBrowserDialogOpen, setIsTestBrowserDialogOpen] = useState(false)
   const [selectedAgentForTest, setSelectedAgentForTest] = useState<Agent | null>(null)
   const [showDeleteSuccessToast, setShowDeleteSuccessToast] = useState(false)
+  const [deletingAgentType, setDeletingAgentType] = useState<string | null>(null)
   const [integratedProviders, setIntegratedProviders] = useState<Set<string>>(new Set())
   const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
@@ -708,6 +709,8 @@ export default function AssistantsPage() {
       return
     }
 
+    setDeletingAgentType(agent.agent_type)
+
     try {
       // Step 1: Detach phone number if agent has one
       if (agent.phone_number) {
@@ -774,6 +777,9 @@ export default function AssistantsPage() {
     } catch (error) {
       console.error("Failed to delete agent:", error)
       alert(error instanceof Error ? error.message : "Failed to delete agent")
+      throw error
+    } finally {
+      setDeletingAgentType(null)
     }
   }
 
@@ -1258,6 +1264,7 @@ export default function AssistantsPage() {
                 onTestBrowser={handleTestBrowser}
                 onViewHistory={handleViewHistory}
                 onDelete={handleDelete}
+                isDeleting={deletingAgentType === agent.agent_type}
               />
             ))}
           </div>
@@ -1487,7 +1494,7 @@ export default function AssistantsPage() {
                       <Input
                         value={config.greetingMessage}
                         onChange={(e) => updateConfig("greetingMessage", e.target.value)}
-                        placeholder="Hello from EkStep"
+                        placeholder="Hello"
                         className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                     )}

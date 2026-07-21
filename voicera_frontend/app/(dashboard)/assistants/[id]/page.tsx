@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { agentsQueryKey } from "@/lib/queries/agents"
 
 // Import JSON data
 import sttData from "@/stt.json"
@@ -233,6 +235,7 @@ const formatDurationSeconds = (seconds: number) => {
 
 export default function AgentDetailPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const params = useParams()
   // Decode the agentId from URL
   const agentId = params.id ? decodeURIComponent(params.id as string) : ""
@@ -999,6 +1002,10 @@ export default function AgentDetailPage() {
       const updatedAgent = await updateAgent(originalAgentType, updatedConfig)
 
       if (user?.org_id) {
+        await queryClient.invalidateQueries({
+          queryKey: agentsQueryKey(user.org_id),
+        })
+
         const refreshedAgent = await getAgent(trimmedAgentType, user.org_id)
         setAgent(refreshedAgent)
         setAgentType(refreshedAgent.agent_type || trimmedAgentType)
@@ -1777,7 +1784,7 @@ export default function AgentDetailPage() {
                       value={greetingMessage}
                       onChange={(e) => setGreetingMessage(e.target.value)}
                       className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                      placeholder="Hello from Framewise"
+                      placeholder="Hello"
                     />
                   )}
                   <p className="text-xs text-slate-500 mt-1">
