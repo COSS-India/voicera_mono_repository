@@ -553,7 +553,7 @@ export default function IntegrationsPage() {
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground leading-snug">
-                          Includes GPT-4o mini with limited usage. Connect your own API key to use additional models.
+                          Includes GPT-4o mini. Connect your own API key to use additional models.
                         </p>
                       </div>
                     </div>
