@@ -70,8 +70,7 @@ export function AgentCard({
 
   const isConnected = Boolean(agent?.phone_number)
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const openDeleteDialog = () => {
     setShowDeleteDialog(true)
   }
 
@@ -189,6 +188,7 @@ export function AgentCard({
   )
 
   return (
+    <>
     <div
       onClick={handleCardClick}
       className="group cursor-pointer rounded-xl border-[0.5px] border-slate-200 bg-white p-[18px] transition-all duration-150 hover:-translate-y-[2px] hover:border-slate-300"
@@ -239,7 +239,9 @@ export function AgentCard({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={handleDeleteClick}
+                onSelect={() => {
+                  setTimeout(() => openDeleteDialog(), 0)
+                }}
                 className="cursor-pointer text-red-600 focus:bg-red-50 focus:text-red-600"
                 disabled={isDeleting}
               >
@@ -299,52 +301,53 @@ export function AgentCard({
           Test on Browser
         </Button>
       </div>
-
-      <Dialog
-        open={showDeleteDialog}
-        onOpenChange={(open) => {
-          if (!isDeleting) {
-            setShowDeleteDialog(open)
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
-          <DialogHeader>
-            <DialogTitle>Delete agent?</DialogTitle>
-            <DialogDescription className="pt-2">
-              Are you sure you want to delete{" "}
-              <span className="font-medium text-slate-700">&quot;{displayName}&quot;</span>?
-              This will remove the agent and unlink any attached phone number. This action cannot
-              be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-1 w-full">
-            <Button
-              variant="outline"
-              onClick={() => setShowDeleteDialog(false)}
-              disabled={isDeleting}
-              className="flex-1 sm:flex-none"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDelete}
-              disabled={isDeleting}
-              className="flex-1 sm:flex-none"
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting…
-                </>
-              ) : (
-                "Delete"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
+
+    <Dialog
+      open={showDeleteDialog}
+      onOpenChange={(open) => {
+        if (!isDeleting) {
+          setShowDeleteDialog(open)
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete agent?</DialogTitle>
+          <DialogDescription className="pt-2">
+            Are you sure you want to delete{" "}
+            <span className="font-medium text-slate-700">&quot;{displayName}&quot;</span>?
+            This will remove the agent and unlink any attached phone number. This action cannot be
+            undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-1 w-full">
+          <Button
+            variant="outline"
+            onClick={() => setShowDeleteDialog(false)}
+            disabled={isDeleting}
+            className="flex-1 sm:flex-none"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleConfirmDelete}
+            disabled={isDeleting}
+            className="flex-1 sm:flex-none"
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              "Yes"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

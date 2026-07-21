@@ -547,8 +547,17 @@ export function MeetingDetailSheet({
   }
 
   const downloadTranscript = () => {
-    if (!meetingDetails?.transcript_content) return
-    const blob = new Blob([meetingDetails.transcript_content], { type: "text/plain" })
+    if (transcriptMessages.length === 0) return
+
+    const text = transcriptMessages
+      .map((message) => {
+        const role = message.role || "unknown"
+        const timestamp = message.timestamp ? `[${message.timestamp}] ` : ""
+        return `${timestamp}${role}: ${message.content}`
+      })
+      .join("\n")
+
+    const blob = new Blob([text], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -844,7 +853,7 @@ export function MeetingDetailSheet({
                       size="sm"
                       onClick={downloadTranscript}
                       className="h-8 px-2.5 text-slate-600 hover:text-slate-900"
-                      disabled={!meetingDetails?.transcript_content}
+                      disabled={!hasTranscript}
                     >
                       <Download className="h-4 w-4 mr-1.5" />
                       <span className="text-xs whitespace-nowrap">Export</span>
