@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -53,9 +54,22 @@ def chroma_dir_for_org(org_id: str) -> Path:
     return base / "orgs" / _org_chroma_subdir(org_id)
 
 
+def _platform_key_fallback_enabled() -> bool:
+    """Global kill-switch: ALLOW_PLATFORM_KEY_FALLBACK=false disables platform-key fallback."""
+    return os.getenv("ALLOW_PLATFORM_KEY_FALLBACK", "true").strip().lower() in ("1", "true", "yes")
+
+
 def resolve_openai_key_for_org(org_id: str) -> Optional[str]:
-    """OpenAI API key from org Integrations only (Integrations tab, model name 'OpenAI')."""
-    return integration_service.get_openai_api_key_for_org(org_id)
+    """OpenAI API key: org Integrations first, platform .env (OPENAI_API_KEY) fallback."""
+    key = integration_service.get_openai_api_key_for_org(org_id)
+    if key:
+        return key
+    if _platform_key_fallback_enabled():
+        platform_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        if platform_key:
+            logger.info("Using platform OpenAI key for KB (org has no integration configured)")
+            return platform_key
+    return None
 
 
 def create_document_pending(org_id: str, original_filename: str) -> str:
