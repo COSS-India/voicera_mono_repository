@@ -138,13 +138,11 @@ def get_openai_api_key_for_org(org_id: str) -> Optional[str]:
 
 
 def get_integration_public(org_id: str, model: str) -> Optional[Dict[str, Any]]:
-    """Fetch integration by org_id and model, with the secret api_key stripped."""
     integration = get_integration(org_id, model)
     return _to_public_doc(integration) if integration else None
 
 
 def get_integrations_by_org_public(org_id: str) -> List[Dict[str, Any]]:
-    """Fetch all integrations for an org, with secret api_keys stripped."""
     return [_to_public_doc(doc) for doc in get_integrations_by_org(org_id)]
 
 

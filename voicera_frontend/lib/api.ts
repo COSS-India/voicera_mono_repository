@@ -894,8 +894,6 @@ export interface Analytics {
 export interface Integration {
   org_id: string
   model: string
-  // Omitted by the backend for secret integrations; only present for the
-  // non-secret Vobiz/Plivo auth-ID rows.
   api_key?: string
   created_at?: string
   updated_at?: string
@@ -913,7 +911,6 @@ export interface CustomLLMIntegration {
   name: string
   base_url: string
   model: string
-  // Never returned by the backend to the frontend.
   api_key?: string
   created_at?: string
   updated_at?: string
