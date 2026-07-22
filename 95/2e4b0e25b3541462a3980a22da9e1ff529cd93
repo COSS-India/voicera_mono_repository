@@ -1,0 +1,20 @@
+voicera_backend/app/services/knowledge_service.py
+  s_22358508eb5fa2::t_5fe751b0855837 57-61,63-72
+  s_22358508eb5fa2::t_370a283f618396 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "952e4b0e25b3541462a3980a22da9e1ff529cd93",
+  "prompts": {},
+  "sessions": {
+    "s_22358508eb5fa2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73b15dae-9458-4716-b4a6-1ae82d733ade",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
