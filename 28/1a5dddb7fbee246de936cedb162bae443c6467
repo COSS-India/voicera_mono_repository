@@ -1,0 +1,20 @@
+voicera_backend/app/models/schemas.py
+  s_b7388061c2c3c3::t_8803075abb4cac 334,342
+  s_b7388061c2c3c3::t_5b57e5201ba21a 371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "281a5dddb7fbee246de936cedb162bae443c6467",
+  "prompts": {},
+  "sessions": {
+    "s_b7388061c2c3c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b8b12a3-8fb1-4877-84ca-267fb4e2f23c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
