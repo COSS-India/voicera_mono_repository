@@ -1,0 +1,23 @@
+voicera_backend/app/config/default_agents.json
+  s_e7386ab26ed479::t_960cc2d8366fca 30
+  s_e7386ab26ed479::t_c9aec12d80e0a0 52
+  s_e7386ab26ed479::t_0e7ee55891b4ad 74
+  s_e7386ab26ed479::t_97549846c6e78a 8
+  s_e7386ab26ed479::t_35b7d79e3164cb 96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "be71429ba09f9e4786efa3cbd57720c91c3ddff9",
+  "prompts": {},
+  "sessions": {
+    "s_e7386ab26ed479": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af0c9e2-69e7-48b9-8fd0-ef353251acd1",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
