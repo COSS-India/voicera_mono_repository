@@ -1,0 +1,23 @@
+voicera_backend/app/routers/agents.py
+  s_8583451f15ff25::t_3b7d981b2fb42b 138
+  s_8583451f15ff25::t_1911582dead7fa 163
+voicera_backend/app/routers/phone_numbers.py
+  s_8583451f15ff25::t_eb0f4ed5c5dfbc 42
+  s_8583451f15ff25::t_081bf9865f864f 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "5f9ef592f9c2e75ed61ed3d0fec8fc3924c60b1d",
+  "prompts": {},
+  "sessions": {
+    "s_8583451f15ff25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10dd9d70-de38-41de-b204-dc5ffc28781d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
