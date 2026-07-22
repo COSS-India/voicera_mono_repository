@@ -135,7 +135,7 @@ async def get_agent_config(
     """
     Get agent configuration by agent_type (protected endpoint).
     """
-    agent = agent_service.fetch_agent_config(agent_type)
+    agent = agent_service.fetch_agent_config_for_org(agent_type, current_user["org_id"])
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -160,7 +160,7 @@ async def update_agent_config(
     """
     Update agent configuration (protected endpoint).
     """
-    agent = agent_service.fetch_agent_config(agent_type)
+    agent = agent_service.fetch_agent_config_for_org(agent_type, current_user["org_id"])
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

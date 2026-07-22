@@ -39,7 +39,7 @@ async def get_phone_number_by_agent_type(
     Get the phone number attached to an agent by agent_type (protected endpoint).
     """
     # Validate that the agent belongs to the user's organization
-    agent = agent_service.fetch_agent_config(agent_type)
+    agent = agent_service.fetch_agent_config_for_org(agent_type, current_user["org_id"])
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -77,7 +77,7 @@ async def attach_phone_number_to_agent(
     """
     # If agent_type is provided, validate that the agent belongs to the user's organization
     if request.agent_type:
-        agent = agent_service.fetch_agent_config(request.agent_type)
+        agent = agent_service.fetch_agent_config_for_org(request.agent_type, current_user["org_id"])
         if not agent:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
