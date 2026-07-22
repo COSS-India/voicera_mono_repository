@@ -338,6 +338,14 @@ class IntegrationResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
+class IntegrationPublicResponse(BaseModel):
+    """Schema for integration response to the frontend."""
+    org_id: str
+    model: str
+    api_key: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
 class IntegrationBotRequest(BaseModel):
     """Schema for bot requesting integration API key."""
     org_id: str
@@ -366,7 +374,6 @@ class CustomLLMIntegrationResponse(BaseModel):
     name: str
     base_url: str
     model: str
-    api_key: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

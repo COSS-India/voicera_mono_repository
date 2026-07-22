@@ -226,11 +226,11 @@ export default function IntegrationsPage() {
 
       integrations.forEach((integration: Integration) => {
         if (integration.model === VOBIZ_AUTH_ID_MODEL) {
-          fetchedVobizAuthId = integration.api_key
+          fetchedVobizAuthId = integration.api_key || ""
         } else if (integration.model === VOBIZ_AUTH_TOKEN_MODEL) {
           hasVobizToken = true
         } else if (integration.model === PLIVO_AUTH_ID_MODEL) {
-          fetchedPlivoAuthId = integration.api_key
+          fetchedPlivoAuthId = integration.api_key || ""
         } else if (integration.model === PLIVO_AUTH_TOKEN_MODEL) {
           hasPlivoToken = true
         } else {
