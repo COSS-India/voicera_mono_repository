@@ -1,0 +1,40 @@
+voicera_frontend/lib/api.ts
+  s_b7388061c2c3c3::t_5d3820b80a93f7 897-899
+  s_b7388061c2c3c3::t_0ebb2c4012c81a 916-917
+voicera_backend/app/services/custom_llm_integration_service.py
+  s_b7388061c2c3c3::t_a2232971897548 122
+  s_b7388061c2c3c3::t_4597117572bce6 41-42,51-53
+voicera_backend/app/services/integration_service.py
+  s_b7388061c2c3c3::t_e847dc79d6f55b 12-23
+  s_b7388061c2c3c3::t_892afe00d551bc 140-150
+voicera_frontend/app/(dashboard)/integrations/page.tsx
+  s_b7388061c2c3c3::t_8ad293d1d99929 229,233
+voicera_backend/app/models/schemas.py
+  s_b7388061c2c3c3::t_6c915213fa00ff 342-346,349
+  s_b7388061c2c3c3::t_88aaffb4566c7c 375
+  s_b7388061c2c3c3::t_e42d4b40c9abc4 334,341,347-348
+  s_b7388061c2c3c3::t_587dddd4d8afd7 350-352
+voicera_backend/app/routers/integrations.py
+  s_b7388061c2c3c3::t_f208166e7ff02d 80-81,87,101
+  s_b7388061c2c3c3::t_83f56095771def 69,91
+  s_b7388061c2c3c3::t_05fc07915c7b16 51
+  s_b7388061c2c3c3::t_4a5abc0c7d85c0 76-77
+  s_b7388061c2c3c3::t_b3abfc5e06d0a6 97-98
+  s_b7388061c2c3c3::t_270beaa6d113b1 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "ce56774922b229663293a5b51762d76ef2681cc4",
+  "prompts": {},
+  "sessions": {
+    "s_b7388061c2c3c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b8b12a3-8fb1-4877-84ca-267fb4e2f23c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
