@@ -38,25 +38,19 @@ def normalize_base_url(url: str) -> str:
     return raw
 
 
-def _mask_api_key(api_key: str) -> str:
-    key = (api_key or "").strip()
-    if len(key) <= 4:
-        return "****"
-    return f"{'*' * (len(key) - 4)}{key[-4:]}"
-
-
-def _doc_to_response(doc: Dict[str, Any], *, mask_key: bool = False) -> Dict[str, Any]:
-    api_key = doc.get("api_key", "")
-    return {
+def _doc_to_response(doc: Dict[str, Any], *, include_api_key: bool = False) -> Dict[str, Any]:
+    response = {
         "id": str(doc["_id"]),
         "org_id": doc["org_id"],
         "name": doc["name"],
         "base_url": doc["base_url"],
         "model": doc["model"],
-        "api_key": _mask_api_key(api_key) if mask_key else api_key,
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),
     }
+    if include_api_key:
+        response["api_key"] = doc.get("api_key", "")
+    return response
 
 
 def _parse_object_id(custom_llm_id: str) -> ObjectId:
@@ -125,7 +119,7 @@ def get_custom_llm_integration_for_bot(
         doc = table.find_one({"_id": _parse_object_id(custom_llm_id), "org_id": org_id})
         if not doc:
             return None
-        return _doc_to_response(doc, mask_key=False)
+        return _doc_to_response(doc, include_api_key=True)
     except ValueError:
         return None
     except Exception as exc:

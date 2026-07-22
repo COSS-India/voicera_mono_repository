@@ -9,6 +9,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# These models store a non-secret identifier (not a secret key/token) in the
+# api_key field, and the frontend needs it back to prefill the form.
+_NON_SECRET_MODELS = {"VobizAuthId", "PlivoAuthId"}
+
+
+def _to_public_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip the api_key field unless this integration's model is non-secret."""
+    public_doc = dict(doc)
+    if public_doc.get("model") not in _NON_SECRET_MODELS:
+        public_doc.pop("api_key", None)
+    return public_doc
+
 
 def create_integration(integration_data: IntegrationCreate) -> Dict[str, Any]:
     """
@@ -123,6 +135,17 @@ def get_openai_api_key_for_org(org_id: str) -> Optional[str]:
     except Exception as e:
         logger.error("Error scanning integrations for OpenAI key: %s", e)
     return None
+
+
+def get_integration_public(org_id: str, model: str) -> Optional[Dict[str, Any]]:
+    """Fetch integration by org_id and model, with the secret api_key stripped."""
+    integration = get_integration(org_id, model)
+    return _to_public_doc(integration) if integration else None
+
+
+def get_integrations_by_org_public(org_id: str) -> List[Dict[str, Any]]:
+    """Fetch all integrations for an org, with secret api_keys stripped."""
+    return [_to_public_doc(doc) for doc in get_integrations_by_org(org_id)]
 
 
 def get_integrations_by_org(org_id: str) -> List[Dict[str, Any]]:

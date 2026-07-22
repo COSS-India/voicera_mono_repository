@@ -331,10 +331,22 @@ class IntegrationCreate(BaseModel):
     api_key: str
 
 class IntegrationResponse(BaseModel):
-    """Schema for integration response."""
+    """Schema for integration response (bot use only — includes unmasked api_key)."""
     org_id: str
     model: str
     api_key: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class IntegrationPublicResponse(BaseModel):
+    """Schema for integration response to the frontend.
+
+    api_key is omitted for secret integrations; it is only present for the
+    non-secret Vobiz/Plivo auth-ID rows, which the frontend needs to prefill.
+    """
+    org_id: str
+    model: str
+    api_key: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -360,13 +372,12 @@ class CustomLLMIntegrationUpdate(BaseModel):
     model: Optional[str] = None
 
 class CustomLLMIntegrationResponse(BaseModel):
-    """Schema for custom LLM integration response."""
+    """Schema for custom LLM integration response to the frontend — api_key is never sent."""
     id: str
     org_id: str
     name: str
     base_url: str
     model: str
-    api_key: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
