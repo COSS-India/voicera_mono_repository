@@ -894,7 +894,7 @@ export interface Analytics {
 export interface Integration {
   org_id: string
   model: string
-  api_key: string
+  api_key?: string
   created_at?: string
   updated_at?: string
 }
@@ -911,7 +911,7 @@ export interface CustomLLMIntegration {
   name: string
   base_url: string
   model: string
-  api_key: string
+  api_key?: string
   created_at?: string
   updated_at?: string
 }

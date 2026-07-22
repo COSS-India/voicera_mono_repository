@@ -3,7 +3,7 @@ Integration API routes.
 """
 from fastapi import APIRouter, HTTPException, status, Depends
 from app.models.schemas import (
-    IntegrationCreate, IntegrationResponse, IntegrationBotRequest,
+    IntegrationCreate, IntegrationResponse, IntegrationPublicResponse, IntegrationBotRequest,
     SuccessResponse, ErrorResponse
 )
 from app.services import integration_service
@@ -48,8 +48,7 @@ async def create_integration(
 ):
     """
     Create or update an integration (protected endpoint).
-    
-    Stores the API key encrypted in the database.
+
     If an integration for the same org_id and model already exists, it will be updated.
     """
     if integration_data.org_id != current_user["org_id"]:
@@ -67,39 +66,39 @@ async def create_integration(
     return result
 
 
-@router.get("/{model}", response_model=IntegrationResponse)
+@router.get("/{model}", response_model=IntegrationPublicResponse, response_model_exclude_unset=True)
 async def get_integration(
     model: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Get integration by model for the current user's organization (protected endpoint).
-    
-    Returns the decrypted API key.
+
+    The api_key is never returned to the frontend.
     """
     org_id = current_user["org_id"]
-    integration = integration_service.get_integration(org_id, model)
-    
+    integration = integration_service.get_integration_public(org_id, model)
+
     if not integration:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Integration not found for model: {model}"
         )
-    
+
     return integration
 
 
-@router.get("", response_model=List[IntegrationResponse])
+@router.get("", response_model=List[IntegrationPublicResponse], response_model_exclude_unset=True)
 async def get_all_integrations(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Get all integrations for the current user's organization (protected endpoint).
-    
-    Returns all integrations with decrypted API keys.
+
+    The api_key is never returned to the frontend.
     """
     org_id = current_user["org_id"]
-    integrations = integration_service.get_integrations_by_org(org_id)
+    integrations = integration_service.get_integrations_by_org_public(org_id)
     return integrations
 
 
