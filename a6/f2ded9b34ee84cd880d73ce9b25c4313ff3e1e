@@ -1,0 +1,55 @@
+.gitignore
+  s_d37e0481b0e4e7::t_35cbbe731baec9 5-9
+deploy/compose/docker-compose.prod.yml
+  s_8c5e35e48671af::t_989daaa2a63231 131
+  s_8c5e35e48671af::t_48630d20d6c14f 57,69-76
+  s_8c5e35e48671af::t_62626c69395ea0 115-118,155
+  s_8c5e35e48671af::t_75f36d938cabb2 38-40
+  s_8c5e35e48671af::t_2eb65644513010 87-103
+  s_8c5e35e48671af::t_3334033382d380 49-51
+  s_8c5e35e48671af::t_527cde685f28ef 59
+  s_d37e0481b0e4e7::t_d0143eb5548f1e 8-9
+  s_d37e0481b0e4e7::t_f11c8c85ab0c81 25-26
+  s_d37e0481b0e4e7::t_774aeb95b7d5ba 5-7
+  s_d37e0481b0e4e7::t_475e798800b28f 10-12,22-24
+  s_8c5e35e48671af::t_ec4df1a331192f 41-43,46-48
+  s_8c5e35e48671af::t_a1e6896155a6be 52-56
+  s_8c5e35e48671af::t_3929e3aae70bda 58
+  s_8c5e35e48671af::t_0114253b360f6b 60-62,66-68
+  s_8c5e35e48671af::t_9cbbd019e511d6 77-79,84-86
+  s_8c5e35e48671af::t_0951b2b48705ce 104-106,112-114
+  s_8c5e35e48671af::t_92602c8cb0de93 119-121,128-130
+  s_8c5e35e48671af::t_cf4f517ad3d55e 132-134,152-154
+  s_8c5e35e48671af::t_f2fe7002a6b8b9 1-4,13-21,27-37,44-45,63-65,80-83,107-111,122-127,135-151
+deploy/compose/.env.example
+  s_8c5e35e48671af::t_8b71f04200d7b0 6
+  s_d37e0481b0e4e7::t_d4d62f74e7e036 1-2,4-5
+  s_d37e0481b0e4e7::t_1062c9377d0268 3
+  s_8c5e35e48671af::t_6bebf79e52f355 7
+deploy/nginx/nginx.conf
+  s_d37e0481b0e4e7::t_08c88151a4a18c 1-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "a6f2ded9b34ee84cd880d73ce9b25c4313ff3e1e",
+  "prompts": {},
+  "sessions": {
+    "s_8c5e35e48671af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "50d18494-6b3a-4d7c-b3a0-b814cc34d5be",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_d37e0481b0e4e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a1566ea-e415-41da-b2c4-daa317b382d9",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
