@@ -1,0 +1,155 @@
+name: voicera-prod
+
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: voicera
+    volumes:
+      - mongodb_data:/data/db
+    networks: [voicera_network]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    networks: [voicera_network]
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  backend:
+    build: ../../voicera_backend
+    restart: unless-stopped
+    env_file: ../../voicera_backend/.env
+    environment:
+      - MONGODB_HOST=mongodb
+    depends_on:
+      mongodb: { condition: service_healthy }
+      minio:   { condition: service_healthy }
+    networks: [voicera_network]
+
+  voice_server:
+    build: ../../voice_2_voice_server
+    restart: unless-stopped
+    env_file: ../../voice_2_voice_server/.env
+    depends_on: [backend, minio]
+    networks: [voicera_network]
+
+  stt:
+    build:
+      context: ../../ai4bharat_stt_server
+      additional_contexts:
+        nemo: ${NEMO_CONTEXT_PATH:-../../ai4bharat_nemo}
+    restart: unless-stopped
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+      nofile:
+        soft: 65536
+        hard: 65536
+    env_file:
+      - path: ../../ai4bharat_stt_server/.env
+        required: false
+    environment:
+      - STT_NUM_WORKERS=4
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - ../../ai4bharat_stt_server/models:/app/models:ro
+    networks: [voicera_network]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  tts:
+    build: ../../ai4bharat_tts_server
+    restart: unless-stopped
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    env_file:
+      - path: ../../ai4bharat_tts_server/.env
+        required: false
+    environment:
+      - HF_TOKEN_PATH=/run/secrets/hf_token
+      - TTS_NUM_WORKERS=4
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    secrets: [hf_token]
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - ../../ai4bharat_tts_server/checkpoints:/app/checkpoints:ro
+    networks: [voicera_network]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  frontend:
+    build:
+      context: ../../voicera_frontend
+      secrets: [frontend_env]
+    restart: unless-stopped
+    env_file: ../../voicera_frontend/.env.local
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://backend:8000
+    depends_on: [backend]
+    networks: [voicera_network]
+
+  nginx:
+    ports:
+      - "127.0.0.1:8080:8080"
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [frontend, backend, voice_server]
+    networks: [voicera_network]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --url http://nginx:8080
+    depends_on: [nginx]
+    networks: [voicera_network]
+
+volumes:
+  mongodb_data:
+  minio_data:
+  hf_cache:
+
+networks:
+  voicera_network:
+    driver: bridge
+
+secrets:
+  hf_token:
+    file: ./secrets/hf_token
+  frontend_env:
+    file: ../../voicera_frontend/.env.local
