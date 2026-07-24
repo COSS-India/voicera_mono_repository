@@ -132,13 +132,6 @@ services:
     depends_on: [frontend, backend, voice_server]
     networks: [voicera_network]
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel --url http://nginx:8080
-    depends_on: [nginx]
-    networks: [voicera_network]
-
 volumes:
   mongodb_data:
   minio_data:
