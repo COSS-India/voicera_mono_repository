@@ -606,30 +606,24 @@ def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info")
     """
     import uvicorn
 
-    # Create config with optimized settings
-    config = uvicorn.Config(
-        app,
-        host=host,
-        port=port,
-        log_level=log_level,
-        # Use uvloop for better async performance (if available)
-        loop="auto",
-        # HTTP/1.1 settings
-        http="auto",
-        # WebSocket settings
-        ws="websockets",
-    )
-
     # Set custom WebSocket protocol with TCP_NODELAY
     nodelay_protocol = create_nodelay_websocket_protocol()
     if nodelay_protocol:
-        config.ws_protocol_class = nodelay_protocol
         logger.info("✅ TCP_NODELAY enabled for WebSocket connections (Nagle's algorithm disabled)")
     else:
         logger.warning("⚠️ Could not enable TCP_NODELAY, latency may be affected")
 
-    server = uvicorn.Server(config)
-    server.run()
+    num_workers = int(os.environ.get("VOICE_SERVER_NUM_WORKERS", "4"))
+    uvicorn.run(
+        "api.server:app",
+        host=host,
+        port=port,
+        log_level=log_level,
+        loop="auto",
+        http="auto",
+        ws="websockets",
+        workers=num_workers,
+    )
 
 
 if __name__ == "__main__":

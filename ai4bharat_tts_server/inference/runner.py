@@ -1,3 +1,4 @@
+import os
 import torch
 import uuid
 from inference.modeling import ParlerTTS
@@ -55,6 +56,7 @@ class ParlerTTSModelRunner:
         self.eos_token_id = self.model.config["decoder"]["eos_token_id"]
         self.running_requests = {}
         self._pending_audio_decode = {}
+        self.debug_nan = bool(int(os.environ.get("TTS_DEBUG_NAN", "0")))
         dac_cfg = self.model.dac.config
         hop = math.floor(dac_cfg.sampling_rate / dac_cfg.frame_rate)
         print(dac_cfg.sampling_rate, dac_cfg.frame_rate)
@@ -79,8 +81,40 @@ class ParlerTTSModelRunner:
             return None
         return self.decode_audio_parts([audio_tokens_fixed])[0]
 
+    def _safe_probs(self, scores):
+        """``scores`` (..., vocab) -> ``probs`` (..., vocab) that is guaranteed
+        finite, non-negative, and positive-summing per row, so ``torch.multinomial``
+        can never hit the "inf, nan or element < 0" CUDA device-side assert.
+
+        1. NaN and +inf -> -inf. NaN is the value named in the crash; ``torch.isinf``
+           alone (as in some proposed fixes) does NOT detect NaN and would let it
+           reach multinomial.
+        2. Any row with no finite candidate left (all -inf) would softmax to NaN, so
+           collapse it to an EOS one-hot -- this cleanly terminates just that request
+           instead of poisoning the shared batch.
+        3. A final no-op-if-clean scrub of the probabilities as insurance.
+
+        Everything is elementwise / masked -> no ``.item()``/``.any()`` branch and
+        therefore no per-step GPU->CPU synchronization on the hot path.
+
+        Returns ``(probs, dead)`` where ``dead`` has the leading (row) shape.
+        """
+        neg_inf = torch.tensor(-math.inf, device=scores.device, dtype=scores.dtype)
+        # 1. NaN / +inf -> -inf
+        scores = torch.where(
+            torch.isnan(scores) | torch.isposinf(scores), neg_inf, scores
+        )
+        # 2. dead rows (no finite candidate) -> EOS one-hot
+        dead = ~torch.isfinite(scores).any(dim=-1, keepdim=True)  # (..., 1)
+        is_eos = torch.arange(scores.shape[-1], device=scores.device) == self.eos_token_id
+        eos_row = torch.where(is_eos, torch.zeros_like(scores), neg_inf.expand_as(scores))
+        scores = torch.where(dead, eos_row, scores)
+        probs = torch.softmax(scores, dim=-1)
+        # 3. insurance: scrub any residual non-finite / negative (branch-free)
+        probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0).clamp_min(0.0)
+        return probs, dead.squeeze(-1)
+
     def prefill(self, request):
-        self.running_requests[request.pid] = request
 
         encoder_hidden_states, prompt_hidden_states = self.model.encode(
             [request.prompt], [request.description]
@@ -113,14 +147,17 @@ class ParlerTTSModelRunner:
         request.decoder_position_ids.append(next_decoder_position_ids)
         request.token_cache.append(next_decoder_input_ids)
 
+        self.running_requests[request.pid] = request
+
     def _sample_prefill(self, request, logits, sampling="multinomial"):
         if sampling == "argmax":
             sampled_tokens = logits.argmax(dim=-1)[0, :, -1:]
         else:
-            scores = logits[0, :, -1]
+            scores = logits[0, :, -1]  # (num_codebooks, vocab)
             scores = self.topk_processor(input_ids=None, scores=scores)
+            probs, _ = self._safe_probs(scores)
             sampled_tokens = torch.multinomial(
-                torch.softmax(scores, dim=-1).view(-1, scores.size(-1)), 1
+                probs.view(-1, probs.size(-1)), 1
             ).view(scores.size(0), 1)
 
         mask = torch.arange(self.num_codebooks) < len(request.decoder_input_ids)
@@ -171,7 +208,7 @@ class ParlerTTSModelRunner:
         if sampling == "argmax":
             sampled_tokens = logits.argmax(dim=-1)
         else:
-            scores = logits[:, :, 0]
+            scores = logits[:, :, 0]  # (batch, num_codebooks, vocab)
             stacked_decoder_input_ids = torch.stack(
                 [
                     self.running_requests[pid].decoder_input_ids[-1][:, 0]
@@ -181,16 +218,27 @@ class ParlerTTSModelRunner:
             )
             # find number of eos per batch in input ids
             eos_num = (stacked_decoder_input_ids == self.eos_token_id).sum(dim=1)
-            # do not allow eos token for eos_num + 1 to rest of codebooks
             eos_token_mask = torch.arange(self.num_codebooks, device=device).unsqueeze(
                 0
             ) > eos_num.unsqueeze(1)
-            scores[eos_token_mask, self.eos_token_id] = -math.inf
+            eos_scores = scores[:, :, self.eos_token_id]
+            eos_scores[eos_token_mask] = -math.inf
 
-            # get samples from scores now
             scores = self.topk_processor(input_ids=None, scores=scores)
+
+            probs, dead = self._safe_probs(scores)
+
+            if self.debug_nan and bool(dead.any()):
+                dead_cpu = dead.detach().cpu()
+                for bid, pid in enumerate(sorted_pids):
+                    if bool(dead_cpu[bid].any()):
+                        print(
+                            f"[warn] non-finite/all-masked scores for pid={pid}; "
+                            f"forcing EOS on affected codebooks"
+                        )
+
             sampled_tokens = torch.multinomial(
-                torch.softmax(scores, dim=-1).view(-1, scores.shape[-1]), num_samples=1
+                probs.view(-1, probs.shape[-1]), num_samples=1
             ).view(scores.shape[:2])
 
             # set eos token forcibly, but only if eos_num.max() > 0:
@@ -198,15 +246,10 @@ class ParlerTTSModelRunner:
             sampled_tokens[~eos_token_mask] = self.eos_token_id
 
         # set bos mask
-        current_seq_lens = (
-            torch.Tensor(
-                [
-                    len(self.running_requests[pid].decoder_input_ids)
-                    for pid in sorted_pids
-                ]
-            )
-            .int()
-            .to(device)
+        current_seq_lens = torch.tensor(
+            [len(self.running_requests[pid].decoder_input_ids) for pid in sorted_pids],
+            dtype=torch.int32,
+            device=device,
         )
         bos_token_mask = torch.arange(self.num_codebooks, device=device).unsqueeze(
             0
@@ -216,9 +259,16 @@ class ParlerTTSModelRunner:
 
     def check_stopping_criteria(self):
         sorted_pids = sorted(self.running_requests.keys())
-        for pid in sorted_pids:
-            decoder_input_ids = self.running_requests[pid].decoder_input_ids[-1]
-            to_stop = torch.all(decoder_input_ids == self.eos_token_id)
+        if not sorted_pids:
+            return
+        stacked = torch.stack(
+            [self.running_requests[pid].decoder_input_ids[-1] for pid in sorted_pids],
+            dim=0,
+        )  # (batch, num_codebooks, 1)
+        stop_flags = (
+            (stacked == self.eos_token_id).reshape(len(sorted_pids), -1).all(dim=1).tolist()
+        )
+        for pid, to_stop in zip(sorted_pids, stop_flags):
             if to_stop:
                 self.evict(self.running_requests[pid])
 
@@ -282,6 +332,3 @@ class ParlerTTSModelRunner:
                 req.audio_to_yield = len(audio_arr)
                 audio_dict[pid] = audio_arr[t0:]
         return audio_dict
-
-
-
