@@ -13,6 +13,125 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def get_user_join_eligibility(
+    email: str, target_org_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Check whether an email can join an organization via invite link.
+
+    Returns:
+        exists: whether the user is registered
+        can_join: whether they may join target_org_id (when provided)
+        reason: no_org | solo_owner | already_in_org | member_of_other_org | new_user
+    """
+    try:
+        db = get_database()
+        user = db["UserTable"].find_one({"email": email})
+        if not user:
+            return {"exists": False, "can_join": True, "reason": "new_user"}
+
+        org_id = user.get("org_id")
+        is_member = user.get("is_member", False)
+
+        if target_org_id and org_id == target_org_id:
+            return {
+                "exists": True,
+                "can_join": False,
+                "reason": "already_in_org",
+                "org_id": org_id,
+                "is_member": is_member,
+            }
+
+        if org_id and is_member:
+            return {
+                "exists": True,
+                "can_join": False,
+                "reason": "member_of_other_org",
+                "org_id": org_id,
+                "is_member": True,
+            }
+
+        # Registered but not tied to a team org (no org_id) or solo signup owner
+        return {
+            "exists": True,
+            "can_join": True,
+            "reason": "no_org" if not org_id else "solo_owner",
+            "org_id": org_id,
+            "is_member": is_member,
+        }
+    except Exception as e:
+        logger.error(f"Error checking join eligibility: {str(e)}")
+        return {"exists": False, "can_join": True, "reason": "new_user"}
+
+
+def _join_existing_user_to_org(
+    existing_user: Dict[str, Any], user_data: UserCreate
+) -> Dict[str, Any]:
+    """Attach an existing account to an organization via invite link."""
+    db = get_database()
+    user_table = db["UserTable"]
+    members_table = db["Members"]
+    org_id = user_data.org_id
+
+    org_exists = user_table.find_one({"org_id": org_id})
+    if not org_exists:
+        return {"status": "fail", "message": "Organization not found"}
+
+    existing_org_id = existing_user.get("org_id")
+    is_member = existing_user.get("is_member", False)
+
+    if existing_org_id == org_id:
+        return {
+            "status": "fail",
+            "message": "User is already a member of this organization",
+        }
+
+    if existing_org_id and is_member:
+        return {
+            "status": "fail",
+            "message": "This email is already part of an organization",
+        }
+
+    stored_password = existing_user.get("password")
+    if not stored_password or not verify_password(user_data.password, stored_password):
+        return {
+            "status": "fail",
+            "message": "Invalid password. Use the password from your existing account.",
+        }
+
+    user_table.update_one(
+        {"email": user_data.email},
+        {
+            "$set": {
+                "org_id": org_id,
+                "is_member": True,
+                "name": user_data.name,
+                "company_name": user_data.company_name,
+            }
+        },
+    )
+
+    members_table.update_one(
+        {"email": user_data.email, "org_id": org_id},
+        {
+            "$setOnInsert": {
+                "email": user_data.email,
+                "org_id": org_id,
+                "created_at": datetime.now().isoformat(),
+            }
+        },
+        upsert=True,
+    )
+
+    logger.info(f"Existing user joined org via invite: {user_data.email} -> {org_id}")
+    return {
+        "status": "success",
+        "message": "Successfully joined organization",
+        "org_id": org_id,
+    }
+
+
 def sign_up_user(user_data: UserCreate) -> Dict[str, Any]:
     """
     Create a new user. If org_id is provided (from invite link), user joins that org as member.
@@ -32,6 +151,8 @@ def sign_up_user(user_data: UserCreate) -> Dict[str, Any]:
         # Check if user already exists in UserTable
         existing_user = user_table.find_one({"email": user_data.email})
         if existing_user:
+            if user_data.org_id:
+                return _join_existing_user_to_org(existing_user, user_data)
             return {"status": "fail", "message": "User with this email already exists"}
         
         # Determine if this is a new org owner or a member joining existing org

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { type Meeting, type MeetingDetails } from "@/lib/api"
-import { maskPhoneLastDigits } from "@/lib/mask-phone"
+import { displayCallPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
 import {
   ChevronLeft,
   Link2,
@@ -566,15 +566,17 @@ export function MeetingDetailSheet({
     URL.revokeObjectURL(url)
   }
 
-  // Get agent name or fallback to from_number
+  const isInbound = meeting?.inbound ?? true
+  const customerNumber = isInbound ? meeting?.from_number : meeting?.to_number
+
   const agentName = useMemo(() => {
     return (
       meeting?.agent_type ||
-      (meeting?.from_number
-        ? `Call with ${maskPhoneLastDigits(meeting.from_number)}`
+      (customerNumber
+        ? `Call with ${maskPhoneLastDigits(customerNumber)}`
         : "Call")
     )
-  }, [meeting?.agent_type, meeting?.from_number])
+  }, [meeting?.agent_type, customerNumber])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -990,16 +992,22 @@ export function MeetingDetailSheet({
                       </div>
                     )}
 
-                    {/* Caller Number Row */}
-                    {meeting.from_number && (
+                    {/* Customer phone row (caller on inbound, callee on outbound) */}
+                    {customerNumber && (
                       <div className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
                         <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
                           <Phone className="h-4 w-4 text-blue-600" />
                         </div>
                         <div>
-                          <div className="text-xs text-slate-500 font-medium">Caller</div>
+                          <div className="text-xs text-slate-500 font-medium">
+                            {isInbound ? "Caller" : "Called"}
+                          </div>
                           <div className="text-sm text-slate-900 font-mono">
-                            {maskPhoneLastDigits(meeting.from_number)}
+                            {displayCallPhoneNumber(
+                              customerNumber,
+                              isInbound,
+                              isInbound ? "from" : "to"
+                            )}
                           </div>
                         </div>
                       </div>

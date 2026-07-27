@@ -27,7 +27,7 @@ import {
   useMeetingsQuery,
   useMeetingFilterOptionsQuery,
 } from "@/lib/queries/meetings"
-import { maskPhoneLastDigits } from "@/lib/mask-phone"
+import { displayCallPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
 import { MeetingDetailSheet } from "@/components/history/meeting-detail-sheet"
 import {
   Calendar as CalendarIcon,
@@ -1206,13 +1206,21 @@ function HistoryPageContent() {
                       <span className="text-sm text-slate-900">{meeting.agent_type || "-"}</span>
                     </div>
                     <div className="text-sm">
-                      <div className="text-slate-900">{meeting.to_number || "-"}</div>
+                      <div className="text-slate-900">
+                        {displayCallPhoneNumber(
+                          meeting.to_number,
+                          meeting.inbound ?? true,
+                          "to"
+                        )}
+                      </div>
                     </div>
                     <div className="text-sm">
                       <div className="text-slate-900">
-                        {meeting.from_number
-                          ? maskPhoneLastDigits(meeting.from_number)
-                          : "-"}
+                        {displayCallPhoneNumber(
+                          meeting.from_number,
+                          meeting.inbound ?? true,
+                          "from"
+                        )}
                       </div>
                     </div>
                     <div>

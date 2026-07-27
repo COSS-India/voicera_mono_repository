@@ -336,6 +336,19 @@ export interface User {
   is_owner?: boolean
 }
 
+export interface UserJoinEligibility {
+  exists: boolean
+  can_join: boolean
+  reason:
+    | "new_user"
+    | "no_org"
+    | "solo_owner"
+    | "already_in_org"
+    | "member_of_other_org"
+  org_id?: string
+  is_member?: boolean
+}
+
 export interface LoginResponse {
   access_token: string
   token_type: string
@@ -1610,6 +1623,31 @@ export async function transferOwnership(
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to transfer ownership")
+  }
+
+  return response.json()
+}
+
+/**
+ * Check if an email can join an organization via invite link (public endpoint).
+ */
+export async function checkUserJoinEligibility(
+  email: string,
+  orgId?: string
+): Promise<UserJoinEligibility> {
+  const query = orgId ? `?org_id=${encodeURIComponent(orgId)}` : ""
+  const response = await fetch(
+    `/api/v1/users/check/${encodeURIComponent(email)}${query}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  )
+
+  if (!response.ok) {
+    throw new Error("Failed to check email eligibility")
   }
 
   return response.json()
