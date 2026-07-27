@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
 import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
 import { agentsQueryKey, useAgentsQuery } from "@/lib/queries/agents"
+import { requireJohnaicServerUrl } from "@/lib/johnaic-config"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1008,7 +1009,7 @@ export default function AssistantsPage() {
       let plivoAnswerUrl: string | undefined
       
       if (config.telephonyProvider === "Vobiz") {
-        vobizAnswerUrl = `${process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL}/answer?agent_id=${agentId}`
+        vobizAnswerUrl = `${requireJohnaicServerUrl()}/answer?agent_id=${agentId}`
         console.log(" answer url", vobizAnswerUrl)
         
         // // Create Vobiz application
@@ -1021,7 +1022,7 @@ export default function AssistantsPage() {
         }
       }
       if (config.telephonyProvider === "Plivo") {
-        plivoAnswerUrl = `${process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL}/plivo/answer?agent_id=${agentId}`
+        plivoAnswerUrl = `${requireJohnaicServerUrl()}/plivo/answer?agent_id=${agentId}`
         const plivoAppResponse = await createPlivoApplication(config.name, plivoAnswerUrl)
         if (plivoAppResponse.status === "success" && plivoAppResponse.app_id) {
           plivoAppId = plivoAppResponse.app_id

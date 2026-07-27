@@ -115,10 +115,11 @@ MINIO_SECURE=false
 ### Frontend (`voicera_frontend/.env.local`)
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-API_URL=http://backend:8000
+NEXT_PUBLIC_JOHNAIC_SERVER_URL=https://your-public-voice-host
 VOICE_SERVER_URL=http://voice_server:7860
 ```
+
+Backend API access uses Next.js `/api/*` proxies (`http://localhost:8000` by default; Docker sets `API_URL=http://backend:8000`).
 
 ## 4. Expose the voice server (optional, dev only)
 
