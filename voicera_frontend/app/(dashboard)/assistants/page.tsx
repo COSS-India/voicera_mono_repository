@@ -1528,7 +1528,7 @@ export default function AssistantsPage() {
                       <Input
                         value={config.greetingMessage}
                         onChange={(e) => updateConfig("greetingMessage", e.target.value)}
-                        placeholder="Hello from EkStep"
+                        placeholder="Hello"
                         className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                     )}

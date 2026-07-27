@@ -1736,7 +1736,7 @@ export default function AgentDetailPage() {
                       value={greetingMessage}
                       onChange={(e) => setGreetingMessage(e.target.value)}
                       className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                      placeholder="Hello from Framewise"
+                      placeholder="Hello"
                     />
                   )}
                   <p className="text-xs text-slate-500 mt-1">
