@@ -275,7 +275,7 @@ function CallMetricsDetail({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-5 lg:p-6 space-y-5 bg-slate-50/50">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-5 lg:p-6 space-y-5 bg-slate-50/50 min-w-0">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-slate-900 truncate">
@@ -492,11 +492,11 @@ export function CallLatencySection() {
   )
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 min-h-[calc(100vh-10rem)]">
+    <div className="flex flex-col lg:flex-row gap-4 min-h-0 lg:min-h-[calc(100vh-10rem)] min-w-0">
       {/* Call list — History table pattern */}
-      <div className="lg:w-[min(100%,600px)] lg:shrink-0 flex flex-col gap-3">
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-[320px]">
-          <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 space-y-3">
+      <div className="w-full lg:w-[min(100%,600px)] lg:shrink-0 flex flex-col gap-3 min-w-0">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-[280px] sm:min-h-[320px]">
+          <div className="px-4 sm:px-5 py-3 border-b border-slate-200 bg-slate-50 space-y-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Calls with latency data</h2>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -545,7 +545,7 @@ export function CallLatencySection() {
           <div
             className={cn(
               LIST_ROW_LAYOUT,
-              "py-3 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600"
+              "py-3 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600 hidden sm:flex"
             )}
           >
             <div className={LIST_COL_CALL_TYPE}>Call Type</div>
@@ -576,12 +576,44 @@ export function CallLatencySection() {
                 const turnCount = meeting.latency_metrics?.turns?.length ?? 0
                 const avgLlm = meeting.latency_metrics?.summary?.avg_llm_ttfb_ms
                 return (
-                  <button
-                    key={meeting.meeting_id}
+                  <div key={meeting.meeting_id}>
+                    {/* Mobile card row */}
+                    <button
+                      type="button"
+                      onClick={() => handleCallClick(meeting)}
+                      className={cn(
+                        "sm:hidden w-full px-4 py-4 border-b border-slate-100 text-left transition-colors hover:bg-slate-50",
+                        isSelected && "bg-slate-100 hover:bg-slate-100"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <CallTypeBadge inbound={meeting.inbound} />
+                        <span className="text-xs font-medium text-slate-900 tabular-nums shrink-0">
+                          {turnCount} turns
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {meeting.agent_type || "—"}
+                      </p>
+                      {avgLlm != null && (
+                        <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
+                          avg LLM {formatMs(avgLlm)}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between gap-2 mt-2 text-xs text-slate-600">
+                        <span className="truncate">{formatCallDate(meeting)}</span>
+                        <span className="shrink-0 tabular-nums">
+                          {formatDuration(meeting.duration)}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Desktop table row */}
+                    <button
                     type="button"
                     onClick={() => handleCallClick(meeting)}
                     className={cn(
-                      "w-full",
+                      "hidden sm:flex w-full",
                       LIST_ROW_LAYOUT,
                       "py-4 border-b border-slate-100 text-left transition-colors hover:bg-slate-50",
                       isSelected && "bg-slate-100 hover:bg-slate-100"
@@ -610,23 +642,24 @@ export function CallLatencySection() {
                       {turnCount}
                     </div>
                   </button>
+                  </div>
                 )
               })}
           </div>
 
           {!isLoadingList && !isError && totalCalls > CALLS_PER_PAGE && (
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 bg-slate-50">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50">
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 rounded-full shrink-0"
+                className="h-8 w-8 rounded-full shrink-0 order-2 sm:order-1"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1 || isFetching}
                 aria-label="Previous page"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-xs text-slate-600 text-center">
+              <span className="text-xs text-slate-600 text-center order-1 sm:order-2">
                 Showing {(currentPage - 1) * CALLS_PER_PAGE + 1}–
                 {Math.min(currentPage * CALLS_PER_PAGE, totalCalls)} of {totalCalls} calls
                 <span className="text-slate-400"> · Page {currentPage} of {totalPages}</span>
@@ -635,7 +668,7 @@ export function CallLatencySection() {
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 rounded-full shrink-0"
+                className="h-8 w-8 rounded-full shrink-0 order-3"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages || isFetching}
                 aria-label="Next page"

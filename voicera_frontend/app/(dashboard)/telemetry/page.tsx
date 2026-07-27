@@ -8,6 +8,7 @@ import { fetchApiRoute } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 import { CallLatencySection } from "@/components/telemetry/call-latency-section"
 
 interface GpuProcess {
@@ -95,32 +96,33 @@ export default function TelemetryPage() {
   }, [telemetry?.timestamp_utc])
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50">
-      <header className="border-b bg-white">
-        <div className="flex h-16 items-center justify-between px-6">
-          <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-slate-700" />
-            <h1 className="text-lg font-semibold text-slate-900">Telemetry</h1>
+    <div className="flex flex-col h-screen bg-slate-50 min-w-0">
+      <header className="border-b bg-white shrink-0">
+        <div className="flex min-h-16 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between page-shell-x py-3 sm:py-0 sm:h-16">
+          <div className="flex items-center gap-3 min-w-0">
+            <SidebarTrigger className="h-9 w-9 shrink-0" />
+            <Activity className="h-5 w-5 text-slate-700 shrink-0" />
+            <h1 className="text-lg font-semibold text-slate-900 truncate">Telemetry</h1>
           </div>
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-xs w-fit shrink-0">
             Last update: {lastUpdated}
           </Badge>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="mx-auto max-w-7xl space-y-4">
-          <Tabs defaultValue="calls" className="space-y-4">
-            <TabsList className="bg-white border border-slate-200 h-10 p-1 rounded-lg">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 min-w-0">
+        <div className="mx-auto max-w-7xl space-y-4 min-w-0">
+          <Tabs defaultValue="calls" className="space-y-4 min-w-0">
+            <TabsList className="bg-white border border-slate-200 h-auto min-h-10 p-1 rounded-lg w-full sm:w-auto flex flex-wrap sm:flex-nowrap">
               <TabsTrigger
                 value="calls"
-                className="text-sm px-4 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-md"
+                className="text-sm px-3 sm:px-4 flex-1 sm:flex-none data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-md"
               >
                 Call latency
               </TabsTrigger>
               <TabsTrigger
                 value="gpu"
-                className="text-sm px-4 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-md"
+                className="text-sm px-3 sm:px-4 flex-1 sm:flex-none data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-md"
               >
                 GPU
               </TabsTrigger>
