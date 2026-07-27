@@ -604,32 +604,37 @@ def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info")
         port: Port to bind to
         log_level: Logging level
     """
-    import uvicorn
-
-    # Create config with optimized settings
-    config = uvicorn.Config(
-        app,
-        host=host,
-        port=port,
-        log_level=log_level,
-        # Use uvloop for better async performance (if available)
-        loop="auto",
-        # HTTP/1.1 settings
-        http="auto",
-        # WebSocket settings
-        ws="websockets",
-    )
+    from uvicorn import Config, Server
+    from uvicorn.supervisors import Multiprocess
 
     # Set custom WebSocket protocol with TCP_NODELAY
     nodelay_protocol = create_nodelay_websocket_protocol()
     if nodelay_protocol:
-        config.ws_protocol_class = nodelay_protocol
         logger.info("✅ TCP_NODELAY enabled for WebSocket connections (Nagle's algorithm disabled)")
     else:
         logger.warning("⚠️ Could not enable TCP_NODELAY, latency may be affected")
 
-    server = uvicorn.Server(config)
-    server.run()
+    num_workers = int(os.environ.get("VOICE_SERVER_NUM_WORKERS", "4"))
+
+    config = Config(
+        "api.server:app",
+        host=host,
+        port=port,
+        log_level=log_level,
+        loop="auto",
+        http="auto",
+        ws="websockets",
+        workers=num_workers,
+    )
+    if nodelay_protocol:
+        config.ws_protocol_class = nodelay_protocol
+
+    server = Server(config=config)
+    if config.workers > 1:
+        sock = config.bind_socket()
+        Multiprocess(config, target=server.run, sockets=[sock]).run()
+    else:
+        server.run()
 
 
 if __name__ == "__main__":

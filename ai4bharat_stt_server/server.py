@@ -178,6 +178,7 @@ def batch_worker(request_queue, infer_fn):
     Collects requests, batches them, runs the model,
     and returns results to waiting callers.
     """
+    last_empty_cache = 0.0
     while True:
         batch = []
         start = time.time()
@@ -195,6 +196,16 @@ def batch_worker(request_queue, infer_fn):
                 break
 
         if not batch:
+            # Idle: release cached-but-unused CUDA memory back to the driver.
+            # PyTorch's caching allocator never does this on its own -- it keeps
+            # the peak working-set size reserved forever, which is why nvidia-smi
+            # can show far more "used" memory per worker than a fresh process
+            # needs, long after a burst of concurrent load has passed. Throttled
+            # to once/second so it doesn't add overhead to this poll loop.
+            now = time.time()
+            if now - last_empty_cache > 1.0:
+                torch.cuda.empty_cache()
+                last_empty_cache = now
             continue
 
         # Unpack batch
@@ -280,4 +291,10 @@ def health():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8001"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    num_workers = int(os.environ.get("STT_NUM_WORKERS", "4"))
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=port,
+        workers=num_workers,
+    )
