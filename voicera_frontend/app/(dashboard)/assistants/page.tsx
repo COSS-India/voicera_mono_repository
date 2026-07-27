@@ -18,24 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { TestCallSheet } from "@/components/assistants/test-call-sheet"
 import { TestBrowserDialog } from "@/components/assistants/test-browser-dialog"
 import { AgentCard } from "@/components/assistants/agent-card"
 import { CreateNewAgentCard } from "@/components/assistants/create-new-agent-card"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
 import {
   ChevronRight,
   ChevronLeft,
@@ -49,7 +37,6 @@ import {
   Settings,
   Volume2,
   CheckCircle2,
-  Languages,
   Mic,
   Loader2,
   Check,
@@ -62,6 +49,15 @@ import {
 // Import JSON data
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
+import {
+  buildLanguageConfigFields,
+  getActiveLanguages,
+  getIntersectedSTTModels,
+  getIntersectedSTTProviders,
+  getIntersectedTTSModels,
+  getIntersectedTTSProviders,
+  hasMultipleLanguages,
+} from "@/lib/languageModelSupport"
 import {
   type KenpathVariant,
   isBharatVistaarLanguageSupported,
@@ -254,7 +250,7 @@ interface AgentConfig {
   knowledgeTopK: number
   temperature: number
   maxTokens: number
-  language: string
+  selectedLanguages: string[]
   sttProvider: string
   sttModel: string
   keywords: string
@@ -298,7 +294,7 @@ const defaultConfig: AgentConfig = {
   knowledgeTopK: 3,
   temperature: 0.2,
   maxTokens: 450,
-  language: "Hindi",
+  selectedLanguages: ["Hindi"],
   sttProvider: "ai4bharat",
   sttModel: "indic-conformer-stt",
   keywords: "",
@@ -578,77 +574,42 @@ export default function AssistantsPage() {
     return result
   }, [])
 
-  // Get supported STT providers for selected language
-  const supportedSTTProviders = useMemo(() => {
-    if (!config.language) return new Set<string>()
-    const langData =
-      sttData.stt.languages[config.language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
+  // Languages used for STT/TTS intersection (primary + optional secondary)
+  const activeLanguages = useMemo(
+    () => getActiveLanguages(config.selectedLanguages),
+    [config.selectedLanguages]
+  )
+  const primaryLanguage = activeLanguages[0] || ""
 
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, models]) => Array.isArray(models) && models.length > 0)
-        .map(([provider]) => provider)
-    )
-  }, [config.language])
+  // Get supported STT providers for all selected languages (intersection)
+  const supportedSTTProviders = useMemo(
+    () => getIntersectedSTTProviders(activeLanguages),
+    [activeLanguages]
+  )
 
-  // Get supported STT models for selected provider
-  const supportedSTTModels = useMemo(() => {
-    if (!config.language || !config.sttProvider) return new Set<string>()
-    const langData =
-      sttData.stt.languages[config.language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
+  // Get supported STT models for selected provider across all selected languages
+  const supportedSTTModels = useMemo(
+    () => getIntersectedSTTModels(activeLanguages, config.sttProvider),
+    [activeLanguages, config.sttProvider]
+  )
 
-    const models = langData.models[config.sttProvider as keyof typeof langData.models]
-    return new Set(Array.isArray(models) ? models : [])
-  }, [config.language, config.sttProvider])
+  // Get supported TTS providers for all selected languages (intersection)
+  const supportedTTSProviders = useMemo(
+    () => getIntersectedTTSProviders(activeLanguages),
+    [activeLanguages]
+  )
 
-  // Get supported TTS providers for selected language
-  const supportedTTSProviders = useMemo(() => {
-    if (!config.language) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
+  // Get supported TTS models for selected provider across all selected languages
+  const supportedTTSModels = useMemo(
+    () => getIntersectedTTSModels(activeLanguages, config.ttsProvider),
+    [activeLanguages, config.ttsProvider]
+  )
 
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, data]) => {
-          const modelData = data as { available?: boolean }
-          return modelData.available === true
-        })
-        .map(([provider]) => provider)
-    )
-  }, [config.language])
-
-  // Get supported TTS models for selected provider
-  const supportedTTSModels = useMemo(() => {
-    if (!config.language || !config.ttsProvider) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
-
-    const providerData = langData.models[config.ttsProvider as keyof typeof langData.models] as {
-      model?: string
-      models?: string[]
-      available?: boolean
-    }
-    if (!providerData || !providerData.available) return new Set<string>()
-
-    const models: string[] = []
-    if (providerData.models && Array.isArray(providerData.models)) {
-      models.push(...providerData.models)
-    }
-    if (providerData.model) {
-      models.push(providerData.model)
-    }
-    return new Set(models)
-  }, [config.language, config.ttsProvider])
-
-  // Get available TTS voices for selected provider/model
+  // Get available TTS voices for primary language + selected provider/model
   const availableTTSVoices = useMemo(() => {
-    if (!config.language || !config.ttsProvider) return []
+    if (!primaryLanguage || !config.ttsProvider) return []
     const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
+      ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
     if (!langData) return []
 
     const providerData = langData.models[config.ttsProvider as keyof typeof langData.models] as {
@@ -660,7 +621,54 @@ export default function AssistantsPage() {
       return providerData.voices
     }
     return []
-  }, [config.language, config.ttsProvider])
+  }, [primaryLanguage, config.ttsProvider])
+
+  // Clear STT/TTS selections when they fall outside the intersected language support
+  useEffect(() => {
+    if (activeLanguages.length === 0) return
+
+    setConfig((prev) => {
+      let changed = false
+      const next = { ...prev }
+
+      if (prev.sttModel && !supportedSTTModels.has(prev.sttModel)) {
+        next.sttModel = ""
+        changed = true
+      }
+      if (prev.sttProvider && !supportedSTTProviders.has(prev.sttProvider)) {
+        next.sttProvider = ""
+        next.sttModel = ""
+        changed = true
+      }
+      if (prev.ttsModel && !supportedTTSModels.has(prev.ttsModel)) {
+        next.ttsModel = ""
+        changed = true
+      }
+      if (prev.ttsProvider && !supportedTTSProviders.has(prev.ttsProvider)) {
+        next.ttsProvider = ""
+        next.ttsModel = ""
+        next.ttsVoice = ""
+        changed = true
+      }
+      if (
+        prev.ttsVoice &&
+        availableTTSVoices.length > 0 &&
+        !availableTTSVoices.includes(prev.ttsVoice)
+      ) {
+        next.ttsVoice = ""
+        changed = true
+      }
+
+      return changed ? next : prev
+    })
+  }, [
+    activeLanguages,
+    supportedSTTModels,
+    supportedSTTProviders,
+    supportedTTSModels,
+    supportedTTSProviders,
+    availableTTSVoices,
+  ])
 
   // Get LLM models for selected provider
   const availableLLMModels = useMemo(() => {
@@ -784,6 +792,62 @@ export default function AssistantsPage() {
     }
   }
 
+  // Reset STT/TTS when language selection changes; auto-pick ai4bharat when applicable
+  const applyLanguageAudioDefaults = (
+    updated: AgentConfig,
+    primaryLanguage: string
+  ) => {
+    updated.sttProvider = ""
+    updated.sttModel = ""
+    updated.ttsProvider = ""
+    updated.ttsModel = ""
+    updated.ttsVoice = ""
+
+    if (
+      primaryLanguage &&
+      primaryLanguage !== "English (United States)" &&
+      primaryLanguage !== "English (India)"
+    ) {
+      const sttLangData =
+        sttData.stt.languages[primaryLanguage as keyof typeof sttData.stt.languages]
+      if (
+        sttLangData?.models?.ai4bharat &&
+        Array.isArray(sttLangData.models.ai4bharat) &&
+        sttLangData.models.ai4bharat.length > 0
+      ) {
+        updated.sttProvider = "ai4bharat"
+        updated.sttModel = sttLangData.models.ai4bharat[0]
+      }
+
+      const ttsLangData =
+        ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
+      const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as
+        | { available?: boolean; model?: string; voices?: string[] }
+        | undefined
+      if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
+        updated.ttsProvider = "ai4bharat"
+        updated.ttsModel = ttsAi4bharatData.model
+        if (
+          ttsAi4bharatData.voices &&
+          Array.isArray(ttsAi4bharatData.voices) &&
+          ttsAi4bharatData.voices.length > 0
+        ) {
+          updated.ttsVoice = ttsAi4bharatData.voices[0]
+        }
+      }
+    }
+  }
+
+  const setSelectedLanguages = (languages: string[]) => {
+    setConfig((prev) => {
+      const updated = { ...prev, selectedLanguages: languages }
+      if (languages[0]) {
+        applyLanguageAudioDefaults(updated, languages[0])
+      }
+      return updated
+    })
+  }
+
   // Update config helper
   const updateConfig = <K extends keyof AgentConfig>(
     key: K,
@@ -791,34 +855,10 @@ export default function AssistantsPage() {
   ) => {
     setConfig((prev) => {
       const updated = { ...prev, [key]: value }
-      if (key === "language") {
-        const newLanguage = value as string
-        updated.sttProvider = ""
-        updated.sttModel = ""
-        updated.ttsProvider = ""
-        updated.ttsModel = ""
-        updated.ttsVoice = ""
-        
-        // Auto-select ai4bharat for languages other than English (United States) and English (India)
-        if (newLanguage && newLanguage !== "English (United States)" && newLanguage !== "English (India)") {
-          // Check if ai4bharat is available for STT
-          const sttLangData = sttData.stt.languages[newLanguage as keyof typeof sttData.stt.languages]
-          if (sttLangData?.models?.ai4bharat && Array.isArray(sttLangData.models.ai4bharat) && sttLangData.models.ai4bharat.length > 0) {
-            updated.sttProvider = "ai4bharat"
-            updated.sttModel = sttLangData.models.ai4bharat[0] // Use first available model
-          }
-          
-          // Check if ai4bharat is available for TTS
-          const ttsLangData = ttsData.tts.languages[newLanguage as keyof typeof ttsData.tts.languages]
-          const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as { available?: boolean; model?: string; voices?: string[] } | undefined
-          if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
-            updated.ttsProvider = "ai4bharat"
-            updated.ttsModel = ttsAi4bharatData.model
-            // Set first voice if available
-            if (ttsAi4bharatData.voices && Array.isArray(ttsAi4bharatData.voices) && ttsAi4bharatData.voices.length > 0) {
-              updated.ttsVoice = ttsAi4bharatData.voices[0]
-            }
-          }
+      if (key === "selectedLanguages") {
+        const languages = value as string[]
+        if (languages[0]) {
+          applyLanguageAudioDefaults(updated, languages[0])
         }
       }
       if (key === "sttProvider") {
@@ -844,10 +884,11 @@ export default function AssistantsPage() {
         const variant = value as KenpathVariant
         if (
           updated.llmProvider === "kenpath" &&
-          updated.language &&
-          !isBharatVistaarLanguageSupported(variant, updated.language)
+          updated.selectedLanguages.some(
+            (lang) => !isBharatVistaarLanguageSupported(variant, lang)
+          )
         ) {
-          updated.language = ""
+          updated.selectedLanguages = []
           updated.sttProvider = ""
           updated.sttModel = ""
           updated.ttsProvider = ""
@@ -897,7 +938,7 @@ export default function AssistantsPage() {
       // Generate agent_id from agent_type: replace spaces with underscores and convert to lowercase
       const agentId = config.name.replace(/\s+/g, '_').toLowerCase()
 
-      const languageName = config.language // Already the name, no lookup needed
+      const languageFields = buildLanguageConfigFields(config.selectedLanguages)
 
       // Build LLM model object with official provider name
       const llmModel: {
@@ -999,7 +1040,7 @@ export default function AssistantsPage() {
             ? {
                 interaction_mode: "non_conversational",
                 greeting_message: config.greetingMessage,
-                language: languageName,
+                ...languageFields,
                 tts_model: ttsModel,
               }
             : {
@@ -1018,7 +1059,7 @@ export default function AssistantsPage() {
                 user_online_detection_repeats: config.userOnlineDetectionRepeats,
                 user_online_detection_closing_message:
                   config.userOnlineDetectionClosingMessage.trim(),
-                language: languageName,
+                ...languageFields,
                 knowledge_base_enabled: config.llmProvider === "openai" ? config.knowledgeEnabled : false,
                 knowledge_document_ids:
                   config.llmProvider === "openai" && config.knowledgeEnabled
@@ -1093,7 +1134,7 @@ export default function AssistantsPage() {
       case "audio":
         if (config.interactionMode === "non_conversational") {
           return !!(
-            config.language &&
+            primaryLanguage &&
             config.ttsProvider &&
             config.ttsModel &&
             config.ttsVoice &&
@@ -1101,7 +1142,7 @@ export default function AssistantsPage() {
           )
         }
         return !!(
-          config.language &&
+          primaryLanguage &&
           config.sttProvider &&
           config.sttModel &&
           config.ttsProvider &&
@@ -1832,71 +1873,22 @@ export default function AssistantsPage() {
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-8">
                   {/* Language Selection */}
-                  <div className="space-y-3">
-                    <label className="text-base font-bold text-slate-900">Language: </label>
-                    <Popover open={languageOpen} onOpenChange={setLanguageOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={languageOpen}
-                          className="w-full max-w-md h-12 justify-between rounded-lg border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Languages className="h-4 w-4 text-blue-500" />
-                            {config.language
-                              ? displayLanguageName(config.language)
-                              : "Select language..."}
-                          </div>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[calc(100vw-2rem)] max-w-[400px] p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Search languages..." />
-                          <CommandList>
-                            <CommandEmpty>No language found.</CommandEmpty>
-                            <CommandGroup heading="Languages">
-                              {allLanguages.map((lang) => {
-                                const bharatBlocked =
-                                  config.llmProvider === "kenpath" &&
-                                  !isBharatVistaarLanguageSupported(
-                                    config.kenpathVariant,
-                                    lang.code
-                                  )
-                                return (
-                                <CommandItem
-                                  key={lang.code}
-                                  value={`${lang.code} ${lang.name}`}
-                                  disabled={bharatBlocked}
-                                  onSelect={() => {
-                                    if (bharatBlocked) return
-                                    updateConfig("language", lang.code)
-                                    setLanguageOpen(false)
-                                  }}
-                                  className="py-2.5"
-                                >
-                                  <span
-                                    className={`font-medium ${bharatBlocked ? "text-slate-400" : ""}`}
-                                  >
-                                    {lang.name}
-                                  </span>
-                                  {bharatBlocked && (
-                                    <span className="ml-2 text-xs text-slate-400">
-                                      (not supported)
-                                    </span>
-                                  )}
-                                </CommandItem>
-                                )
-                              })}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                  <LanguageSelectionSection
+                    selectedLanguages={config.selectedLanguages}
+                    allLanguages={allLanguages}
+                    llmProvider={config.llmProvider}
+                    kenpathVariant={config.kenpathVariant}
+                    sttProvider={config.sttProvider}
+                    sttModel={config.sttModel}
+                    ttsProvider={config.ttsProvider}
+                    ttsModel={config.ttsModel}
+                    open={languageOpen}
+                    onOpenChange={setLanguageOpen}
+                    onLanguagesChange={setSelectedLanguages}
+                  />
 
                   {/* STT Settings */}
-                  {config.language && config.interactionMode !== "non_conversational" && (
+                  {activeLanguages.length > 0 && config.interactionMode !== "non_conversational" && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select transcriber</label>
                       <div className="grid grid-cols-2 gap-4">
@@ -1978,7 +1970,7 @@ export default function AssistantsPage() {
                   )}
 
                   {/* TTS Settings */}
-                  {config.language && (
+                  {activeLanguages.length > 0 && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select synthesizer</label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2109,7 +2101,7 @@ export default function AssistantsPage() {
                   )}
 
                   {/* Voice Settings */}
-                  {config.language && config.ttsProvider && (
+                  {activeLanguages.length > 0 && config.ttsProvider && (
                     <div className="space-y-5 pt-6 border-t border-slate-100">
                       <div className="flex items-center gap-2">
                         <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center">
@@ -2672,7 +2664,14 @@ export default function AssistantsPage() {
                     <div>
                       <p className="text-sm font-bold text-slate-900 mb-2">Audio Configuration</p>
                       <p className="text-sm font-medium text-slate-700">
-                        {config.language ? displayLanguageName(config.language) : "—"}
+                        {activeLanguages.length > 0
+                          ? activeLanguages.map((l) => displayLanguageName(l)).join(", ")
+                          : "—"}
+                        {hasMultipleLanguages(activeLanguages) && (
+                          <span className="ml-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                            Switching
+                          </span>
+                        )}
                       </p>
                       {config.interactionMode !== "non_conversational" && (
                         <p className="text-sm text-slate-500 mt-1">

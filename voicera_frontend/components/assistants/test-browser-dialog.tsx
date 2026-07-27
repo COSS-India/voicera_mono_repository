@@ -313,7 +313,7 @@ export function TestBrowserDialog({
       }
 
       ws.onerror = () => {
-        setError("WebSocket connection failed")
+        setError("Failed to connect to server")
       }
 
       ws.onclose = () => {

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -47,29 +47,89 @@ def _resolve_default_language(default_language: str | None) -> str:
     )
 
 
-LANGUAGE_SWITCH_SYSTEM_PROMPT = """
+def _dedupe_language_codes(raw_values: list[Any]) -> list[str]:
+    codes: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        if raw is None:
+            continue
+        code = normalize_language(str(raw))
+        if code and code not in seen:
+            seen.add(code)
+            codes.append(code)
+    return codes
+
+
+def resolve_agent_language_codes(
+    agent_config: dict[str, Any] | None,
+) -> tuple[str, list[str]]:
+    """Return (primary_code, allowed_codes) from agent language fields.
+
+    Reads ``language`` (primary) and optional ``secondary_languages`` / legacy
+    ``secondary_language``. Falls back to an ordered ``languages`` list when
+    present. Single-language agents return a one-item ``allowed_codes`` list.
+    """
+    if not agent_config:
+        return "hi", ["hi"]
+
+    raw_values: list[Any] = []
+
+    languages_list = agent_config.get("languages")
+    if isinstance(languages_list, list) and languages_list:
+        raw_values.extend(languages_list)
+    else:
+        primary = agent_config.get("language")
+        if primary:
+            raw_values.append(primary)
+
+        secondary_languages = agent_config.get("secondary_languages")
+        if isinstance(secondary_languages, list) and secondary_languages:
+            raw_values.extend(secondary_languages)
+        else:
+            secondary = agent_config.get("secondary_language")
+            if secondary:
+                raw_values.append(secondary)
+
+    codes = _dedupe_language_codes(raw_values)
+    if not codes:
+        return "hi", ["hi"]
+
+    return codes[0], codes
+
+
+def is_bilingual_agent(agent_config: dict[str, Any] | None) -> bool:
+    _, allowed_codes = resolve_agent_language_codes(agent_config)
+    return len(allowed_codes) >= 2
+
+
+def build_language_switch_system_prompt(allowed_codes: list[str]) -> str:
+    codes = sorted(set(allowed_codes))
+    codes_csv = ", ".join(codes)
+    return f"""
 
 ## Language switching (voice call)
 You can switch the spoken and listening language during this call using the `switch_language` tool.
 
 Rules:
-- When the user mentions a language by name (e.g. Hindi, Tamil, Telugu, Marathi) or asks to speak/switch language (e.g. "in Tamil", "Tamil la sollunga", "हिंदी में बताइए"), call `switch_language` BEFORE you generate any spoken reply in that language.
+- When the user mentions a language by name or asks to speak/switch language, call `switch_language` BEFORE you generate any spoken reply in that language.
 - Never stream text in a new language before calling the tool for that language.
-- If you code-switch within one reply (e.g. Hindi then English), call `switch_language` before each language block.
+- If you code-switch within one reply, call `switch_language` before each language block.
 - Pass the ISO language code (e.g. hi, ta, mr, te) to the tool.
 - After switching, respond naturally in that language. Do not mention the tool or that you switched languages.
-- Supported codes: as, bn, brx, bhb, doi, gu, hi, kn, kok, ks, mai, ml, mni, mr, ne, or, pa, sa, sat, sd, ta, te, ur.
+- You may switch ONLY between these configured languages: {codes_csv}.
 """
 
 
-def create_switch_language_tool_schema() -> FunctionSchema:
-    codes = sorted(_SUPPORTED_CODES)
+def create_switch_language_tool_schema(allowed_codes: list[str]) -> FunctionSchema:
+    codes = sorted(set(allowed_codes))
+    if len(codes) < 2:
+        codes = sorted(_SUPPORTED_CODES)
     return FunctionSchema(
         name="switch_language",
         description=(
             "Switch the voice call STT and TTS language. Call this before speaking "
             "in a new language when the user requests a language change or mentions "
-            "a language name. Supported codes: "
+            "a language name. Allowed codes for this agent: "
             + ", ".join(codes)
         ),
         properties={
@@ -92,9 +152,21 @@ def setup_language_switching(
     tts: Any,
     context: OpenAILLMContext,
     default_language: str | None,
+    allowed_languages: list[str],
 ) -> None:
+    allowed_codes = _dedupe_language_codes(allowed_languages)
+    if len(allowed_codes) < 2:
+        logger.warning(
+            "Language switching requires at least two languages; got "
+            f"{allowed_codes!r}"
+        )
+
     current_language = _resolve_default_language(default_language)
-    tool_schema = create_switch_language_tool_schema()
+    if allowed_codes and current_language not in allowed_codes:
+        current_language = allowed_codes[0]
+
+    permitted_codes = set(allowed_codes)
+    tool_schema = create_switch_language_tool_schema(allowed_codes)
     context.set_tools(ToolsSchema([tool_schema]))
 
     async def switch_language_handler(params: FunctionCallParams) -> None:
@@ -102,13 +174,13 @@ def setup_language_switching(
         raw = params.arguments.get("language")
         code = normalize_language(str(raw) if raw is not None else None)
 
-        if not code:
+        if not code or code not in permitted_codes:
             await params.result_callback(
                 json.dumps(
                     {
                         "success": False,
-                        "error": f"Unsupported language: {raw!r}",
-                        "supported": sorted(_SUPPORTED_CODES),
+                        "error": f"Unsupported or disallowed language: {raw!r}",
+                        "allowed": sorted(permitted_codes),
                     }
                 )
             )
@@ -141,3 +213,9 @@ def setup_language_switching(
         switch_language_handler,
         cancel_on_interruption=False,
     )
+
+
+# Backward-compatible alias for imports expecting a static prompt template.
+LANGUAGE_SWITCH_SYSTEM_PROMPT = build_language_switch_system_prompt(
+    sorted(_SUPPORTED_CODES)
+)
