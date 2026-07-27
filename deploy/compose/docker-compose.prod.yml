@@ -56,7 +56,7 @@ services:
     build:
       context: ../../ai4bharat_stt_server
       additional_contexts:
-        nemo: ${NEMO_CONTEXT_PATH:-../../ai4bharat_nemo}
+        nemo: ${NEMO_CONTEXT_PATH:-../../../ai4bharat_nemo}
     restart: unless-stopped
     ipc: host
     ulimits:

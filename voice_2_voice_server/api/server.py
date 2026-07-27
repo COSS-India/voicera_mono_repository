@@ -604,7 +604,8 @@ def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info")
         port: Port to bind to
         log_level: Logging level
     """
-    import uvicorn
+    from uvicorn import Config, Server
+    from uvicorn.supervisors import Multiprocess
 
     # Set custom WebSocket protocol with TCP_NODELAY
     nodelay_protocol = create_nodelay_websocket_protocol()
@@ -614,7 +615,8 @@ def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info")
         logger.warning("⚠️ Could not enable TCP_NODELAY, latency may be affected")
 
     num_workers = int(os.environ.get("VOICE_SERVER_NUM_WORKERS", "4"))
-    uvicorn.run(
+
+    config = Config(
         "api.server:app",
         host=host,
         port=port,
@@ -624,6 +626,15 @@ def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info")
         ws="websockets",
         workers=num_workers,
     )
+    if nodelay_protocol:
+        config.ws_protocol_class = nodelay_protocol
+
+    server = Server(config=config)
+    if config.workers > 1:
+        sock = config.bind_socket()
+        Multiprocess(config, target=server.run, sockets=[sock]).run()
+    else:
+        server.run()
 
 
 if __name__ == "__main__":
