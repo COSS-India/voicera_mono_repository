@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +41,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { agentsQueryKey } from "@/lib/queries/agents"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 
 // Import JSON data
 import sttData from "@/stt.json"
@@ -231,6 +234,7 @@ const formatDurationSeconds = (seconds: number) => {
 
 export default function AgentDetailPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const params = useParams()
   // Decode the agentId from URL
   const agentId = params.id ? decodeURIComponent(params.id as string) : ""
@@ -649,8 +653,8 @@ export default function AgentDetailPage() {
           // Load language - use language name directly (no conversion needed)
           // Priority: agent_config.language > stt_model.language > tts_model.language
           const configLangName = (agentData.agent_config as any)?.language || ""
-          const sttLangName = agentData.agent_config?.stt_model?.language || ""
-          const ttsLangName = agentData.agent_config?.tts_model?.language || ""
+          const sttLangName = (agentData.agent_config?.stt_model as { language?: string })?.language || ""
+          const ttsLangName = (agentData.agent_config?.tts_model as { language?: string })?.language || ""
 
           // Check if language exists in JSON (more reliable than checking allLanguages array)
           const languageExistsInJSON = (langName: string) => {
@@ -1044,6 +1048,10 @@ export default function AgentDetailPage() {
       const updatedAgent = await updateAgent(originalAgentType, updatedConfig)
 
       if (user?.org_id) {
+        await queryClient.invalidateQueries({
+          queryKey: agentsQueryKey(user.org_id),
+        })
+
         const refreshedAgent = await getAgent(trimmedAgentType, user.org_id)
         setAgent(refreshedAgent)
         setAgentType(refreshedAgent.agent_type || trimmedAgentType)
@@ -1133,29 +1141,30 @@ export default function AgentDetailPage() {
   return (
     <div className="flex flex-col h-screen bg-slate-50/50">
       {/* Header with Progress */}
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 sticky top-0 z-10">
-        <div className="flex items-center gap-4">
+      <header className="flex h-auto min-h-14 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 bg-white px-4 sm:px-6 sticky top-0 z-10 py-3 sm:py-0">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <SidebarTrigger className="h-9 w-9 shrink-0" />
           <Button
             variant="ghost"
             size="sm"
             onClick={handleBackToList}
-            className="h-8 px-3 text-slate-600 hover:bg-slate-100 gap-1.5"
+            className="h-8 px-3 text-slate-600 hover:bg-slate-100 gap-1.5 shrink-0"
           >
             <ChevronLeft className="h-4 w-4" />
-            Back
+            <span className="sr-only sm:not-sr-only sm:inline">Back</span>
           </Button>
-          <Separator orientation="vertical" className="h-5" />
-          <h1 className="text-sm font-semibold text-slate-900">Configure Telephony Agent</h1>
+          <Separator orientation="vertical" className="h-5 hidden sm:block" />
+          <h1 className="text-sm font-semibold text-slate-900 truncate">Configure Telephony Agent</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500">Progress</span>
-          <div className="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+        <div className="flex items-center gap-3 w-full sm:w-auto sm:shrink-0">
+          <span className="text-xs text-slate-500 shrink-0">Progress</span>
+          <div className="flex-1 sm:w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[5rem]">
             <div
               className="h-full bg-slate-900 rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <span className="text-xs font-medium text-slate-700">{Math.round(progressPercent)}%</span>
+          <span className="text-xs font-medium text-slate-700 shrink-0">{Math.round(progressPercent)}%</span>
         </div>
       </header>
 

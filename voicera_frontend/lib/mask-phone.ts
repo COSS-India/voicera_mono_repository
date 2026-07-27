@@ -1,3 +1,23 @@
+/** Whether this from/to field should be masked for the given call direction. */
+export function shouldMaskCallPhone(
+  inbound: boolean,
+  field: "from" | "to"
+): boolean {
+  return inbound ? field === "from" : field === "to"
+}
+
+/** Display a from/to number with PII masking based on call direction. */
+export function displayCallPhoneNumber(
+  phone: string | null | undefined,
+  inbound: boolean,
+  field: "from" | "to"
+): string {
+  if (phone == null || phone === "") return "-"
+  return shouldMaskCallPhone(inbound, field)
+    ? maskPhoneLastDigits(phone)
+    : phone
+}
+
 /**
  * Masks the last N numeric digits in a phone string for display (PII).
  * Preserves non-digit characters (+, spaces, dashes, etc.).

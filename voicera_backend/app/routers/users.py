@@ -1,7 +1,7 @@
 """
 User API routes.
 """
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from app.models.schemas import (
     UserCreate, UserResponse, UserLogin, UserLoginResponse,
     ForgotPasswordRequest, ResetPasswordRequest,
@@ -9,7 +9,7 @@ from app.models.schemas import (
 )
 from app.services import user_service
 from app.auth import get_current_user
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -59,6 +59,17 @@ async def get_current_user_info(current_user: Dict[str, Any] = Depends(get_curre
         )
     user["is_owner"] = not user.get("is_member", False)
     return user
+
+
+@router.get("/check/{email}", response_model=Dict[str, Any])
+async def check_user_join_eligibility(
+    email: str,
+    org_id: Optional[str] = Query(None, description="Target organization from invite link"),
+):
+    """
+    Public endpoint for invite-link signup: check if email can join an organization.
+    """
+    return user_service.get_user_join_eligibility(email, org_id)
 
 
 @router.get("/{email}", response_model=UserResponse)

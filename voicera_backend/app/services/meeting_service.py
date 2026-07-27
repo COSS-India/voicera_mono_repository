@@ -144,6 +144,8 @@ def _build_meetings_query(
     call_status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    has_latency_metrics: Optional[bool] = None,
+    search: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build MongoDB query mirroring History tab client filters."""
     conditions: List[Dict[str, Any]] = [{"org_id": org_id}]
@@ -192,6 +194,26 @@ def _build_meetings_query(
         if expr_parts:
             conditions.append({"$expr": {"$and": expr_parts}})
 
+    if has_latency_metrics:
+        conditions.append({"latency_metrics.turns.0": {"$exists": True}})
+
+    if search:
+        term = search.strip()
+        if term:
+            regex = {"$regex": re.escape(term), "$options": "i"}
+            search_clauses: List[Dict[str, Any]] = [
+                {"meeting_id": regex},
+                {"agent_type": regex},
+                {"from_number": regex},
+                {"to_number": regex},
+            ]
+            term_lower = term.lower()
+            if term_lower == "inbound":
+                search_clauses.append({"inbound": True})
+            elif term_lower == "outbound":
+                search_clauses.append({"inbound": False})
+            conditions.append({"$or": search_clauses})
+
     if len(conditions) == 1:
         return conditions[0]
     return {"$and": conditions}
@@ -223,6 +245,8 @@ def fetch_meetings_paginated(
     date_to: Optional[str] = None,
     date_sort_order: str = "latest",
     duration_sort_order: Optional[str] = None,
+    has_latency_metrics: Optional[bool] = None,
+    search: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Fetch a page of meetings for an org with filters and sort applied server-side.
@@ -239,6 +263,8 @@ def fetch_meetings_paginated(
             call_status=call_status,
             date_from=date_from,
             date_to=date_to,
+            has_latency_metrics=has_latency_metrics,
+            search=search,
         )
         total = meeting_table.count_documents(query)
         skip = (page - 1) * limit

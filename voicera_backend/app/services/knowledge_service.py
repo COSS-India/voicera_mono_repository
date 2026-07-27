@@ -58,6 +58,49 @@ def resolve_openai_key_for_org(org_id: str) -> Optional[str]:
     return integration_service.get_openai_api_key_for_org(org_id)
 
 
+def _user_friendly_ingest_error(exc: BaseException) -> str:
+    """Map ingest failures to short messages for non-technical users."""
+    if type(exc).__name__ == "IngestPipelineError":
+        return str(exc)[:2000]
+
+    raw = str(exc).strip()
+    lower = raw.lower()
+
+    if any(
+        token in lower
+        for token in (
+            "429",
+            "quota",
+            "rate limit",
+            "rate_limit",
+            "exceeded your current quota",
+            "insufficient_quota",
+        )
+    ):
+        return (
+            "Your OpenAI account has reached its usage limit. "
+            "Check your OpenAI billing or plan, then try uploading again."
+        )
+
+    if any(
+        token in lower
+        for token in (
+            "401",
+            "invalid api key",
+            "incorrect api key",
+            "authentication",
+            "invalid_api_key",
+        )
+    ):
+        return (
+            "Your OpenAI API key is not valid. "
+            "Update it in Integrations, then try uploading again."
+        )
+
+    logger.warning("Knowledge ingest error (sanitized for user): %s", raw)
+    return "We couldn't process this file. Please try again later."
+
+
 def create_document_pending(org_id: str, original_filename: str) -> str:
     """Insert Mongo row with status processing; return document_id."""
     db = get_database()
@@ -350,7 +393,7 @@ def run_ingest_job(document_id: str, org_id: str, original_filename: str, pdf_by
             document_id,
             org_id,
             status="failed",
-            error_message=str(e)[:2000],
+            error_message=_user_friendly_ingest_error(e),
         )
     except Exception as e:
         logger.exception("Knowledge ingest unexpected error")
@@ -358,5 +401,5 @@ def run_ingest_job(document_id: str, org_id: str, original_filename: str, pdf_by
             document_id,
             org_id,
             status="failed",
-            error_message=str(e)[:2000],
+            error_message=_user_friendly_ingest_error(e),
         )

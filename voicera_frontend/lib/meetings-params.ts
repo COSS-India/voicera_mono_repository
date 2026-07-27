@@ -11,7 +11,7 @@ export function buildMeetingsParams(
   dateRange: DateRange,
   dateSortOrder: "latest" | "oldest",
   durationSortOrder: "longest" | "shortest" | null,
-  options?: { limit?: number; forExport?: boolean }
+  options?: { limit?: number; forExport?: boolean; has_latency_metrics?: boolean; search?: string }
 ): MeetingsPageParams {
   const params: MeetingsPageParams = {
     page: currentPage,
@@ -19,6 +19,8 @@ export function buildMeetingsParams(
     forExport: options?.forExport,
     date_sort_order: dateSortOrder,
     duration_sort_order: durationSortOrder,
+    has_latency_metrics: options?.has_latency_metrics,
+    search: options?.search,
   }
 
   if (dateRange.from) {

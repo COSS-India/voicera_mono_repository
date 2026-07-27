@@ -22,6 +22,7 @@ import { TestCallSheet } from "@/components/assistants/test-call-sheet"
 import { TestBrowserDialog } from "@/components/assistants/test-browser-dialog"
 import { AgentCard } from "@/components/assistants/agent-card"
 import { CreateNewAgentCard } from "@/components/assistants/create-new-agent-card"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
 import {
   ChevronRight,
@@ -336,6 +337,7 @@ export default function AssistantsPage() {
   const [isTestBrowserDialogOpen, setIsTestBrowserDialogOpen] = useState(false)
   const [selectedAgentForTest, setSelectedAgentForTest] = useState<Agent | null>(null)
   const [showDeleteSuccessToast, setShowDeleteSuccessToast] = useState(false)
+  const [deletingAgentType, setDeletingAgentType] = useState<string | null>(null)
   const [integratedProviders, setIntegratedProviders] = useState<Set<string>>(new Set())
   const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
@@ -716,6 +718,8 @@ export default function AssistantsPage() {
       return
     }
 
+    setDeletingAgentType(agent.agent_type)
+
     try {
       // Step 1: Detach phone number if agent has one
       if (agent.phone_number) {
@@ -782,6 +786,9 @@ export default function AssistantsPage() {
     } catch (error) {
       console.error("Failed to delete agent:", error)
       alert(error instanceof Error ? error.message : "Failed to delete agent")
+      throw error
+    } finally {
+      setDeletingAgentType(null)
     }
   }
 
@@ -1184,29 +1191,31 @@ export default function AssistantsPage() {
   return (
     <div className="flex flex-col h-screen bg-slate-50/50">
       {/* Header */}
-      <header className="flex h-14 items-center gap-4 border-b border-slate-200 bg-white px-5 lg:px-8 sticky top-0 z-10">
-          <nav className="flex items-center gap-1.5 text-sm">
-            <span className="text-slate-500">Dashboard</span>
-          <ChevronRight className="h-4 w-4 text-slate-400" />
-            <span className="text-slate-900 font-medium">Agents</span>
+      <header className="flex h-14 items-center gap-3 border-b border-slate-200 bg-white page-shell-x sticky top-0 z-10 shrink-0">
+        <SidebarTrigger className="h-9 w-9 shrink-0" />
+          <nav className="flex items-center gap-1.5 text-sm min-w-0">
+            <span className="text-slate-500 hidden sm:inline">Dashboard</span>
+          <ChevronRight className="h-4 w-4 text-slate-400 hidden sm:inline" />
+            <span className="text-slate-900 font-medium truncate">Agents</span>
         </nav>
       </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto p-6 lg:p-8">
+        <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
           {/* Greeting Section */}
-          <div className="flex items-start justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-semibold text-slate-900 mb-1">Hi {user?.name}</h1>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 mb-1 truncate">Hi {user?.name}</h1>
               <p className="text-slate-500">Let&apos;s get your agents inline.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full sm:w-auto">
               {dataUpdatedAt > 0 && (
-                <span className="text-xs text-slate-500 whitespace-nowrap">
+                <span className="text-xs text-slate-500 whitespace-nowrap order-last sm:order-first w-full sm:w-auto text-center sm:text-left">
                   Last updated{" "}
                   {formatDistanceToNow(dataUpdatedAt, { addSuffix: true })}
                 </span>
               )}
+              <div className="flex items-center gap-3 w-full sm:w-auto">
               <Button
                 type="button"
                 variant="outline"
@@ -1230,7 +1239,7 @@ export default function AssistantsPage() {
               >
                 <SelectTrigger
                   aria-label="Sort agents"
-                  className="h-10 w-[180px] rounded-lg border-slate-200 bg-white text-sm focus:ring-1 focus:ring-slate-200"
+                  className="h-10 w-full sm:w-[180px] rounded-lg border-slate-200 bg-white text-sm focus:ring-1 focus:ring-slate-200"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -1241,14 +1250,15 @@ export default function AssistantsPage() {
                   <SelectItem value="inactive-first">Inactive first</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="relative">
+              </div>
+              <div className="relative w-full sm:w-auto sm:min-w-[16rem]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
               type="text"
                   placeholder="Search Assistant"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-10 pl-9 pr-4 w-64 rounded-lg border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                  className="h-10 pl-9 pr-4 w-full rounded-lg border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
             />
               </div>
             </div>
@@ -1299,6 +1309,7 @@ export default function AssistantsPage() {
                 onTestBrowser={handleTestBrowser}
                 onViewHistory={handleViewHistory}
                 onDelete={handleDelete}
+                isDeleting={deletingAgentType === agent.agent_type}
               />
             ))}
           </div>
@@ -1323,7 +1334,7 @@ export default function AssistantsPage() {
 
         {/* Delete Success Toast */}
         {showDeleteSuccessToast && (
-          <div className="fixed top-20 right-6 z-50 animate-in slide-in-from-top-5 fade-in-0 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px]">
+          <div className="mobile-toast animate-in slide-in-from-top-5 fade-in-0 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
             <p className="font-medium">Agent deleted successfully</p>
           </div>
@@ -1336,29 +1347,30 @@ export default function AssistantsPage() {
   return (
     <div className="flex flex-col h-screen bg-slate-50/50">
       {/* Header with Progress */}
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 sticky top-0 z-10">
-        <div className="flex items-center gap-4">
+      <header className="flex h-auto min-h-14 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 bg-white px-4 sm:px-6 sticky top-0 z-10 py-3 sm:py-0">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <SidebarTrigger className="h-9 w-9 shrink-0" />
           <Button
             variant="ghost"
             size="sm"
             onClick={handleBackToList}
-            className="h-8 px-3 text-slate-600 hover:bg-slate-100 gap-1.5"
+            className="h-8 px-3 text-slate-600 hover:bg-slate-100 gap-1.5 shrink-0"
           >
             <ChevronLeft className="h-4 w-4" />
-            Back
+            <span className="sr-only sm:not-sr-only sm:inline">Back</span>
           </Button>
-          <Separator orientation="vertical" className="h-5" />
-          <h1 className="text-sm font-semibold text-slate-900">Create Telephony Agent</h1>
+          <Separator orientation="vertical" className="h-5 hidden sm:block" />
+          <h1 className="text-sm font-semibold text-slate-900 truncate">Create Telephony Agent</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500">Progress</span>
-          <div className="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+        <div className="flex items-center gap-3 w-full sm:w-auto sm:shrink-0">
+          <span className="text-xs text-slate-500 shrink-0">Progress</span>
+          <div className="flex-1 sm:w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[5rem]">
             <div
               className="h-full bg-slate-900 rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <span className="text-xs font-medium text-slate-700">{Math.round(progressPercent)}%</span>
+          <span className="text-xs font-medium text-slate-700 shrink-0">{Math.round(progressPercent)}%</span>
         </div>
       </header>
 
@@ -1961,7 +1973,7 @@ export default function AssistantsPage() {
                   {activeLanguages.length > 0 && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select synthesizer</label>
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Provider</label>
                           <Select value={config.ttsProvider} onValueChange={(v) => updateConfig("ttsProvider", v)}>
@@ -2072,7 +2084,7 @@ export default function AssistantsPage() {
                             <SelectTrigger className="min-h-[48px] py-3 px-4 rounded-lg border-slate-200 bg-white font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all text-left [&>span]:whitespace-normal [&>span]:line-clamp-2 [&>span]:text-left">
                               <SelectValue placeholder="Select a voice description to customize voice characteristics" className="whitespace-normal" />
                             </SelectTrigger>
-                            <SelectContent className="rounded-lg max-h-[300px] w-[600px]">
+                            <SelectContent className="rounded-lg max-h-[300px] w-[min(600px,calc(100vw-2rem))]">
                               {descriptionsData.map((item, index) => (
                                 <SelectItem key={index} value={item.description} className="py-3 px-3">
                                   <span className="text-sm leading-relaxed block whitespace-normal">{item.description}</span>
@@ -2107,7 +2119,7 @@ export default function AssistantsPage() {
                       )}
 
                       {config.ttsProvider === "gcp" && (
-                        <div className="grid grid-cols-3 gap-6 bg-slate-50 rounded-lg p-5 border border-slate-100">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 bg-slate-50 rounded-lg p-4 sm:p-5 border border-slate-100">
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
                               <label className="text-sm font-medium text-slate-700">Speaking Rate</label>
@@ -2756,7 +2768,7 @@ export default function AssistantsPage() {
 
       {/* Delete Success Toast */}
       {showDeleteSuccessToast && (
-        <div className="fixed top-20 right-6 z-50 animate-in slide-in-from-top-5 fade-in-0 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px]">
+        <div className="mobile-toast animate-in slide-in-from-top-5 fade-in-0 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
           <CheckCircle2 className="h-5 w-5 text-red-600 shrink-0" />
           <p className="font-medium">Agent deleted successfully</p>
         </div>
