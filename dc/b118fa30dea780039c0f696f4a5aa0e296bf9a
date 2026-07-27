@@ -1,0 +1,29 @@
+voice_2_voice_server/api/server.py
+  s_3f288373fcf602::t_b2b9fd54eb20fc 607-608,618-619,629-637
+deploy/compose/docker-compose.prod.yml
+  s_3ea0f4e55f937d::t_e3e241cc1ffe1a 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "dcb118fa30dea780039c0f696f4a5aa0e296bf9a",
+  "prompts": {},
+  "sessions": {
+    "s_3ea0f4e55f937d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "760e1c79-9088-4855-91ec-1d596edbdd00",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_3f288373fcf602": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d53b1c9-ae8f-4c51-9a4a-c6eea3ac8cc4",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
