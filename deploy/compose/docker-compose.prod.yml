@@ -95,7 +95,9 @@ services:
         required: false
     environment:
       - HF_TOKEN_PATH=/run/secrets/hf_token
-      - TTS_NUM_WORKERS=4
+      # 2 = measured peak on 1x RTX PRO 6000 Blackwell: 691 tok/s aggregate vs
+      # 611 at 4 (SM thrash) and 542 at 1 (GPU starved). See load-test sweep.
+      - TTS_NUM_WORKERS=2
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     secrets: [hf_token]
     volumes:

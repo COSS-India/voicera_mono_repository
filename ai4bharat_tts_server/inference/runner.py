@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import uuid
 from inference.modeling import ParlerTTS
@@ -31,6 +32,7 @@ class TTSRequest:
 class ParlerTTSModelRunner:
     def __init__(self, checkpoint_path, play_steps=60):
         self.model = ParlerTTS(checkpoint_path).eval().to(device)
+        self._maybe_quantize()
         num_kv_heads = self.model.config["text_encoder"]["num_heads"]
         head_dim = self.model.config["decoder"]["hidden_size"] // num_kv_heads
         num_layers = self.model.config["decoder"]["num_hidden_layers"]
@@ -57,10 +59,54 @@ class ParlerTTSModelRunner:
         self.running_requests = {}
         self._pending_audio_decode = {}
         self.debug_nan = bool(int(os.environ.get("TTS_DEBUG_NAN", "0")))
+        # Per-step profiler (TTS_PROFILE=1). Timing only, no logic change.
+        # Answers launch/host-bound vs compute-bound -> whether CUDA graphs help.
+        self.profile = bool(int(os.environ.get("TTS_PROFILE", "0")))
+        self._prof_n = 0
+        self._prof_wall = 0.0
+        self._prof_events = []  # (whole_start, whole_end, dec_end, smp_end, batch)
+        self._prof_window = int(os.environ.get("TTS_PROFILE_WINDOW", "100"))
         dac_cfg = self.model.dac.config
         hop = math.floor(dac_cfg.sampling_rate / dac_cfg.frame_rate)
-        print(dac_cfg.sampling_rate, dac_cfg.frame_rate)
+        print(
+            f"[tts] DAC sampling_rate={dac_cfg.sampling_rate} "
+            f"frame_rate={dac_cfg.frame_rate} (realtime target={dac_cfg.frame_rate} tok/s/stream)",
+            flush=True,
+        )
         self._audio_stride = max(0, hop * (play_steps - self.num_codebooks) // 6)
+
+    def _maybe_quantize(self):
+        """Weight-only quantization of the per-step decode weights (TTS_QUANT).
+
+        Decode is memory-bandwidth-bound (profiler: step time flat vs batch,
+        busy~100%), so halving the bytes read per step ~= proportional speedup.
+        Scoped to decoder_layers + lm_heads (what every decode step reads);
+        the T5 encoder / embeddings (prefill-only) are left in fp16.
+
+        Off by default. Any failure -> log + keep the fp16 model unchanged.
+        """
+        quant = os.environ.get("TTS_QUANT", "").strip().lower()
+        if quant in ("", "0", "none", "off", "fp16"):
+            return
+        try:
+            from torchao.quantization import (
+                quantize_,
+                int8_weight_only,
+                float8_weight_only,
+            )
+
+            if quant == "int8":
+                q = int8_weight_only()
+            elif quant == "fp8":
+                q = float8_weight_only()
+            else:
+                print(f"[tts] TTS_QUANT={quant!r} unknown; running fp16", flush=True)
+                return
+            quantize_(self.model.decoder_layers, q)
+            quantize_(self.model.lm_heads, q)
+            print(f"[tts] applied {quant} weight-only quant to decode path", flush=True)
+        except Exception as e:  # never break the working fp16 path
+            print(f"[tts] TTS_QUANT={quant} failed ({e!r}); running fp16", flush=True)
 
     def _stacked_audio_codes_from_timeline(self, audio_tokens):
         # Strip delay/boundary framing; need T = L - num_codebooks - 1 >= 1 for DAC.
@@ -171,6 +217,14 @@ class ParlerTTSModelRunner:
         if len(sorted_pids) == 0:
             return
 
+        prof = self.profile
+        if prof:
+            e_start = torch.cuda.Event(enable_timing=True)
+            e_dec = torch.cuda.Event(enable_timing=True)
+            e_smp = torch.cuda.Event(enable_timing=True)
+            t_wall0 = time.perf_counter()
+            e_start.record()
+
         decoder_input_ids = torch.cat(
             [self.running_requests[pid].decoder_input_ids[-1] for pid in sorted_pids],
             dim=0,
@@ -188,9 +242,19 @@ class ParlerTTSModelRunner:
             model_kv_cache_vmem=self.self_attn_vmem,
             model_encoder_kv_cache_vmem=self.cross_attn_vmem,
         )
+        if prof:
+            e_dec.record()
 
         next_decoder_position_ids = decoder_position_ids[:, -1:] + 1
         next_decoder_input_ids = self._sample_decode(logits=logits)
+
+        if prof:
+            e_smp.record()
+            self._prof_wall += time.perf_counter() - t_wall0
+            self._prof_events.append((e_start, e_dec, e_smp, len(sorted_pids)))
+            self._prof_n += 1
+            if self._prof_n % self._prof_window == 0:
+                self._prof_flush()
 
         for bid, pid in enumerate(sorted_pids):
             self.running_requests[pid].decoder_input_ids.append(
@@ -256,6 +320,28 @@ class ParlerTTSModelRunner:
         ) >= current_seq_lens.unsqueeze(1)
         sampled_tokens[bos_token_mask] = self.bos_token_id
         return sampled_tokens.unsqueeze(-1)
+
+    def _prof_flush(self):
+        # Single sync per window (not per step) so profiling itself stays cheap.
+        torch.cuda.synchronize()
+        n = len(self._prof_events)
+        if n == 0:
+            return
+        gpu_ms = sum(s.elapsed_time(smp) for s, _, smp, _ in self._prof_events)
+        dec_ms = sum(s.elapsed_time(d) for s, d, _, _ in self._prof_events)
+        smp_ms = sum(d.elapsed_time(smp) for _, d, smp, _ in self._prof_events)
+        wall_ms = self._prof_wall * 1000.0
+        avg_b = sum(b for _, _, _, b in self._prof_events) / n
+        busy = 100.0 * gpu_ms / wall_ms if wall_ms > 0 else 0.0
+        verdict = "COMPUTE-bound (graph ~no help)" if busy > 85 else "LAUNCH/HOST-bound (CUDA graph WILL help)"
+        print(
+            f"[prof pid={os.getpid()}] steps={n} avg_batch={avg_b:.1f} "
+            f"wall={wall_ms/n:.3f}ms/step gpu={gpu_ms/n:.3f}ms/step "
+            f"(decode={dec_ms/n:.3f} sample={smp_ms/n:.3f}) busy={busy:.0f}% -> {verdict}",
+            flush=True,
+        )
+        self._prof_events.clear()
+        self._prof_wall = 0.0
 
     def check_stopping_criteria(self):
         sorted_pids = sorted(self.running_requests.keys())

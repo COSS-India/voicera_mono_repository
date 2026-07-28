@@ -1,6 +1,10 @@
 flashinfer-python==0.6.7
 flashinfer-cubin==0.6.7
 torch==2.10.0
+# Weight-only quant for the memory-bandwidth-bound decode path (TTS_QUANT=int8|fp8).
+# Only imported when TTS_QUANT is set; pin if the unpinned build resolves an
+# incompatible wheel against torch 2.10.
+torchao
 transformers==4.46.1
 sentencepiece
 protobuf
