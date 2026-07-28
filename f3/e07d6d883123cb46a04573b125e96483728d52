@@ -1,0 +1,30 @@
+deploy/compose/docker-compose.prod.yml
+  s_a898e177e0a4d5::t_61a84db040a877 98-100
+ai4bharat_tts_server/inference/runner.py
+  s_a898e177e0a4d5::t_57d9c0f251834a 220-227,245-246,251-257
+  s_a898e177e0a4d5::t_c414d4ec479057 62-68
+  s_a898e177e0a4d5::t_422ba6c0b5237c 324-345
+  s_a898e177e0a4d5::t_8e2a4d05ed626b 2
+  s_a898e177e0a4d5::t_e8471e555328b7 35
+  s_a898e177e0a4d5::t_8d53f599515a7d 71-75
+  s_a898e177e0a4d5::t_7d438374e9cfd5 78-110
+  s_a898e177e0a4d5::t_b07b4770c42612 258
+ai4bharat_tts_server/requirements.txt
+  s_a898e177e0a4d5::t_88e55327f40897 4-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f3e07d6d883123cb46a04573b125e96483728d52",
+  "prompts": {},
+  "sessions": {
+    "s_a898e177e0a4d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bab35a7b-e24d-4538-8e0d-9a14ac3d5f80",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
