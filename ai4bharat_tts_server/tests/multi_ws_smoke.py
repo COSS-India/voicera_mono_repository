@@ -1,12 +1,13 @@
 """
-Parallel WebSocket TTS clients with a fixed gap between each client's start.
+Batch WebSocket TTS smoke test: fire ``batch_size`` requests at once, report TTFT + RTF.
 
-Each client sends one (prompt, description) pair chosen at random from
-EXAMPLE_UTTERANCES (prompts in Hindi, Telugu, or Kannada; descriptions in English).
+TTFT = ms from send until first PCM chunk.
+RTF  = wall_time_to_done / audio_duration  (< 1 means faster than real-time).
 
-Run server first, e.g. `python server.py`, then:
+Run server first, e.g. ``python server.py``, then:
   python tests/multi_ws_smoke.py
-  python tests/multi_ws_smoke.py -n 10 --gap-ms 20
+  python tests/multi_ws_smoke.py --batch-size 16
+  python tests/multi_ws_smoke.py -n 8 --seed 0 --strict
 """
 from __future__ import annotations
 
@@ -24,9 +25,7 @@ from scipy.io import wavfile
 
 OUT_DIR = Path(__file__).resolve().parent / "files"
 
-# Ten fixed (prompt, description) pairs — regional prompts, English descriptions. Random per request.
 EXAMPLE_UTTERANCES: list[tuple[str, str]] = [
-    # Hindi
     (
         "नमस्ते, आप कैसे हैं? आज दिन कैसा रहा?",
         "A calm, clear female voice speaking at a normal pace.",
@@ -43,7 +42,6 @@ EXAMPLE_UTTERANCES: list[tuple[str, str]] = [
         "यह एक छोटा परीक्षण वाक्य है, सब ठीक से सुनाई दे रहा है क्या?",
         "A soft, gentle female voice speaking slowly.",
     ),
-    # Telugu
     (
         "నమస్కారం, మీరు ఎలా ఉన్నారు? ఈ రోజు ఎలా గడిచింది?",
         "A peaceful female voice with clear articulation.",
@@ -56,7 +54,6 @@ EXAMPLE_UTTERANCES: list[tuple[str, str]] = [
         "దయచేసి నెమ్మదిగా మాట్లాడండి, నేను వింటున్నాను.",
         "A delicate, relaxed speaking tone.",
     ),
-    # Kannada
     (
         "ನಮಸ್ಕಾರ, ನೀವು ಹೇಗಿದ್ದೀರಿ? ಇಂದು ದಿನ ಹೇಗೆ ಕಳೆಯಿತು?",
         "A steady female voice with precise, clear speech.",
@@ -82,33 +79,31 @@ def safe_filename_from_prompt(prompt: str, max_len: int = 120) -> str:
 
 async def run_one_request(
     index: int,
-    gap_s: float,
     uri: str,
     prompt: str,
     description: str,
     out_dir: Path,
     strict: bool,
-) -> tuple[int, float | None, float | None, Path | None, str]:
-    """Sleep ``index * gap_s``, then one utterance.
+    save_wav: bool,
+) -> tuple[int, float | None, float | None, float | None, Path | None, str]:
+    """One utterance starting immediately.
 
-    Returns (index, ttft_ms or None, mean_chunk_gap_ms or None, wav_path or None, prompt).
+    Returns (index, ttft_ms, rtf, audio_s, wav_path, prompt).
     """
-    await asyncio.sleep(index * gap_s)
-
     chunks: list[np.ndarray] = []
     ttft_ms: float | None = None
-    inter_chunk_ms: list[float] = []
-    last_recv_mono: float | None = None
+    sample_rate = 44100
+    pid = f"req{index}"
 
     async with websockets.connect(uri) as ws:
-        t_before_send = time.monotonic()
+        t0 = time.monotonic()
         await ws.send(json.dumps({"prompt": prompt, "description": description}))
 
         meta = json.loads(await ws.recv())
         if meta["type"] != "meta":
             raise RuntimeError(f"expected meta, got {meta}")
-        sample_rate = int(meta.get("sample_rate", 24000))
-        pid = str(meta.get("pid", f"req{index}"))
+        sample_rate = int(meta.get("sample_rate", sample_rate))
+        pid = str(meta.get("pid", pid))
 
         while True:
             msg = await ws.recv()
@@ -121,57 +116,54 @@ async def run_one_request(
                     raise RuntimeError(f"expected done, got {body}")
                 break
             if ttft_ms is None:
-                ttft_ms = (now - t_before_send) * 1000.0
-            elif last_recv_mono is not None:
-                inter_chunk_ms.append((now - last_recv_mono) * 1000.0)
-            last_recv_mono = now
+                ttft_ms = (now - t0) * 1000.0
             chunks.append(np.frombuffer(msg, dtype=np.float32))
 
-    pcm = np.concatenate(chunks) if chunks else np.array([], dtype=np.float32)
+        elapsed_s = time.monotonic() - t0
 
+    pcm = np.concatenate(chunks) if chunks else np.array([], dtype=np.float32)
     if pcm.size == 0:
         msg = (
-            f"request {index}: no PCM (meta then done; use server --decode-every 1 "
-            f"or a longer prompt — short runs with --decode-every 60 often skip DAC)"
+            f"request {index}: no PCM (use server --decode-every 1 or a longer prompt)"
         )
         if strict:
             raise RuntimeError(msg)
         print(f"WARN {msg}")
-        return index, None, None, None, prompt
+        return index, None, None, None, None, prompt
 
-    base = safe_filename_from_prompt(prompt)
-    out_path = out_dir / f"{base}_{index:02d}_{pid}.wav"
-    wavfile.write(out_path, sample_rate, pcm)
+    audio_s = float(pcm.size) / float(sample_rate)
+    rtf = elapsed_s / audio_s if audio_s > 0 else None
 
-    mean_chunk_ms: float | None
-    if inter_chunk_ms:
-        mean_chunk_ms = float(np.mean(inter_chunk_ms))
-    else:
-        mean_chunk_ms = None  # only one audio chunk
+    out_path: Path | None = None
+    if save_wav:
+        base = safe_filename_from_prompt(prompt)
+        out_path = out_dir / f"{base}_{index:02d}_{pid}.wav"
+        wavfile.write(out_path, sample_rate, pcm)
 
-    return index, ttft_ms, mean_chunk_ms, out_path, prompt
+    return index, ttft_ms, rtf, audio_s, out_path, prompt
 
 
 async def async_main(
-    n_requests: int,
-    gap_ms: float,
+    batch_size: int,
     uri: str,
     strict: bool,
+    save_wav: bool,
     rng: random.Random,
 ) -> None:
     out_dir = OUT_DIR
-    out_dir.mkdir(parents=True, exist_ok=True)
-    gap_s = gap_ms / 1000.0
+    if save_wav:
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-    pairs = [rng.choice(EXAMPLE_UTTERANCES) for _ in range(n_requests)]
+    pairs = [rng.choice(EXAMPLE_UTTERANCES) for _ in range(batch_size)]
 
+    # All clients start together (true batch).
     tasks = [
         asyncio.create_task(
             run_one_request(
-                i, gap_s, uri, pairs[i][0], pairs[i][1], out_dir, strict,
-            ),
+                i, uri, pairs[i][0], pairs[i][1], out_dir, strict, save_wav
+            )
         )
-        for i in range(n_requests)
+        for i in range(batch_size)
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -184,20 +176,26 @@ async def async_main(
 
     oks = [r for r in results if not isinstance(r, BaseException)]
     oks.sort(key=lambda r: r[0])
-    print(f"uri={uri} n={n_requests} gap_ms={gap_ms}\n")
-    for idx, ttft_ms, mean_chunk_ms, path, prompt in oks:
-        snippet = prompt if len(prompt) <= 50 else prompt[:47] + "..."
-        if path is None:
-            print(
-                f"[{idx:02d}] ttft_ms=n/a  mean_inter_chunk_ms=n/a  -> (no wav)  | {snippet}",
-            )
+
+    print(f"uri={uri} batch_size={batch_size}\n")
+    ttfts: list[float] = []
+    rtfs: list[float] = []
+    for idx, ttft_ms, rtf, audio_s, path, prompt in oks:
+        if ttft_ms is None or rtf is None:
+            print(f"[{idx:02d}] ttft_ms=n/a  rtf=n/a")
             continue
-        chunk_str = f"{mean_chunk_ms:.2f}" if mean_chunk_ms is not None else "n/a (single chunk)"
-        ttft_str = f"{ttft_ms:.2f}" if ttft_ms is not None else "n/a"
+        ttfts.append(ttft_ms)
+        rtfs.append(rtf)
+        print(f"[{idx:02d}] ttft_ms={ttft_ms:.2f}  rtf={rtf:.3f}")
+
+    if ttfts:
         print(
-            f"[{idx:02d}] ttft_ms={ttft_str}  mean_inter_chunk_ms={chunk_str}  "
-            f"-> {path.name}  | {snippet}",
+            f"\nsummary  ttft_ms: mean={float(np.mean(ttfts)):.2f}  "
+            f"median={float(np.median(ttfts)):.2f}  "
+            f"rtf: mean={float(np.mean(rtfs)):.3f}  "
+            f"median={float(np.median(rtfs)):.3f}"
         )
+
     if failures and not strict:
         print(f"finished with {len(failures)} error(s); use --strict to fail fast")
     elif not failures:
@@ -205,42 +203,45 @@ async def async_main(
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Many staggered WS TTS clients + latency stats")
-    p.add_argument("-n", "--requests", type=int, default=16, help="Number of parallel clients (default 10)")
+    p = argparse.ArgumentParser(
+        description="Batch WS TTS clients at once; report TTFT + RTF per request"
+    )
     p.add_argument(
-        "--gap-ms",
-        type=float,
-        default=40.0,
-        help="Delay between starting each client: client i sleeps i * gap (default 20)",
+        "-n",
+        "--batch-size",
+        type=int,
+        default=16,
+        help="Number of requests to start at once (default 16)",
     )
     p.add_argument("--uri", default="ws://127.0.0.1:8002")
     p.add_argument(
         "--seed",
         type=int,
         default=None,
-        help="Optional RNG seed so random prompt/description picks are reproducible",
+        help="Optional RNG seed for prompt/description picks",
     )
     p.add_argument(
         "--strict",
         action="store_true",
-        help="Raise on server errors or if an utterance returns no PCM",
+        help="Raise on server errors or empty PCM",
+    )
+    p.add_argument(
+        "--save-wav",
+        action="store_true",
+        help="Write WAVs under tests/files/",
     )
     args = p.parse_args()
-    if args.requests < 1:
-        p.error("--requests must be >= 1")
-    if args.gap_ms < 0:
-        p.error("--gap-ms must be >= 0")
-
-    rng = random.Random(args.seed)
+    if args.batch_size < 1:
+        p.error("--batch-size must be >= 1")
 
     asyncio.run(
         async_main(
-            n_requests=args.requests,
-            gap_ms=args.gap_ms,
+            batch_size=args.batch_size,
             uri=args.uri,
             strict=args.strict,
-            rng=rng,
-        ),
+            save_wav=args.save_wav,
+            rng=random.Random(args.seed),
+        )
     )
 
 
