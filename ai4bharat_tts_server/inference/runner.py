@@ -16,6 +16,7 @@ class TTSRequest:
         self.decoder_position_ids = []
         self.token_cache = []
         self.audio_to_yield = 0
+        self.finished = False
 
     def __repr__(self):
         return f"""TTSRequest(
@@ -28,27 +29,31 @@ class TTSRequest:
     """
 
 class ParlerTTSModelRunner:
-    def __init__(self, checkpoint_path, play_steps=60):
+    def __init__(self, checkpoint_path, play_steps=60, use_cuda_graph=True):
         self.model = ParlerTTS(checkpoint_path).eval().to(device)
         num_kv_heads = self.model.config["text_encoder"]["num_heads"]
         head_dim = self.model.config["decoder"]["hidden_size"] // num_kv_heads
         num_layers = self.model.config["decoder"]["num_hidden_layers"]
+        # Dense SDPA KV; CUDA graphs enabled once seq-bucket capture is stable.
         self.self_attn_vmem = VirtualMemory(
-            max_num_pages=4096,
+            max_num_pages=1024,
             num_kv_heads=num_kv_heads,
             page_size=8,
             head_dim=head_dim,
             num_layers=num_layers,
-            type="paged",
+            type="dense",
+            max_seq_len=768,
+            max_batch_size=48,
         )
-        # Cross-attn KV is static (encoder length); much smaller pool is enough.
         self.cross_attn_vmem = VirtualMemory(
             max_num_pages=1024,
             num_kv_heads=num_kv_heads,
             page_size=8,
             head_dim=head_dim,
             num_layers=num_layers,
-            type="paged",
+            type="dense",
+            max_seq_len=128,
+            max_batch_size=48,
         )
         self.topk_processor = transformers.TopKLogitsWarper(top_k=50)
         self.num_codebooks = self.model.config["decoder"]["num_codebooks"]
@@ -60,6 +65,25 @@ class ParlerTTSModelRunner:
         hop = math.floor(dac_cfg.sampling_rate / dac_cfg.frame_rate)
         print(dac_cfg.sampling_rate, dac_cfg.frame_rate)
         self._audio_stride = max(0, hop * (play_steps - self.num_codebooks) // 6)
+        self.use_cuda_graph = bool(use_cuda_graph) and device.type == "cuda"
+        self._cuda_graphs = {}
+        self._cuda_graph = None
+        self._cuda_graph_bs = None
+        self._cuda_graph_bucket = None
+        self._cuda_graph_retired = False
+        self._cg_input_ids = None
+        self._cg_position_ids = None
+        self._cg_logits = None
+        self._cg_self_updater = None
+        self._cg_self_attn = None
+        self._cg_cross_attn = None
+
+    def _ordered_pids(self):
+        # Match dense KV slot order (insertion / slot index), not lexical pid order.
+        return sorted(
+            self.running_requests.keys(),
+            key=lambda p: self.self_attn_vmem.pid_to_slot[p],
+        )
 
     def _stacked_audio_codes_from_timeline(self, audio_tokens):
         # Strip delay/boundary framing; need T = L - num_codebooks - 1 >= 1 for DAC.
@@ -74,13 +98,24 @@ class ParlerTTSModelRunner:
     def _audio_numpy_from_token_cache(self, token_cache):
         if len(token_cache) == 0:
             return None
-        audio_tokens = torch.cat(token_cache, dim=-1)
+        # Drop any post-EOS padding frames (wave-end batch padding).
+        trimmed = []
+        for t in token_cache:
+            trimmed.append(t)
+            if bool(torch.all(t == self.eos_token_id).item()):
+                break
+        audio_tokens = torch.cat(trimmed, dim=-1)
         audio_tokens_fixed = self._stacked_audio_codes_from_timeline(audio_tokens)
         if audio_tokens_fixed is None:
             return None
         return self.decode_audio_parts([audio_tokens_fixed])[0]
 
     def prefill(self, request):
+        if len(self.running_requests) == 0:
+            # New generation wave — allow CUDA graph capture again.
+            self._cuda_graph_retired = False
+            self._invalidate_cuda_graph()
+
         self.running_requests[request.pid] = request
 
         encoder_hidden_states, prompt_hidden_states = self.model.encode(
@@ -131,7 +166,7 @@ class ParlerTTSModelRunner:
         return next_decoder_input_ids
 
     def step(self):
-        sorted_pids = sorted(self.running_requests.keys())
+        sorted_pids = self._ordered_pids()
         if len(sorted_pids) == 0:
             return
 
@@ -146,31 +181,164 @@ class ParlerTTSModelRunner:
             ],
             dim=0,
         )
-        logits = self.model.decode(
-            decoder_input_ids=decoder_input_ids,
-            decoder_position_ids=decoder_position_ids,
-            model_kv_cache_vmem=self.self_attn_vmem,
-            model_encoder_kv_cache_vmem=self.cross_attn_vmem,
-        )
+        if self.use_cuda_graph:
+            logits = self._decode_with_cuda_graph(
+                decoder_input_ids, decoder_position_ids
+            )
+        else:
+            logits = self.model.decode(
+                decoder_input_ids=decoder_input_ids,
+                decoder_position_ids=decoder_position_ids,
+                model_kv_cache_vmem=self.self_attn_vmem,
+                model_encoder_kv_cache_vmem=self.cross_attn_vmem,
+            )
 
         next_decoder_position_ids = decoder_position_ids[:, -1:] + 1
-        next_decoder_input_ids = self._sample_decode(logits=logits)
+        next_decoder_input_ids = self._sample_decode(
+            logits=logits, sorted_pids=sorted_pids
+        )
 
         for bid, pid in enumerate(sorted_pids):
-            self.running_requests[pid].decoder_input_ids.append(
-                next_decoder_input_ids[bid]
-            )
-            self.running_requests[pid].token_cache.append(
-                next_decoder_input_ids[bid]
-            )
-            self.running_requests[pid].decoder_position_ids.append(
+            req = self.running_requests[pid]
+            tok = next_decoder_input_ids[bid]
+            if req.finished:
+                # Pad the CUDA-graph batch with EOS; do not extend audio token_cache.
+                tok = torch.full_like(tok, self.eos_token_id)
+                req.decoder_input_ids.append(tok)
+                req.decoder_position_ids.append(
+                    next_decoder_position_ids[bid].unsqueeze(0)
+                )
+                continue
+            req.decoder_input_ids.append(tok)
+            req.token_cache.append(tok)
+            req.decoder_position_ids.append(
                 next_decoder_position_ids[bid].unsqueeze(0)
             )
 
-    def _sample_decode(self, logits, sampling="multinomial"):
-        sorted_pids = sorted(self.running_requests.keys())
+    def _invalidate_cuda_graph(self):
+        self._cuda_graphs = {}
+        self._cuda_graph = None
+        self._cuda_graph_bs = None
+        self._cuda_graph_bucket = None
+        self._cg_input_ids = None
+        self._cg_position_ids = None
+        self._cg_logits = None
+        self._cg_self_updater = None
+        self._cg_self_attn = None
+        self._cg_cross_attn = None
+
+    def _retire_cuda_graph(self):
+        """Drop captured graphs; continue in eager until a new stable bs is captured."""
+        self._invalidate_cuda_graph()
+        try:
+            self.self_attn_vmem.disable_cuda_graph()
+            self.cross_attn_vmem.disable_cuda_graph()
+        except Exception:
+            pass
+        # Do not permanently disable — allow re-capture if bs stabilizes.
+
+    @staticmethod
+    def _seq_bucket(seq_len, max_seq_len):
+        for b in (64, 96, 128, 160, 192, 256, 320, 384, 512, 640, 768, 1024):
+            if seq_len <= b:
+                return min(b, max_seq_len)
+        return max_seq_len
+
+    def _decode_with_cuda_graph(self, decoder_input_ids, decoder_position_ids):
+        bs = decoder_input_ids.shape[0] // self.num_codebooks
+
+        # Holes after eviction: run eager (index_select path) until batch is contiguous.
+        slots = [
+            self.self_attn_vmem.pid_to_slot[p] for p in self._ordered_pids()
+        ]
+        contiguous = slots == list(range(bs))
+        if not contiguous:
+            self._cuda_graphs.clear()
+            self._cuda_graph = None
+            self._cuda_graph_bs = None
+            self.self_attn_vmem.disable_cuda_graph()
+            self.cross_attn_vmem.disable_cuda_graph()
+            return self.model.decode(
+                decoder_input_ids=decoder_input_ids,
+                decoder_position_ids=decoder_position_ids,
+                model_kv_cache_vmem=self.self_attn_vmem,
+                model_encoder_kv_cache_vmem=self.cross_attn_vmem,
+            )
+
+        if self._cuda_graph_bs != bs:
+            # bs changed — drop old graphs (each holds a large memory pool).
+            self._cuda_graphs.clear()
+            self._cuda_graph = None
+            self.self_attn_vmem.enable_cuda_graph(bs)
+            self.cross_attn_vmem.enable_cuda_graph(bs)
+            self._cuda_graph_bs = bs
+            torch.cuda.empty_cache()
+
+        # Host counters — no CUDA sync on the hot path.
+        live_before = self.self_attn_vmem.max_host_seq_len(bs) + 1
+        bucket = self._seq_bucket(live_before, self.self_attn_vmem.max_seq_len)
+        cross_bucket = self._seq_bucket(
+            max(self.cross_attn_vmem.max_host_seq_len(bs), 1),
+            self.cross_attn_vmem.max_seq_len,
+        )
+
+        self_updater, self_attn = self.self_attn_vmem.get_decode_closures(
+            grow=True, attn_len=bucket
+        )
+        _, cross_attn = self.cross_attn_vmem.get_decode_closures(
+            grow=False, attn_len=cross_bucket
+        )
+
+        key = (bs, bucket, cross_bucket)
+        entry = self._cuda_graphs.get(key)
+        if entry is None:
+            # Only keep one graph resident to avoid multi-pool OOM.
+            self._cuda_graphs.clear()
+            torch.cuda.empty_cache()
+
+            static_ids = decoder_input_ids.clone()
+            static_pos = decoder_position_ids.clone()
+
+            s = torch.cuda.Stream()
+            s.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(s):
+                for _ in range(2):
+                    logits = self.model.decode_forward(
+                        static_ids, static_pos, self_updater, self_attn, cross_attn
+                    )
+            torch.cuda.current_stream().wait_stream(s)
+            torch.cuda.synchronize()
+
+            g = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(g):
+                logits = self.model.decode_forward(
+                    static_ids, static_pos, self_updater, self_attn, cross_attn
+                )
+            # Capture-time execution can disagree with eager on this stack;
+            # replay is correct — always replay once before using logits.
+            g.replay()
+            entry = {
+                "graph": g,
+                "input_ids": static_ids,
+                "pos_ids": static_pos,
+                "logits": logits,
+            }
+            self._cuda_graphs[key] = entry
+            self._cuda_graph = g
+            self._cuda_graph_bucket = key
+            return logits
+
+        entry["input_ids"].copy_(decoder_input_ids)
+        entry["pos_ids"].copy_(decoder_position_ids)
+        entry["graph"].replay()
+        return entry["logits"]
+
+    def _sample_decode(self, logits, sampling="multinomial", sorted_pids=None):
+        if sorted_pids is None:
+            sorted_pids = self._ordered_pids()
         if sampling == "argmax":
-            sampled_tokens = logits.argmax(dim=-1)
+            # logits: (bs, codebooks, seq, vocab) — take last seq position
+            sampled_tokens = logits[:, :, -1, :].argmax(dim=-1)
         else:
             scores = logits[:, :, 0]
             stacked_decoder_input_ids = torch.stack(
@@ -199,15 +367,10 @@ class ParlerTTSModelRunner:
             sampled_tokens[~eos_token_mask] = self.eos_token_id
 
         # set bos mask
-        current_seq_lens = (
-            torch.Tensor(
-                [
-                    len(self.running_requests[pid].decoder_input_ids)
-                    for pid in sorted_pids
-                ]
-            )
-            .int()
-            .to(device)
+        current_seq_lens = torch.tensor(
+            [len(self.running_requests[pid].decoder_input_ids) for pid in sorted_pids],
+            dtype=torch.int32,
+            device=device,
         )
         bos_token_mask = torch.arange(self.num_codebooks, device=device).unsqueeze(
             0
@@ -216,25 +379,93 @@ class ParlerTTSModelRunner:
         return sampled_tokens.unsqueeze(-1)
 
     def check_stopping_criteria(self):
-        sorted_pids = sorted(self.running_requests.keys())
-        for pid in sorted_pids:
-            decoder_input_ids = self.running_requests[pid].decoder_input_ids[-1]
-            to_stop = torch.all(decoder_input_ids == self.eos_token_id)
-            if to_stop:
-                self.evict(self.running_requests[pid])
+        # Keep finished requests in the batch until the whole wave is done so
+        # CUDA-graph batch size stays fixed (stable replay, high GPU util).
+        sorted_pids = self._ordered_pids()
+        active = [p for p in sorted_pids if not self.running_requests[p].finished]
+        if active:
+            stacked = torch.stack(
+                [self.running_requests[p].decoder_input_ids[-1] for p in active],
+                dim=0,
+            )
+            done_list = torch.all(stacked == self.eos_token_id, dim=(1, 2)).tolist()
+            for pid, is_done in zip(active, done_list):
+                if is_done:
+                    self.running_requests[pid].finished = True
+            # Safety: stop if we're about to blow the dense KV budget.
+            max_len = self.self_attn_vmem.max_seq_len
+            for pid in active:
+                req = self.running_requests[pid]
+                if req.finished:
+                    continue
+                slot = self.self_attn_vmem.pid_to_slot[pid]
+                if self.self_attn_vmem._host_seq_lens[slot] >= max_len - 2:
+                    req.finished = True
+        if self.running_requests and all(
+            r.finished for r in self.running_requests.values()
+        ):
+            self._finish_wave()
+
+    def _finish_wave(self):
+        """Release KV/graphs first, then DAC-decode finished requests one-by-one."""
+        reqs = list(self.running_requests.values())
+        self.running_requests.clear()
+        for req in reqs:
+            try:
+                self.self_attn_vmem.free(req.pid)
+            except Exception:
+                pass
+            try:
+                self.cross_attn_vmem.free(req.pid)
+            except Exception:
+                pass
+        self._invalidate_cuda_graph()
+        try:
+            self.self_attn_vmem.disable_cuda_graph()
+            self.cross_attn_vmem.disable_cuda_graph()
+        except Exception:
+            pass
+        torch.cuda.empty_cache()
+        for req in reqs:
+            try:
+                audio = self._audio_numpy_from_token_cache(req.token_cache)
+            except Exception:
+                audio = None
+            if audio is not None:
+                tail = audio[req.audio_to_yield :]
+                if tail.size:
+                    self._pending_audio_decode[req.pid] = tail
+            torch.cuda.empty_cache()
 
     def free(self, request):
         self.self_attn_vmem.free(request.pid)
         self.cross_attn_vmem.free(request.pid)
+        # Slot compaction changes layout — drop graphs so next step re-captures.
+        self._cuda_graphs.clear()
+        self._cuda_graph = None
+        self._cuda_graph_bs = None
+        try:
+            self.self_attn_vmem.disable_cuda_graph()
+            self.cross_attn_vmem.disable_cuda_graph()
+        except Exception:
+            pass
 
     def evict(self, request):
-        audio = self._audio_numpy_from_token_cache(request.token_cache)
-        if audio is not None:
-            tail = audio[request.audio_to_yield :]
-            if tail.size:
-                self._pending_audio_decode[request.pid] = tail
-        del self.running_requests[request.pid]
+        # Free KV / CUDA-graph pools before DAC so long utterances fit in VRAM.
+        token_cache = request.token_cache
+        audio_to_yield = request.audio_to_yield
+        pid = request.pid
+        del self.running_requests[pid]
         self.free(request)
+        torch.cuda.empty_cache()
+        try:
+            audio = self._audio_numpy_from_token_cache(token_cache)
+        except Exception:
+            audio = None
+        if audio is not None:
+            tail = audio[audio_to_yield:]
+            if tail.size:
+                self._pending_audio_decode[pid] = tail
 
     def decode_audio_parts(self, list_of_audio_ids):
         audio_ids_e = torch.cat(list_of_audio_ids, -1)
@@ -253,7 +484,7 @@ class ParlerTTSModelRunner:
     def audio_decode(self):
         audio_dict = dict(self._pending_audio_decode)
         self._pending_audio_decode.clear()
-        sorted_pids = sorted(self.running_requests.keys())
+        sorted_pids = self._ordered_pids()
         list_of_audio_tokens = []
         decoded_pids = []
         for pid in sorted_pids:

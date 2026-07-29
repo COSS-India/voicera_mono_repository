@@ -181,11 +181,35 @@ class ParlerTTS(torch.nn.Module):
         model_kv_cache_vmem,
         model_encoder_kv_cache_vmem,
     ):
+        # Self-attn grows 1 token/step; cross-attn KV is static (plan cached).
+        model_kv_cache_updater, model_attn_kernel = (
+            model_kv_cache_vmem.get_decode_closures(grow=True)
+        )
+        _, model_encoder_attn_kernel = model_encoder_kv_cache_vmem.get_decode_closures(
+            grow=False
+        )
+        return self.decode_forward(
+            decoder_input_ids,
+            decoder_position_ids,
+            model_kv_cache_updater,
+            model_attn_kernel,
+            model_encoder_attn_kernel,
+        )
+
+    @torch.no_grad
+    def decode_forward(
+        self,
+        decoder_input_ids,
+        decoder_position_ids,
+        model_kv_cache_updater,
+        model_attn_kernel,
+        model_encoder_attn_kernel,
+    ):
+        """GPU-only decode body (no page allocate / flashinfer.plan). CUDA-graph friendly."""
         num_decoder_layers = self.config["decoder"]["num_hidden_layers"]
         num_codebooks = self.config["decoder"]["num_codebooks"]
         vocab_size = self.config["decoder"]["vocab_size"]
 
-        # embed everything
         decoder_input_ids = decoder_input_ids.reshape(
             -1, num_codebooks, decoder_input_ids.shape[-1]
         )
@@ -200,21 +224,13 @@ class ParlerTTS(torch.nn.Module):
         ).to(inputs_embeds.device)
         hidden_states = inputs_embeds + position_embeds
 
-        # Self-attn grows 1 token/step; cross-attn KV is static (plan cached).
-        model_kv_cache_updater, model_attn_kernel = (
-            model_kv_cache_vmem.get_decode_closures(grow=True)
-        )
-        _, model_encoder_attn_kernel = model_encoder_kv_cache_vmem.get_decode_closures(
-            grow=False
-        )
         for layer_id in range(num_decoder_layers):
-            # Bind layer_id by default arg so all layers don't close over the final id.
             decoder_kv_cache_vmem_thingy = (
                 lambda append_kv, lid=layer_id: model_kv_cache_updater(lid, append_kv),
                 lambda q, lid=layer_id: model_attn_kernel(lid, q),
             )
-            encoder_kv_cache_vmem_thingy = lambda q, lid=layer_id: model_encoder_attn_kernel(
-                lid, q
+            encoder_kv_cache_vmem_thingy = (
+                lambda q, lid=layer_id: model_encoder_attn_kernel(lid, q)
             )
 
             hidden_states = self.decoder_layers[layer_id].decode(

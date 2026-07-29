@@ -3,6 +3,24 @@ from inference.config import device
 import math
 import flashinfer
 
+try:
+    from torch.nn.attention import sdpa_kernel, SDPBackend
+
+    # Short masked decode: MATH keeps SMs busy. Longer buckets: efficient kernels
+    # keep step time well under 7ms.
+    _SDPA_SHORT = [SDPBackend.MATH]
+    _SDPA_LONG = [
+        SDPBackend.EFFICIENT_ATTENTION,
+        SDPBackend.FLASH_ATTENTION,
+        SDPBackend.MATH,
+    ]
+    _SDPA_SHORT_LEN = 256
+except Exception:  # pragma: no cover
+    sdpa_kernel = None
+    _SDPA_SHORT = _SDPA_LONG = None
+    _SDPA_SHORT_LEN = 256
+
+
 
 class PageTable:
     def __init__(self, page_size, max_num_pages=None):
@@ -145,6 +163,7 @@ class PageTable:
 
 class VirtualMemoryPaged:
     def __init__(self, max_num_pages, page_size, num_kv_heads, head_dim, num_layers):
+        self.max_num_pages = max_num_pages
         self.paged_model_kv_cache = [
             torch.zeros(
                 (max_num_pages, 2, page_size, num_kv_heads, head_dim),
@@ -163,12 +182,51 @@ class VirtualMemoryPaged:
         self._layout_version = 0
         self._planned_layout_version = -1
 
-        workspace_buffer = torch.zeros(
+        self._workspace_buffer = torch.zeros(
             128 * 1024 * 1024, dtype=torch.uint8, device=device
         )
         self.decode_wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
-            workspace_buffer
+            self._workspace_buffer
         )
+        # CUDA-graph mode: fixed-address page metadata buffers (set via enable_cuda_graph).
+        self._cg_bs = None
+
+    def enable_cuda_graph(self, batch_size):
+        """Switch decode wrapper to FlashInfer CUDA-graph-safe fixed buffers."""
+        if self._cg_bs == batch_size:
+            return
+        self._cg_bs = batch_size
+        self._cg_indptr = torch.zeros(
+            batch_size + 1, dtype=torch.int32, device=device
+        )
+        self._cg_indices = torch.zeros(
+            self.max_num_pages, dtype=torch.int32, device=device
+        )
+        self._cg_last_page_len = torch.zeros(
+            batch_size, dtype=torch.int32, device=device
+        )
+        self._cg_positions = torch.zeros(batch_size, dtype=torch.int32, device=device)
+        self._cg_batch_indices = torch.arange(
+            batch_size, dtype=torch.int32, device=device
+        )
+        self.decode_wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
+            self._workspace_buffer,
+            use_cuda_graph=True,
+            paged_kv_indptr_buffer=self._cg_indptr,
+            paged_kv_indices_buffer=self._cg_indices,
+            paged_kv_last_page_len_buffer=self._cg_last_page_len,
+        )
+        self._planned_layout_version = -1
+
+    def disable_cuda_graph(self):
+        """Restore eager FlashInfer wrapper (batch size may change again)."""
+        if self._cg_bs is None:
+            return
+        self._cg_bs = None
+        self.decode_wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
+            self._workspace_buffer
+        )
+        self._planned_layout_version = -1
 
     def _bump_layout(self):
         self._layout_version += 1
@@ -185,6 +243,15 @@ class VirtualMemoryPaged:
             data_type=torch.float16,
         )
         self._planned_layout_version = self._layout_version
+
+    def _copy_into_cg_buffers(self, kv_indptr, kv_indices, kv_last_page_len, positions=None):
+        n_idx = kv_indices.numel()
+        self._cg_indptr.copy_(kv_indptr)
+        self._cg_indices[:n_idx].copy_(kv_indices)
+        self._cg_last_page_len.copy_(kv_last_page_len)
+        if positions is not None:
+            self._cg_positions.copy_(positions)
+        return n_idx
 
     def prefill(self, pid, model_kv_cache):
         n_seq = model_kv_cache[0][0].shape[2]
@@ -220,13 +287,23 @@ class VirtualMemoryPaged:
         self.page_table.free(pid)
         self._bump_layout()
 
-    def get_decode_closures(self, grow=True):
+    def get_decode_closures(self, grow=True, attn_len=None):
         """
         grow=True  (self-attn): allocate 1 token slot per seq, plan, return updater+attn.
         grow=False (cross-attn): KV is static; plan only when layout changed, attn only.
+
+        In CUDA-graph mode, closures close over fixed ``_cg_*`` buffers so a captured
+        graph keeps reading/writing the same addresses after each in-place prepare.
         """
+        # attn_len ignored for paged (kept for API parity with dense).
+        _ = attn_len
         sorted_pids = sorted(self.page_table.pid_mem_sizes.keys())
         n = len(sorted_pids)
+        use_cg = self._cg_bs is not None
+        if use_cg and n != self._cg_bs:
+            raise RuntimeError(
+                f"cuda-graph batch size mismatch: wrapper={self._cg_bs} active={n}"
+            )
 
         if grow:
             for pid in sorted_pids:
@@ -238,20 +315,32 @@ class VirtualMemoryPaged:
                 dtype=torch.int32,
                 device=device,
             )
-            batch_indices = torch.arange(n, dtype=torch.int32, device=device)
             kv_indices, kv_indptr, kv_last_page_len = (
                 self.page_table.convert_to_flashinfer()
             )
-            self._plan_decode(kv_indptr, kv_indices, kv_last_page_len)
+
+            if use_cg:
+                self._copy_into_cg_buffers(
+                    kv_indptr, kv_indices, kv_last_page_len, positions=positions
+                )
+                n_idx = kv_indices.numel()
+                self._plan_decode(
+                    self._cg_indptr, self._cg_indices[:n_idx], self._cg_last_page_len
+                )
+                positions = self._cg_positions
+                batch_indices = self._cg_batch_indices
+                kv_indices = self._cg_indices
+                kv_indptr = self._cg_indptr
+                kv_last_page_len = self._cg_last_page_len
+            else:
+                batch_indices = torch.arange(n, dtype=torch.int32, device=device)
+                self._plan_decode(kv_indptr, kv_indices, kv_last_page_len)
 
             def _cache_updater(layer_id, append_kv):
                 num_batches = append_kv[0].shape[0]
                 num_seqs = append_kv[0].shape[2]
-                assert num_batches == len(
-                    self.page_table.pid_mem_sizes
-                ), "batch size doesn't match active sequences"
+                assert num_batches == n, "batch size doesn't match active sequences"
                 assert num_seqs == 1, "decode step assumes only 1 token decoded per batch"
-                # Already fp16 from attention projs; keep contiguous for flashinfer.
                 append_key = append_kv[0][:, :, 0].contiguous()
                 append_value = append_kv[1][:, :, 0].contiguous()
                 if append_key.dtype != torch.float16:
@@ -274,7 +363,18 @@ class VirtualMemoryPaged:
                 kv_indices, kv_indptr, kv_last_page_len = (
                     self.page_table.convert_to_flashinfer()
                 )
-                self._plan_decode(kv_indptr, kv_indices, kv_last_page_len)
+                if use_cg:
+                    self._copy_into_cg_buffers(
+                        kv_indptr, kv_indices, kv_last_page_len
+                    )
+                    n_idx = kv_indices.numel()
+                    self._plan_decode(
+                        self._cg_indptr,
+                        self._cg_indices[:n_idx],
+                        self._cg_last_page_len,
+                    )
+                else:
+                    self._plan_decode(kv_indptr, kv_indices, kv_last_page_len)
 
             def _cache_updater(layer_id, append_kv):
                 raise RuntimeError(
@@ -296,11 +396,18 @@ class VirtualMemorySDPA:
     def __init__(self, max_num_pages, page_size, num_kv_heads, head_dim, num_layers):
         self.pid_kv_cache = {}
 
+    def enable_cuda_graph(self, batch_size):
+        raise RuntimeError("CUDA graphs require type='paged' virtual memory")
+
+    def disable_cuda_graph(self):
+        pass
+
     def prefill(self, pid, model_kv_cache):
         assert model_kv_cache[0][0].shape[0] == 1
         self.pid_kv_cache[pid] = model_kv_cache
 
-    def get_decode_closures(self, grow=True):
+    def get_decode_closures(self, grow=True, attn_len=None):
+        _ = attn_len
         sorted_pids = sorted(self.pid_kv_cache.keys())
 
         def _cache_updater(layer_id, append_kv):
@@ -382,13 +489,23 @@ class VirtualMemoryCompare:
             max_num_pages, page_size, num_kv_heads, head_dim, num_layers
         )
 
+    def enable_cuda_graph(self, batch_size):
+        self.vm_paged.enable_cuda_graph(batch_size)
+
+    def disable_cuda_graph(self):
+        self.vm_paged.disable_cuda_graph()
+
     def prefill(self, pid, model_kv_cache):
         self.vm_paged.prefill(pid, model_kv_cache)
         self.vm_sdpa.prefill(pid, model_kv_cache)
 
-    def get_decode_closures(self, grow=True):
-        paged_cache_updater, paged_attn = self.vm_paged.get_decode_closures(grow=grow)
-        sdpa_cache_updater, sdpa_attn = self.vm_sdpa.get_decode_closures(grow=grow)
+    def get_decode_closures(self, grow=True, attn_len=None):
+        paged_cache_updater, paged_attn = self.vm_paged.get_decode_closures(
+            grow=grow, attn_len=attn_len
+        )
+        sdpa_cache_updater, sdpa_attn = self.vm_sdpa.get_decode_closures(
+            grow=grow, attn_len=attn_len
+        )
 
         def _cache_updater(layer_id, append_kv):
             paged_cache_updater(layer_id, append_kv)
@@ -412,8 +529,230 @@ class VirtualMemoryCompare:
         self.vm_sdpa.free(pid)
 
 
+class VirtualMemoryDense:
+    """
+    Contiguous KV cache + SDPA. Fixed shapes so the full decode step can be
+    captured in a CUDA graph (unlike FlashInfer on this stack).
+    """
+
+    def __init__(
+        self,
+        max_num_pages,
+        page_size,
+        num_kv_heads,
+        head_dim,
+        num_layers,
+        max_seq_len=1024,
+        max_batch_size=32,
+    ):
+        self.num_kv_heads = num_kv_heads
+        self.head_dim = head_dim
+        self.num_layers = num_layers
+        self.max_seq_len = max_seq_len
+        self.max_batch_size = max_batch_size
+        self.k_cache = torch.zeros(
+            num_layers,
+            max_batch_size,
+            num_kv_heads,
+            max_seq_len,
+            head_dim,
+            dtype=torch.float16,
+            device=device,
+        )
+        self.v_cache = torch.zeros_like(self.k_cache)
+        self.seq_lens = torch.zeros(max_batch_size, dtype=torch.int32, device=device)
+        # 0 = attend, -inf = masked
+        self.attn_mask = torch.full(
+            (max_batch_size, 1, 1, max_seq_len),
+            float("-inf"),
+            dtype=torch.float16,
+            device=device,
+        )
+        self.pid_to_slot = {}
+        self._free_slots = list(range(max_batch_size))
+        self._cg_bs = None
+        # Persistent buffers closed over by CUDA-graph closures (updated in-place).
+        self._write_slots = torch.arange(
+            max_batch_size, dtype=torch.int64, device=device
+        )
+        self._write_positions = torch.zeros(
+            max_batch_size, dtype=torch.int64, device=device
+        )
+        self._active_n = 0
+        # Host-side seq lengths — avoid GPU sync (.item) on the hot decode path.
+        self._host_seq_lens = [0] * max_batch_size
+
+    def enable_cuda_graph(self, batch_size):
+        if batch_size > self.max_batch_size:
+            raise RuntimeError(
+                f"batch_size {batch_size} > max_batch_size {self.max_batch_size}"
+            )
+        self._cg_bs = batch_size
+
+    def disable_cuda_graph(self):
+        self._cg_bs = None
+
+    def max_host_seq_len(self, n=None):
+        if n is None:
+            n = len(self.pid_to_slot)
+        if n <= 0:
+            return 0
+        return max(self._host_seq_lens[:n])
+
+    def prefill(self, pid, model_kv_cache):
+        assert model_kv_cache[0][0].shape[0] == 1
+        if pid in self.pid_to_slot:
+            raise RuntimeError(f"pid {pid} already prefilling")
+        if not self._free_slots:
+            raise RuntimeError("dense KV: no free slots")
+        slot = self._free_slots.pop(0)
+        self.pid_to_slot[pid] = slot
+        n_seq = model_kv_cache[0][0].shape[2]
+        if n_seq > self.max_seq_len:
+            raise RuntimeError(
+                f"prefill len {n_seq} > max_seq_len {self.max_seq_len}"
+            )
+        for layer in range(self.num_layers):
+            self.k_cache[layer, slot, :, :n_seq].copy_(model_kv_cache[layer][0][0])
+            self.v_cache[layer, slot, :, :n_seq].copy_(model_kv_cache[layer][1][0])
+        self.seq_lens[slot] = n_seq
+        self._host_seq_lens[slot] = n_seq
+        self.attn_mask[slot].fill_(float("-inf"))
+        self.attn_mask[slot, 0, 0, :n_seq] = 0
+
+    def free(self, pid):
+        slot = self.pid_to_slot.pop(pid)
+        self.seq_lens[slot] = 0
+        self._host_seq_lens[slot] = 0
+        self.attn_mask[slot].fill_(float("-inf"))
+        self._free_slots.append(slot)
+        self._free_slots.sort()
+        self.compact()
+
+    def compact(self):
+        """Repack active sequences into slots 0..n-1 (required for CUDA graphs)."""
+        if not self.pid_to_slot:
+            self._free_slots = list(range(self.max_batch_size))
+            self._host_seq_lens = [0] * self.max_batch_size
+            return
+        ordered = sorted(self.pid_to_slot.items(), key=lambda kv: kv[1])
+        if [s for _, s in ordered] == list(range(len(ordered))):
+            return  # already dense
+        new_map = {}
+        for new_slot, (pid, old_slot) in enumerate(ordered):
+            if new_slot == old_slot:
+                new_map[pid] = new_slot
+                continue
+            # Move KV + metadata
+            self.k_cache[:, new_slot].copy_(self.k_cache[:, old_slot])
+            self.v_cache[:, new_slot].copy_(self.v_cache[:, old_slot])
+            self.seq_lens[new_slot] = self.seq_lens[old_slot]
+            self._host_seq_lens[new_slot] = self._host_seq_lens[old_slot]
+            self.attn_mask[new_slot].copy_(self.attn_mask[old_slot])
+            self.seq_lens[old_slot] = 0
+            self._host_seq_lens[old_slot] = 0
+            self.attn_mask[old_slot].fill_(float("-inf"))
+            new_map[pid] = new_slot
+        self.pid_to_slot = new_map
+        n = len(new_map)
+        self._free_slots = list(range(n, self.max_batch_size))
+
+    def get_decode_closures(self, grow=True, attn_len=None):
+        sorted_pids = sorted(
+            self.pid_to_slot.keys(), key=lambda p: self.pid_to_slot[p]
+        )
+        n = len(sorted_pids)
+        if n == 0:
+            raise RuntimeError("no active sequences")
+        slots = [self.pid_to_slot[pid] for pid in sorted_pids]
+        contiguous = slots == list(range(n))
+        if self._cg_bs is not None and not contiguous:
+            raise RuntimeError(
+                "dense CUDA graph requires contiguous slots 0..bs-1"
+            )
+        if self._cg_bs is not None and n != self._cg_bs:
+            raise RuntimeError(
+                f"cuda-graph batch size mismatch: wrapper={self._cg_bs} active={n}"
+            )
+
+        # Contiguous 0..n-1: slots buffer is already arange; skip host->device copy.
+        if not contiguous:
+            self._write_slots[:n].copy_(
+                torch.tensor(slots, dtype=torch.int64, device=device)
+            )
+        slot_tensor = self._write_slots[:n]
+        self._active_n = n
+
+        if grow:
+            live_before = self.max_host_seq_len(n)
+            if live_before >= self.max_seq_len:
+                raise RuntimeError(
+                    f"sequence exceeded max_seq_len={self.max_seq_len}"
+                )
+            # Write at current length, then bump host + device counters.
+            self._write_positions[:n].copy_(self.seq_lens[slot_tensor].to(torch.int64))
+            positions = self._write_positions[:n]
+            self.seq_lens[slot_tensor] = self.seq_lens[slot_tensor] + 1
+            for s in slots:
+                self._host_seq_lens[s] += 1
+            self.attn_mask[slot_tensor, 0, 0, positions] = 0
+
+            def _cache_updater(layer_id, append_kv):
+                assert append_kv[0].shape[0] == self._active_n
+                k = append_kv[0].squeeze(2)
+                v = append_kv[1].squeeze(2)
+                if k.dtype != torch.float16:
+                    k = k.half()
+                    v = v.half()
+                sl = self._write_slots[: self._active_n]
+                pos = self._write_positions[: self._active_n]
+                self.k_cache[layer_id, sl, :, pos, :] = k
+                self.v_cache[layer_id, sl, :, pos, :] = v
+
+        else:
+
+            def _cache_updater(layer_id, append_kv):
+                raise RuntimeError(
+                    "cross-attn KV is static; cache updater must not be called"
+                )
+
+        k_view = self.k_cache[:, :n]
+        v_view = self.v_cache[:, :n]
+        mask_view = self.attn_mask[:n]
+        use_index = not contiguous
+        live_len = self.max_host_seq_len(n)
+        # Fixed attn_len for CUDA-graph capture/replay (seq-length bucket).
+        cur_len = int(attn_len) if attn_len is not None else live_len
+        if cur_len < live_len:
+            raise RuntimeError(f"attn_len {cur_len} < live seq {live_len}")
+        if cur_len > self.max_seq_len:
+            cur_len = self.max_seq_len
+
+        def _attn(layer_id, q):
+            if use_index:
+                sl = self._write_slots[: self._active_n]
+                k = self.k_cache[layer_id].index_select(0, sl)[:, :, :cur_len]
+                v = self.v_cache[layer_id].index_select(0, sl)[:, :, :cur_len]
+                m = self.attn_mask.index_select(0, sl)[:, :, :, :cur_len]
+            else:
+                k = k_view[layer_id, :, :, :cur_len]
+                v = v_view[layer_id, :, :, :cur_len]
+                m = mask_view[:, :, :, :cur_len]
+            if sdpa_kernel is None:
+                return torch.nn.functional.scaled_dot_product_attention(
+                    q, k, v, attn_mask=m
+                )
+            backends = _SDPA_SHORT if cur_len <= _SDPA_SHORT_LEN else _SDPA_LONG
+            with sdpa_kernel(backends):
+                return torch.nn.functional.scaled_dot_product_attention(
+                    q, k, v, attn_mask=m
+                )
+
+        return _cache_updater, _attn
+
+
 def VirtualMemory(
-    max_num_pages, page_size, num_kv_heads, head_dim, num_layers, type="sdpa"
+    max_num_pages, page_size, num_kv_heads, head_dim, num_layers, type="sdpa", **kwargs
 ):
     if type == "paged":
         return VirtualMemoryPaged(
@@ -423,7 +762,18 @@ def VirtualMemory(
         return VirtualMemorySDPA(
             max_num_pages, page_size, num_kv_heads, head_dim, num_layers
         )
+    elif type == "dense":
+        return VirtualMemoryDense(
+            max_num_pages,
+            page_size,
+            num_kv_heads,
+            head_dim,
+            num_layers,
+            **kwargs,
+        )
     elif type == "compare":
         return VirtualMemoryCompare(
             max_num_pages, page_size, num_kv_heads, head_dim, num_layers
         )
+    raise ValueError(f"unknown VirtualMemory type: {type}")
+

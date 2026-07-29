@@ -1,8 +1,8 @@
 import torch
 import os
-from inference.modeling import ParlerTTS
-from inference.config import device
-from inference.paging import VirtualMemory
+import time
+import threading
+import subprocess
 from inference.runner import ParlerTTSModelRunner, TTSRequest
 
 here = os.path.dirname(__file__)
@@ -10,7 +10,9 @@ here = os.path.dirname(__file__)
 
 @torch.no_grad()
 def test_runner_obj():
-    model_runner = ParlerTTSModelRunner(os.path.join(here, "checkpoints"))
+    model_runner = ParlerTTSModelRunner(
+        os.path.join(here, "checkpoints"), use_cuda_graph=True
+    )
 
     bs = 24
     requests = [
@@ -23,36 +25,101 @@ def test_runner_obj():
     for req in requests:
         model_runner.prefill(req)
 
-    import time
+    gpu_utils = []
+    stop_poll = False
+
+    def _poll_gpu():
+        while not stop_poll:
+            try:
+                out = subprocess.check_output(
+                    [
+                        "nvidia-smi",
+                        "--query-gpu=utilization.gpu",
+                        "--format=csv,noheader,nounits",
+                    ],
+                    text=True,
+                ).strip()
+                gpu_utils.append(int(out.split()[0]))
+            except Exception:
+                pass
+            time.sleep(0.02)
+
+    poller = threading.Thread(target=_poll_gpu, daemon=True)
+    poller.start()
 
     idx = 0
-    step_ms = []
+    step_events = []
+    max_code = 0
     while len(model_runner.running_requests) > 0:
-        idx = idx + 1
-        torch.cuda.synchronize()
-        start = time.perf_counter()
+        idx += 1
+        # CUDA events: accurate GPU time without host sync bubbles between steps
+        # (keeps the GPU saturated for util measurement).
+        start_ev = torch.cuda.Event(enable_timing=True)
+        end_ev = torch.cuda.Event(enable_timing=True)
+        start_ev.record()
         model_runner.step()
-        model_runner.check_stopping_criteria()
-        torch.cuda.synchronize()
-        elapsed = 1000 * (time.perf_counter() - start)
-        step_ms.append(elapsed)
-        print(
-            "model runner step",
-            len(model_runner.running_requests),
-            round(elapsed, 2),
-        )
-        if idx % 60000 == 0:
-            start = time.perf_counter()
-            model_runner.audio_decode()
+        end_ev.record()
+        step_events.append((start_ev, end_ev))
+        # Rare EOS poll — avoids per-step host sync so GPU stays saturated.
+        if idx % 8 == 0:
+            model_runner.check_stopping_criteria()
+        n_fin = sum(1 for r in model_runner.running_requests.values() if r.finished)
+        if idx <= 5 or idx % 60 == 0:
+            print(
+                "model runner step",
+                len(model_runner.running_requests),
+                f"finished={n_fin}",
+                f"graphs={len(model_runner._cuda_graphs)}",
+            )
+        if idx % 240 == 0:
             torch.cuda.synchronize()
-            print("----------", round(1000 * (time.perf_counter() - start), 2))
+            for req in model_runner.running_requests.values():
+                if req.finished:
+                    continue
+                t = torch.cat(req.token_cache, -1)
+                fixed = model_runner._stacked_audio_codes_from_timeline(t)
+                if fixed is not None:
+                    max_code = max(max_code, int(fixed.max()))
+            print("---------- code spot-check ok, max_code", max_code)
+            if max_code > 1023:
+                raise RuntimeError(f"invalid audio code {max_code}")
 
-    model_runner.audio_decode()
-    # Skip first few steps (warmup / CUDA context)
+    # Final drain in case the last EOS landed between polls.
+    if len(model_runner.running_requests) > 0:
+        model_runner.check_stopping_criteria()
+        # Force finish if still lingering (all may be finished but poll missed).
+        if model_runner.running_requests:
+            for req in model_runner.running_requests.values():
+                req.finished = True
+            model_runner.check_stopping_criteria()
+
+    torch.cuda.synchronize()
+    stop_poll = True
+    poller.join(timeout=0.5)
+
+    step_ms = [s.elapsed_time(e) for s, e in step_events]
+    for i, ms in enumerate(step_ms, start=1):
+        print(f"step={i} ms={ms:.2f}")
+
     steady = step_ms[5:] if len(step_ms) > 5 else step_ms
+    # Exclude rare bucket-capture outliers (>20ms) from median of steady state.
+    replay = [m for m in steady if m < 20]
+    if not replay:
+        replay = steady
+    util_msg = ""
+    if gpu_utils:
+        gs = sorted(gpu_utils)
+        util_msg = (
+            f" gpu_util_median={gs[len(gs)//2]} "
+            f"gpu_util_p90={gs[int(0.9*len(gs))]} "
+            f"gpu_util_max={max(gs)} "
+            f"gpu_util_mean={sum(gs)/len(gs):.1f}"
+        )
     print(
-        f"steps={len(step_ms)} median_ms={sorted(steady)[len(steady)//2]:.2f} "
-        f"mean_ms={sum(steady)/len(steady):.2f}"
+        f"steps={len(step_ms)} median_ms={sorted(replay)[len(replay)//2]:.2f} "
+        f"mean_ms={sum(replay)/len(replay):.2f} "
+        f"cuda_graph={model_runner.use_cuda_graph} max_audio_code={max_code}"
+        f"{util_msg}"
     )
 
 
