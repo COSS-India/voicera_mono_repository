@@ -620,14 +620,15 @@ class VirtualMemoryDense:
         self.attn_mask[slot].fill_(float("-inf"))
         self.attn_mask[slot, 0, 0, :n_seq] = 0
 
-    def free(self, pid):
+    def free(self, pid, compact=True):
         slot = self.pid_to_slot.pop(pid)
         self.seq_lens[slot] = 0
         self._host_seq_lens[slot] = 0
         self.attn_mask[slot].fill_(float("-inf"))
         self._free_slots.append(slot)
         self._free_slots.sort()
-        self.compact()
+        if compact:
+            self.compact()
 
     def compact(self):
         """Repack active sequences into slots 0..n-1 (required for CUDA graphs)."""

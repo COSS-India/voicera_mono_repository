@@ -52,30 +52,23 @@ def test_runner_obj():
     max_code = 0
     while len(model_runner.running_requests) > 0:
         idx += 1
-        # CUDA events: accurate GPU time without host sync bubbles between steps
-        # (keeps the GPU saturated for util measurement).
         start_ev = torch.cuda.Event(enable_timing=True)
         end_ev = torch.cuda.Event(enable_timing=True)
         start_ev.record()
         model_runner.step()
         end_ev.record()
         step_events.append((start_ev, end_ev))
-        # Rare EOS poll — avoids per-step host sync so GPU stays saturated.
-        if idx % 8 == 0:
-            model_runner.check_stopping_criteria()
-        n_fin = sum(1 for r in model_runner.running_requests.values() if r.finished)
+        # Evict finished requests every step (continuous batching).
+        model_runner.check_stopping_criteria()
         if idx <= 5 or idx % 60 == 0:
             print(
                 "model runner step",
                 len(model_runner.running_requests),
-                f"finished={n_fin}",
                 f"graphs={len(model_runner._cuda_graphs)}",
             )
         if idx % 240 == 0:
             torch.cuda.synchronize()
             for req in model_runner.running_requests.values():
-                if req.finished:
-                    continue
                 t = torch.cat(req.token_cache, -1)
                 fixed = model_runner._stacked_audio_codes_from_timeline(t)
                 if fixed is not None:
@@ -84,25 +77,12 @@ def test_runner_obj():
             if max_code > 1023:
                 raise RuntimeError(f"invalid audio code {max_code}")
 
-    # Final drain in case the last EOS landed between polls.
-    if len(model_runner.running_requests) > 0:
-        model_runner.check_stopping_criteria()
-        # Force finish if still lingering (all may be finished but poll missed).
-        if model_runner.running_requests:
-            for req in model_runner.running_requests.values():
-                req.finished = True
-            model_runner.check_stopping_criteria()
-
     torch.cuda.synchronize()
     stop_poll = True
     poller.join(timeout=0.5)
 
     step_ms = [s.elapsed_time(e) for s, e in step_events]
-    for i, ms in enumerate(step_ms, start=1):
-        print(f"step={i} ms={ms:.2f}")
-
     steady = step_ms[5:] if len(step_ms) > 5 else step_ms
-    # Exclude rare bucket-capture outliers (>20ms) from median of steady state.
     replay = [m for m in steady if m < 20]
     if not replay:
         replay = steady

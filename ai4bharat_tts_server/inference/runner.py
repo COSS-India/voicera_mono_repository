@@ -201,14 +201,6 @@ class ParlerTTSModelRunner:
         for bid, pid in enumerate(sorted_pids):
             req = self.running_requests[pid]
             tok = next_decoder_input_ids[bid]
-            if req.finished:
-                # Pad the CUDA-graph batch with EOS; do not extend audio token_cache.
-                tok = torch.full_like(tok, self.eos_token_id)
-                req.decoder_input_ids.append(tok)
-                req.decoder_position_ids.append(
-                    next_decoder_position_ids[bid].unsqueeze(0)
-                )
-                continue
             req.decoder_input_ids.append(tok)
             req.token_cache.append(tok)
             req.decoder_position_ids.append(
@@ -379,68 +371,45 @@ class ParlerTTSModelRunner:
         return sampled_tokens.unsqueeze(-1)
 
     def check_stopping_criteria(self):
-        # Keep finished requests in the batch until the whole wave is done so
-        # CUDA-graph batch size stays fixed (stable replay, high GPU util).
-        sorted_pids = self._ordered_pids()
-        active = [p for p in sorted_pids if not self.running_requests[p].finished]
-        if active:
-            stacked = torch.stack(
-                [self.running_requests[p].decoder_input_ids[-1] for p in active],
-                dim=0,
-            )
-            done_list = torch.all(stacked == self.eos_token_id, dim=(1, 2)).tolist()
-            for pid, is_done in zip(active, done_list):
-                if is_done:
-                    self.running_requests[pid].finished = True
-            # Safety: stop if we're about to blow the dense KV budget.
-            max_len = self.self_attn_vmem.max_seq_len
-            for pid in active:
-                req = self.running_requests[pid]
-                if req.finished:
-                    continue
-                slot = self.self_attn_vmem.pid_to_slot[pid]
-                if self.self_attn_vmem._host_seq_lens[slot] >= max_len - 2:
-                    req.finished = True
-        if self.running_requests and all(
-            r.finished for r in self.running_requests.values()
-        ):
-            self._finish_wave()
-
-    def _finish_wave(self):
-        """Release KV/graphs first, then DAC-decode finished requests one-by-one."""
-        reqs = list(self.running_requests.values())
-        self.running_requests.clear()
-        for req in reqs:
+        """Evict finished requests immediately (continuous batching / streaming)."""
+        to_evict = []
+        max_len = self.self_attn_vmem.max_seq_len
+        for pid in self._ordered_pids():
+            req = self.running_requests[pid]
+            decoder_input_ids = req.decoder_input_ids[-1]
+            if bool(torch.all(decoder_input_ids == self.eos_token_id).item()):
+                to_evict.append(req)
+                continue
+            slot = self.self_attn_vmem.pid_to_slot[pid]
+            if self.self_attn_vmem._host_seq_lens[slot] >= max_len - 2:
+                to_evict.append(req)
+        if not to_evict:
+            return
+        # Batch free: compact once after all frees to avoid repeated KV moves.
+        for i, req in enumerate(to_evict):
+            is_last = i == len(to_evict) - 1
+            token_cache = req.token_cache
+            audio_to_yield = req.audio_to_yield
+            pid = req.pid
+            del self.running_requests[pid]
+            self.free(req, compact=is_last)
             try:
-                self.self_attn_vmem.free(req.pid)
+                audio = self._audio_numpy_from_token_cache(token_cache)
             except Exception:
-                pass
-            try:
-                self.cross_attn_vmem.free(req.pid)
-            except Exception:
-                pass
-        self._invalidate_cuda_graph()
-        try:
-            self.self_attn_vmem.disable_cuda_graph()
-            self.cross_attn_vmem.disable_cuda_graph()
-        except Exception:
-            pass
-        torch.cuda.empty_cache()
-        for req in reqs:
-            try:
-                audio = self._audio_numpy_from_token_cache(req.token_cache)
-            except Exception:
-                audio = None
+                torch.cuda.empty_cache()
+                try:
+                    audio = self._audio_numpy_from_token_cache(token_cache)
+                except Exception:
+                    audio = None
             if audio is not None:
-                tail = audio[req.audio_to_yield :]
+                tail = audio[audio_to_yield:]
                 if tail.size:
-                    self._pending_audio_decode[req.pid] = tail
-            torch.cuda.empty_cache()
+                    self._pending_audio_decode[pid] = tail
 
-    def free(self, request):
-        self.self_attn_vmem.free(request.pid)
-        self.cross_attn_vmem.free(request.pid)
-        # Slot compaction changes layout — drop graphs so next step re-captures.
+    def free(self, request, compact=True):
+        self.self_attn_vmem.free(request.pid, compact=compact)
+        self.cross_attn_vmem.free(request.pid, compact=compact)
+        # Slot / batch-size change — drop graphs so next step re-captures.
         self._cuda_graphs.clear()
         self._cuda_graph = None
         self._cuda_graph_bs = None
@@ -451,17 +420,19 @@ class ParlerTTSModelRunner:
             pass
 
     def evict(self, request):
-        # Free KV / CUDA-graph pools before DAC so long utterances fit in VRAM.
         token_cache = request.token_cache
         audio_to_yield = request.audio_to_yield
         pid = request.pid
         del self.running_requests[pid]
-        self.free(request)
-        torch.cuda.empty_cache()
+        self.free(request, compact=True)
         try:
             audio = self._audio_numpy_from_token_cache(token_cache)
         except Exception:
-            audio = None
+            torch.cuda.empty_cache()
+            try:
+                audio = self._audio_numpy_from_token_cache(token_cache)
+            except Exception:
+                audio = None
         if audio is not None:
             tail = audio[audio_to_yield:]
             if tail.size:
