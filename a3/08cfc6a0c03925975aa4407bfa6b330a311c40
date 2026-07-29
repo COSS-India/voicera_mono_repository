@@ -1,0 +1,27 @@
+voicera_frontend/components/assistants/agent-card.tsx
+  s_08433533e9f246::t_9f8245336541ce 56
+  s_08433533e9f246::t_1ef976113b9cf9 66-67
+  s_08433533e9f246::t_93000bddb9be07 43
+  s_08433533e9f246::t_be85a4f59d17be 18-21
+  s_08433533e9f246::t_52526c3bcf472f 239-273
+  s_08433533e9f246::t_d6896ca6cd03b6 17
+voicera_frontend/app/(dashboard)/assistants/page.tsx
+  s_08433533e9f246::t_ac2cd7d9aeac35 1267
+  s_08433533e9f246::t_cc427810b07f88 348-353
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a308cfc6a0c03925975aa4407bfa6b330a311c40",
+  "prompts": {},
+  "sessions": {
+    "s_08433533e9f246": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9083cec8-5b24-4431-ab6f-07bb05e39075",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
