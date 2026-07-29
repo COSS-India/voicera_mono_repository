@@ -1,6 +1,15 @@
 "use client"
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +30,7 @@ import {
   MoreVertical,
   Settings,
   Trash2,
+  Loader2,
 } from "lucide-react"
 import type { Agent } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -34,6 +44,7 @@ interface AgentCardProps {
   onTestBrowser: (agent: Agent) => void
   onViewHistory: (agent: Agent) => void
   onDelete?: (agent: Agent) => void
+  isDeleting?: boolean
   callCount?: number
 }
 
@@ -46,8 +57,10 @@ export function AgentCard({
   onTestBrowser,
   onViewHistory,
   onDelete,
+  isDeleting = false,
   callCount = 0,
 }: AgentCardProps) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
   const isAlertAgent = agent.agent_config?.interaction_mode === "non_conversational"
@@ -57,10 +70,17 @@ export function AgentCard({
 
   const isConnected = Boolean(agent?.phone_number)
 
-  const handleDeleteClick = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (onDelete) {
+  const openDeleteDialog = () => {
+    setShowDeleteDialog(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!onDelete) return
+    try {
       await onDelete(agent)
+      setShowDeleteDialog(false)
+    } catch {
+      // Keep dialog open so the user can retry or cancel.
     }
   }
 
@@ -168,6 +188,7 @@ export function AgentCard({
   )
 
   return (
+    <>
     <div
       onClick={handleCardClick}
       className="group cursor-pointer rounded-xl border-[0.5px] border-slate-200 bg-white p-[18px] transition-all duration-150 hover:-translate-y-[2px] hover:border-slate-300"
@@ -196,8 +217,13 @@ export function AgentCard({
                 onClick={(e) => e.stopPropagation()}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full border-[0.5px] border-slate-300 bg-transparent text-slate-600 transition-colors hover:bg-slate-50"
                 title="More options"
+                disabled={isDeleting}
               >
-                <MoreVertical className="h-4 w-4" />
+                {isDeleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MoreVertical className="h-4 w-4" />
+                )}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
@@ -213,8 +239,11 @@ export function AgentCard({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={handleDeleteClick}
+                onSelect={() => {
+                  setTimeout(() => openDeleteDialog(), 0)
+                }}
                 className="cursor-pointer text-red-600 focus:bg-red-50 focus:text-red-600"
+                disabled={isDeleting}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete Agent
@@ -273,5 +302,52 @@ export function AgentCard({
         </Button>
       </div>
     </div>
+
+    <Dialog
+      open={showDeleteDialog}
+      onOpenChange={(open) => {
+        if (!isDeleting) {
+          setShowDeleteDialog(open)
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete agent?</DialogTitle>
+          <DialogDescription className="pt-2">
+            Are you sure you want to delete{" "}
+            <span className="font-medium text-slate-700">&quot;{displayName}&quot;</span>?
+            This will remove the agent and unlink any attached phone number. This action cannot be
+            undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-1 w-full">
+          <Button
+            variant="outline"
+            onClick={() => setShowDeleteDialog(false)}
+            disabled={isDeleting}
+            className="flex-1 sm:flex-none"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleConfirmDelete}
+            disabled={isDeleting}
+            className="flex-1 sm:flex-none"
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              "Yes"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

@@ -336,6 +336,19 @@ export interface User {
   is_owner?: boolean
 }
 
+export interface UserJoinEligibility {
+  exists: boolean
+  can_join: boolean
+  reason:
+    | "new_user"
+    | "no_org"
+    | "solo_owner"
+    | "already_in_org"
+    | "member_of_other_org"
+  org_id?: string
+  is_member?: boolean
+}
+
 export interface LoginResponse {
   access_token: string
   token_type: string
@@ -382,6 +395,9 @@ export interface AgentConfig {
   user_online_detection_closing_message?: string
   session_timeout_minutes?: number
   language: string
+  languages?: string[]
+  secondary_languages?: string[]
+  secondary_language?: string
   knowledge_base_enabled?: boolean
   knowledge_document_ids?: string[]
   knowledge_top_k?: number
@@ -471,6 +487,8 @@ export interface MeetingsPageParams {
   date_to?: string
   date_sort_order?: "latest" | "oldest"
   duration_sort_order?: "longest" | "shortest" | null
+  has_latency_metrics?: boolean
+  search?: string
 }
 
 export interface PaginatedMeetings {
@@ -502,6 +520,8 @@ function buildMeetingsQueryString(params: MeetingsPageParams): string {
   if (params.duration_sort_order) {
     q.set("duration_sort_order", params.duration_sort_order)
   }
+  if (params.has_latency_metrics) q.set("has_latency_metrics", "true")
+  if (params.search) q.set("search", params.search)
   return q.toString()
 }
 
@@ -1606,6 +1626,31 @@ export async function transferOwnership(
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to transfer ownership")
+  }
+
+  return response.json()
+}
+
+/**
+ * Check if an email can join an organization via invite link (public endpoint).
+ */
+export async function checkUserJoinEligibility(
+  email: string,
+  orgId?: string
+): Promise<UserJoinEligibility> {
+  const query = orgId ? `?org_id=${encodeURIComponent(orgId)}` : ""
+  const response = await fetch(
+    `/api/v1/users/check/${encodeURIComponent(email)}${query}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  )
+
+  if (!response.ok) {
+    throw new Error("Failed to check email eligibility")
   }
 
   return response.json()

@@ -125,8 +125,11 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground min-h-dvh;
   }
 }
 
@@ -191,5 +194,21 @@
     animation: nav-progress-exit 0.36s ease-out forwards;
     transform-origin: left center;
     will-change: opacity, transform;
+  }
+
+  .page-shell-x {
+    @apply px-4 sm:px-5 lg:px-8;
+  }
+
+  .page-shell-y {
+    @apply py-4 sm:py-5;
+  }
+
+  .table-scroll {
+    @apply overflow-x-auto overscroll-x-contain;
+  }
+
+  .mobile-toast {
+    @apply fixed top-20 left-4 right-4 z-50 sm:left-auto sm:right-6 sm:max-w-sm;
   }
 }

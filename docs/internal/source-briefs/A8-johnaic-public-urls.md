@@ -22,8 +22,7 @@ It likely comes from an early deployment hostname (`johnaic.com`). New documenta
 |----------|------------|---------|
 | `JOHNAIC_SERVER_URL` | voice server | Public **HTTPS** base, e.g. `https://voice.example.gov.in` |
 | `JOHNAIC_WEBSOCKET_URL` | voice server | Public **WSS** base, e.g. `wss://voice.example.gov.in` |
-| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | frontend | Same HTTPS base; builds `/answer?agent_id=...`, `/plivo/answer?agent_id=...` |
-| `NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL` | frontend (optional) | Explicit WSS for "Test on Browser"; else derived from server URL |
+| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | frontend | Voice server base; answer URLs and **Test on Browser** WebSocket (derived `ws`/`wss` in `lib/johnaic-config.ts`) |
 
 **Code references:**
 
@@ -41,7 +40,7 @@ It likely comes from an early deployment hostname (`johnaic.com`). New documenta
 | Plivo answer webhook | `{JOHNAIC_SERVER_URL}/plivo/answer?agent_id={uuid}` |
 | Audio WebSocket (Vobiz) | `{JOHNAIC_WEBSOCKET_URL}/agent/{agent_id}` |
 | Audio WebSocket (Plivo) | `{JOHNAIC_WEBSOCKET_URL}/plivo/agent/{agent_id}` |
-| Browser test | `wss://.../agent/{agent_id}` (see `talk-on-browser-feature.md`) |
+| Browser test | `{ws-base}/browser/agent/{agent_id}` from `NEXT_PUBLIC_JOHNAIC_SERVER_URL` |
 
 ---
 
