@@ -345,6 +345,12 @@ export default function AssistantsPage() {
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
   const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(false)
 
+  // Test calls need a telephony provider (Vobiz/Plivo) integrated. Model names
+  // are lowercased when added to integratedProviders (see fetchData below).
+  const hasTelephonyProvider =
+    integratedProviders.has("vobizauthid") ||
+    integratedProviders.has("plivoauthid")
+
   const activeWizardSteps = useMemo(() => {
     const keys = getWizardStepKeys(config.interactionMode)
     return keys.map((key, index) => ({
@@ -1258,6 +1264,7 @@ export default function AssistantsPage() {
                 onTestBrowser={handleTestBrowser}
                 onViewHistory={handleViewHistory}
                 onDelete={handleDelete}
+                hasTelephonyProvider={hasTelephonyProvider}
               />
             ))}
           </div>

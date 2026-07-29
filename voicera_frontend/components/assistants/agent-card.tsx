@@ -15,6 +15,11 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   PhoneCall,
   Monitor,
   Clock,
@@ -35,6 +40,7 @@ interface AgentCardProps {
   onViewHistory: (agent: Agent) => void
   onDelete?: (agent: Agent) => void
   callCount?: number
+  hasTelephonyProvider?: boolean
 }
 
 export function AgentCard({
@@ -47,6 +53,7 @@ export function AgentCard({
   onViewHistory,
   onDelete,
   callCount = 0,
+  hasTelephonyProvider = true,
 }: AgentCardProps) {
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
@@ -56,9 +63,8 @@ export function AgentCard({
     : (agent.agent_config?.system_prompt ?? "").trim()
 
   const isConnected = Boolean(agent?.phone_number)
-  // Any agent can place outbound test calls: orgs without their own Vobiz
-  // Integration fall back to the platform's shared caller ID on the server.
-  const canTestCall = true
+  // Test calls require at least one telephony provider (Vobiz/Plivo) integrated.
+  const canTestCall = hasTelephonyProvider
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -230,34 +236,41 @@ export function AgentCard({
       {hoverZoneBody}
 
       <div className="grid grid-cols-2 gap-2">
-        <Button
-          onClick={(e) => {
-            e.stopPropagation()
-            if (canTestCall) {
-              onTestCall(agent)
-            }
-          }}
-          variant="outline"
-          disabled={!canTestCall}
-          className={cn(
-            "h-9 rounded-[7px] border-[0.5px] bg-transparent px-2 text-[13px] font-medium shadow-none",
-            "hover:bg-[var(--color-background-secondary)] hover:border-[var(--color-border-secondary)] hover:text-[var(--color-text-primary)]",
-            canTestCall
-              ? "border-slate-300 text-slate-700"
-              : "border-slate-200 text-slate-400"
-          )}
-          style={{
-            transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
-          }}
-          title={
-            !canTestCall
-              ? "Please attach a phone number to this agent first"
-              : "Make a test call"
-          }
-        >
-          <PhoneCall className="mr-1.5 h-3.5 w-3.5" />
-          Test Call
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* span wrapper so the tooltip still fires when the button is disabled */}
+            <span className="w-full">
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (canTestCall) {
+                    onTestCall(agent)
+                  }
+                }}
+                variant="outline"
+                disabled={!canTestCall}
+                className={cn(
+                  "h-9 w-full rounded-[7px] border-[0.5px] bg-transparent px-2 text-[13px] font-medium shadow-none",
+                  "hover:bg-[var(--color-background-secondary)] hover:border-[var(--color-border-secondary)] hover:text-[var(--color-text-primary)]",
+                  canTestCall
+                    ? "border-slate-300 text-slate-700"
+                    : "border-slate-200 text-slate-400"
+                )}
+                style={{
+                  transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+                }}
+              >
+                <PhoneCall className="mr-1.5 h-3.5 w-3.5" />
+                Test Call
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canTestCall
+              ? "Make a test call"
+              : "Integrate a telephony provider to make test calls"}
+          </TooltipContent>
+        </Tooltip>
 
         <Button
           onClick={(e) => {
