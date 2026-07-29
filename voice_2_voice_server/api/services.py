@@ -578,6 +578,7 @@ def create_tts_service(
         "ai4bharat": "AI4Bharat",
         "bhashini": "Bhashini",
         "elevenlabs": "ElevenLabs",
+        "omnivoice": "OmniVoice",
     }
     provider = _normalize_provider_name(provider, provider_map, "TTS")
     
@@ -758,6 +759,30 @@ def create_tts_service(
             voice=voice,
             sample_rate=sample_rate,
             encoding=encoding,
+        )
+
+    elif provider == "OmniVoice":
+        from services.omnivoice.tts import OmniVoiceTTSService
+        lang_code = TTS_LANGUAGE_MAP["OmniVoice"].get(language, language or "en")
+        # ref_audio_key stored in agent config is just the filename key (no org_id prefix).
+        # MinIO object name = "org_id/key" — prefix here so tts.py can fetch directly.
+        raw_ref_key = args.get("ref_audio_key") or tts_config.get("ref_audio_key")
+        if raw_ref_key and org_id and not raw_ref_key.startswith(f"{org_id}/"):
+            ref_audio_key = f"{org_id}/{raw_ref_key}"
+        else:
+            ref_audio_key = raw_ref_key or None
+        ref_text = args.get("ref_text") or tts_config.get("ref_text")
+        instruct = args.get("instruct") or tts_config.get("instruct")
+        speed = float(args.get("speed") or tts_config.get("speed") or 1.0)
+        server_url = args.get("server_url") or tts_config.get("server_url")
+        return OmniVoiceTTSService(
+            server_url=server_url,
+            language=lang_code,
+            ref_audio_key=ref_audio_key,
+            ref_text=ref_text,
+            instruct=instruct,
+            speed=speed,
+            sample_rate=sample_rate,
         )
 
     else:

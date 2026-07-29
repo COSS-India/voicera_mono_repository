@@ -6,36 +6,127 @@
           "deepgram": {
             "available": true,
             "model": "aura-2",
-            "voices": ["thalia", "arcas", "luna", "perseus", "orpheus", "angus", "helios", "athena", "stella", "hera", "orion", "asteria"]
+            "voices": [
+              "thalia",
+              "arcas",
+              "luna",
+              "perseus",
+              "orpheus",
+              "angus",
+              "helios",
+              "athena",
+              "stella",
+              "hera",
+              "orion",
+              "asteria"
+            ]
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Journey", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Journey",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-2", "sonic-english"],
+            "models": [
+              "sonic-3",
+              "sonic-2",
+              "sonic-english"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Rohit", "Aman", "Rani"],
-            "recommended_voices": ["Divya", "Rohit"]
+            "voices": [
+              "Divya",
+              "Rohit",
+              "Aman",
+              "Rani"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Rohit"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -54,32 +145,110 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Journey", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Journey",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-2", "sonic-english"],
+            "models": [
+              "sonic-3",
+              "sonic-2",
+              "sonic-english"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Rohit", "Aman", "Rani"],
-            "recommended_voices": ["Divya", "Rohit"]
+            "voices": [
+              "Divya",
+              "Rohit",
+              "Aman",
+              "Rani"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Rohit"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -91,38 +260,122 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Rohit", "Divya", "Aman", "Rani"],
-            "recommended_voices": ["Rohit", "Divya"]
+            "voices": [
+              "Rohit",
+              "Divya",
+              "Aman",
+              "Rani"
+            ],
+            "recommended_voices": [
+              "Rohit",
+              "Divya"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Rohit", "Aman", "Rani"],
-            "recommended_voices": ["Divya", "Rohit"]
+            "voices": [
+              "Divya",
+              "Rohit",
+              "Aman",
+              "Rani"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Rohit"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -134,38 +387,122 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "WaveNet"],
+            "models": [
+              "Chirp3-HD",
+              "WaveNet"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Arjun", "Aditi", "Tapan", "Rashmi", "Arnav", "Riya"],
-            "recommended_voices": ["Arjun", "Aditi"]
+            "voices": [
+              "Arjun",
+              "Aditi",
+              "Tapan",
+              "Rashmi",
+              "Arnav",
+              "Riya"
+            ],
+            "recommended_voices": [
+              "Arjun",
+              "Aditi"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Arjun", "Aditi", "Riya"],
-            "recommended_voices": ["Divya", "Arjun"]
+            "voices": [
+              "Divya",
+              "Arjun",
+              "Aditi",
+              "Riya"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Arjun"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -177,38 +514,116 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Kavitha", "Jaya"],
-            "recommended_voices": ["Jaya"]
+            "voices": [
+              "Kavitha",
+              "Jaya"
+            ],
+            "recommended_voices": [
+              "Jaya"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Kavitha", "Jaya"],
-            "recommended_voices": ["Jaya"]
+            "voices": [
+              "Kavitha",
+              "Jaya"
+            ],
+            "recommended_voices": [
+              "Jaya"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -221,38 +636,120 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Prakash", "Lalitha", "Kiran"],
-            "recommended_voices": ["Prakash", "Lalitha"]
+            "voices": [
+              "Prakash",
+              "Lalitha",
+              "Kiran"
+            ],
+            "recommended_voices": [
+              "Prakash",
+              "Lalitha"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Prakash", "Lalitha"],
-            "recommended_voices": ["Divya", "Prakash"]
+            "voices": [
+              "Divya",
+              "Prakash",
+              "Lalitha"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Prakash"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -264,38 +761,123 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "WaveNet"],
+            "models": [
+              "Chirp3-HD",
+              "WaveNet"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Sanjay", "Sunita", "Nikhil", "Radha", "Varun", "Isha"],
-            "recommended_voices": ["Sanjay", "Sunita"]
+            "voices": [
+              "Sanjay",
+              "Sunita",
+              "Nikhil",
+              "Radha",
+              "Varun",
+              "Isha"
+            ],
+            "recommended_voices": [
+              "Sanjay",
+              "Sunita"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Sanjay", "Sunita", "Isha","Radha"],
-            "recommended_voices": ["Divya", "Sanjay"]
+            "voices": [
+              "Divya",
+              "Sanjay",
+              "Sunita",
+              "Isha",
+              "Radha"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Sanjay"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -307,38 +889,118 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Yash", "Neha"],
-            "recommended_voices": ["Yash", "Neha"]
+            "voices": [
+              "Yash",
+              "Neha"
+            ],
+            "recommended_voices": [
+              "Yash",
+              "Neha"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Yash", "Neha"],
-            "recommended_voices": ["Divya", "Yash"]
+            "voices": [
+              "Divya",
+              "Yash",
+              "Neha"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Yash"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -350,38 +1012,122 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Suresh", "Anu", "Chetan", "Vidya"],
-            "recommended_voices": ["Suresh", "Anu"]
+            "voices": [
+              "Suresh",
+              "Anu",
+              "Chetan",
+              "Vidya"
+            ],
+            "recommended_voices": [
+              "Suresh",
+              "Anu"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Suresh", "Anu", "Vidya"],
-            "recommended_voices": ["Divya", "Suresh"]
+            "voices": [
+              "Divya",
+              "Suresh",
+              "Anu",
+              "Vidya"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Suresh"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -393,38 +1139,120 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Anjali", "Anju", "Harish"],
-            "recommended_voices": ["Anjali", "Harish"]
+            "voices": [
+              "Anjali",
+              "Anju",
+              "Harish"
+            ],
+            "recommended_voices": [
+              "Anjali",
+              "Harish"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Anjali", "Harish"],
-            "recommended_voices": ["Divya", "Anjali"]
+            "voices": [
+              "Divya",
+              "Anjali",
+              "Harish"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Anjali"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -436,39 +1264,118 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "WaveNet"],
+            "models": [
+              "Chirp3-HD",
+              "WaveNet"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Divjot", "Gurpreet"],
-            "recommended_voices": ["Divjot", "Gurpreet"],
+            "voices": [
+              "Divjot",
+              "Gurpreet"
+            ],
+            "recommended_voices": [
+              "Divjot",
+              "Gurpreet"
+            ],
             "note": "Unofficial support"
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Divjot", "Gurpreet"],
-            "recommended_voices": ["Divya", "Divjot"]
+            "voices": [
+              "Divya",
+              "Divjot",
+              "Gurpreet"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Divjot"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -480,38 +1387,119 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
             "available": true,
-            "models": ["sonic-3", "sonic-multilingual"],
+            "models": [
+              "sonic-3",
+              "sonic-multilingual"
+            ],
             "voices": "use Cartesia voice library"
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Manas", "Debjani"],
-            "recommended_voices": ["Manas", "Debjani"]
+            "voices": [
+              "Manas",
+              "Debjani"
+            ],
+            "recommended_voices": [
+              "Manas",
+              "Debjani"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Manas", "Debjani"],
-            "recommended_voices": ["Divya", "Manas"]
+            "voices": [
+              "Divya",
+              "Manas",
+              "Debjani"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Manas"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -523,7 +1511,12 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
@@ -532,28 +1525,103 @@
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
             "available": true,
-            "models": ["bulbul:v2", "bulbul:v3"],
+            "models": [
+              "bulbul:v2",
+              "bulbul:v3"
+            ],
             "voices_by_model": {
-              "bulbul:v2": ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"],
-              "bulbul:v3": ["aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"]
+              "bulbul:v2": [
+                "anushka",
+                "abhilash",
+                "manisha",
+                "vidya",
+                "arya",
+                "karun",
+                "hitesh"
+              ],
+              "bulbul:v3": [
+                "aditya",
+                "ritu",
+                "priya",
+                "neha",
+                "rahul",
+                "pooja",
+                "rohan",
+                "simran",
+                "kavya",
+                "amit",
+                "dev",
+                "ishita",
+                "shreya",
+                "ratan",
+                "varun",
+                "manan",
+                "sumit",
+                "roopa",
+                "kabir",
+                "aayan",
+                "shubh",
+                "ashutosh",
+                "advait",
+                "amelia",
+                "sophia",
+                "anand",
+                "tanya",
+                "tarun",
+                "sunny",
+                "mani",
+                "gokul",
+                "vijay",
+                "shruti",
+                "suhani",
+                "mohit",
+                "kavitha",
+                "rehan",
+                "soham",
+                "rupali"
+              ]
             }
           },
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Amit", "Sita", "Poonam", "Rakesh"],
-            "recommended_voices": ["Amit", "Sita"]
+            "voices": [
+              "Amit",
+              "Sita",
+              "Poonam",
+              "Rakesh"
+            ],
+            "recommended_voices": [
+              "Amit",
+              "Sita"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Amit", "Sita"],
-            "recommended_voices": ["Divya", "Amit"]
+            "voices": [
+              "Divya",
+              "Amit",
+              "Sita"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Amit"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -565,7 +1633,12 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
@@ -574,7 +1647,11 @@
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
@@ -584,15 +1661,26 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Urdu speakers available"],
+            "voices": [
+              "Urdu speakers available"
+            ],
             "recommended_voices": [],
             "note": "Urdu is officially supported"
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya"],
-            "recommended_voices": ["Divya"]
+            "voices": [
+              "Divya"
+            ],
+            "recommended_voices": [
+              "Divya"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -604,7 +1692,12 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
@@ -613,7 +1706,11 @@
           },
           "elevenlabs": {
             "available": true,
-            "models": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+            "models": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5"
+            ],
             "voices": "use ElevenLabs voice library (voice ID from dashboard)"
           },
           "sarvam": {
@@ -623,14 +1720,29 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Amrita"],
-            "recommended_voices": ["Amrita"]
+            "voices": [
+              "Amrita"
+            ],
+            "recommended_voices": [
+              "Amrita"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Amrita"],
-            "recommended_voices": ["Divya", "Amrita"]
+            "voices": [
+              "Divya",
+              "Amrita"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Amrita"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -655,15 +1767,39 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Sanjay", "Sunita", "Nikhil", "Radha", "Varun", "Isha"],
-            "recommended_voices": ["Sanjay", "Sunita"],
+            "voices": [
+              "Sanjay",
+              "Sunita",
+              "Nikhil",
+              "Radha",
+              "Varun",
+              "Isha"
+            ],
+            "recommended_voices": [
+              "Sanjay",
+              "Sunita"
+            ],
             "note": "Using Marathi voice set for Bhili (bhb)"
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Sanjay", "Sunita", "Isha", "Radha"],
-            "recommended_voices": ["Divya", "Sanjay"]
+            "voices": [
+              "Divya",
+              "Sanjay",
+              "Sunita",
+              "Isha",
+              "Radha"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Sanjay"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -675,7 +1811,12 @@
           },
           "gcp": {
             "available": true,
-            "models": ["Chirp3-HD", "Neural2", "WaveNet", "Standard"],
+            "models": [
+              "Chirp3-HD",
+              "Neural2",
+              "WaveNet",
+              "Standard"
+            ],
             "voices": "multiple (use GCP voice list API)"
           },
           "cartesia": {
@@ -689,14 +1830,29 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Aryan"],
-            "recommended_voices": ["Aryan"]
+            "voices": [
+              "Aryan"
+            ],
+            "recommended_voices": [
+              "Aryan"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Aryan"],
-            "recommended_voices": ["Divya", "Aryan"]
+            "voices": [
+              "Divya",
+              "Aryan"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Aryan"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -721,14 +1877,32 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Laishram", "Ranjit"],
-            "recommended_voices": ["Laishram", "Ranjit"]
+            "voices": [
+              "Laishram",
+              "Ranjit"
+            ],
+            "recommended_voices": [
+              "Laishram",
+              "Ranjit"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Laishram", "Ranjit"],
-            "recommended_voices": ["Divya", "Laishram"]
+            "voices": [
+              "Divya",
+              "Laishram",
+              "Ranjit"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Laishram"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -753,14 +1927,33 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Bikram", "Maya", "Kalpana"],
-            "recommended_voices": ["Bikram", "Maya"]
+            "voices": [
+              "Bikram",
+              "Maya",
+              "Kalpana"
+            ],
+            "recommended_voices": [
+              "Bikram",
+              "Maya"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Bikram", "Maya"],
-            "recommended_voices": ["Divya", "Bikram"]
+            "voices": [
+              "Divya",
+              "Bikram",
+              "Maya"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Bikram"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -785,14 +1978,29 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Karan"],
-            "recommended_voices": ["Karan"]
+            "voices": [
+              "Karan"
+            ],
+            "recommended_voices": [
+              "Karan"
+            ]
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya", "Karan"],
-            "recommended_voices": ["Divya", "Karan"]
+            "voices": [
+              "Divya",
+              "Karan"
+            ],
+            "recommended_voices": [
+              "Divya",
+              "Karan"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -817,15 +2025,26 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Konkani speakers available"],
+            "voices": [
+              "Konkani speakers available"
+            ],
             "recommended_voices": [],
             "note": "Officially supported"
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya"],
-            "recommended_voices": ["Divya"]
+            "voices": [
+              "Divya"
+            ],
+            "recommended_voices": [
+              "Divya"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -850,15 +2069,26 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Maithili speakers available"],
+            "voices": [
+              "Maithili speakers available"
+            ],
             "recommended_voices": [],
             "note": "Officially supported with 95.36% NSS score"
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya"],
-            "recommended_voices": ["Divya"]
+            "voices": [
+              "Divya"
+            ],
+            "recommended_voices": [
+              "Divya"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -883,15 +2113,26 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Santali speakers available"],
+            "voices": [
+              "Santali speakers available"
+            ],
             "recommended_voices": [],
             "note": "Officially supported"
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya"],
-            "recommended_voices": ["Divya"]
+            "voices": [
+              "Divya"
+            ],
+            "recommended_voices": [
+              "Divya"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       },
@@ -916,15 +2157,26 @@
           "ai4bharat": {
             "available": true,
             "model": "indic-parler-tts",
-            "voices": ["Sindhi speakers available"],
+            "voices": [
+              "Sindhi speakers available"
+            ],
             "recommended_voices": [],
             "note": "Officially supported"
           },
           "bhashini": {
             "available": true,
             "model": "bhashini-indic-parler",
-            "voices": ["Divya"],
-            "recommended_voices": ["Divya"]
+            "voices": [
+              "Divya"
+            ],
+            "recommended_voices": [
+              "Divya"
+            ]
+          },
+          "omnivoice": {
+            "available": true,
+            "model": "omnivoice",
+            "voices": []
           }
         }
       }
@@ -968,7 +2220,7 @@
       },
       "deepgram": {
         "controls": [],
-        "note": "Deepgram Aura-2 voices (e.g. aura-2-thalia-en). Speaking rate / speed is not exposed by Deepgram TTS or Pipecat's DeepgramTTSService—only model, encoding, and sample_rate. Use GCP or Sarvam TTS if you need speed control."
+        "note": "Deepgram Aura-2 voices (e.g. aura-2-thalia-en). Speaking rate / speed is not exposed by Deepgram TTS or Pipecat's DeepgramTTSService\u2014only model, encoding, and sample_rate. Use GCP or Sarvam TTS if you need speed control."
       },
       "gcp": {
         "controls": [
@@ -1013,7 +2265,14 @@
             "id": "emotion",
             "label": "Emotion",
             "type": "select",
-            "options": ["neutral", "happy", "sad", "angry", "fearful", "surprised"],
+            "options": [
+              "neutral",
+              "happy",
+              "sad",
+              "angry",
+              "fearful",
+              "surprised"
+            ],
             "default": "neutral",
             "description": "Emotional tone of the voice"
           }
@@ -1171,9 +2430,40 @@
           "streaming": false,
           "recommended": true,
           "features": {
-            "emotion_support": ["Assamese", "Bengali", "Bodo", "Dogri", "Kannada", "Malayalam", "Marathi", "Sanskrit", "Nepali", "Tamil"],
-            "available_emotions": ["Command", "Anger", "Narration", "Conversation", "Disgust", "Fear", "Happy", "Neutral", "Proper Noun", "News", "Sad", "Surprise"],
-            "controls": ["background_noise", "reverberation", "expressivity", "pitch", "speaking_rate", "voice_quality"]
+            "emotion_support": [
+              "Assamese",
+              "Bengali",
+              "Bodo",
+              "Dogri",
+              "Kannada",
+              "Malayalam",
+              "Marathi",
+              "Sanskrit",
+              "Nepali",
+              "Tamil"
+            ],
+            "available_emotions": [
+              "Command",
+              "Anger",
+              "Narration",
+              "Conversation",
+              "Disgust",
+              "Fear",
+              "Happy",
+              "Neutral",
+              "Proper Noun",
+              "News",
+              "Sad",
+              "Surprise"
+            ],
+            "controls": [
+              "background_noise",
+              "reverberation",
+              "expressivity",
+              "pitch",
+              "speaking_rate",
+              "voice_quality"
+            ]
           },
           "usage_note": "Voice is specified in the description caption, e.g., 'Rohit speaks with a high pitch and fast pace...'"
         }
@@ -1184,7 +2474,11 @@
           "streaming": true,
           "recommended": true,
           "features": {
-            "controls": ["speaker", "description", "play_steps_in_s"],
+            "controls": [
+              "speaker",
+              "description",
+              "play_steps_in_s"
+            ],
             "note": "Uses speaker and description for voice customization"
           },
           "usage_note": "Voice is specified using speaker name and description, e.g., 'Divya speaks with a clear, natural voice...'"
@@ -1194,30 +2488,135 @@
     "auto_select_logic": {
       "description": "Priority order for auto-selecting TTS model based on language",
       "priority": {
-        "English (United States)": ["cartesia:sonic-3", "sarvam:bulbul:v3", "sarvam:bulbul:v2", "deepgram:aura-2", "gcp:Chirp3-HD"],
-        "English (India)": ["cartesia:sonic-3", "sarvam:bulbul:v3", "sarvam:bulbul:v2", "deepgram:aura-2", "gcp:Chirp3-HD"],
-        "Hindi": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "cartesia:sonic-3", "gcp:Chirp3-HD"],
-        "Bengali": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Tamil": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Telugu": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Marathi": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Gujarati": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Kannada": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Malayalam": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Punjabi": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Odia": ["sarvam:bulbul:v3", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Assamese": ["sarvam:bulbul:v3", "elevenlabs:eleven_multilingual_v2", "gcp:Chirp3-HD", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Urdu": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts", "gcp:Chirp3-HD"],
-        "Nepali": ["elevenlabs:eleven_multilingual_v2", "gcp:Chirp3-HD", "bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "bhb": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Sanskrit": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Manipuri": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Bodo": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Dogri": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Konkani": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Maithili": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Santali": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"],
-        "Sindhi": ["bhashini:bhashini indic parler", "ai4bharat:indic-parler-tts"]
+        "English (United States)": [
+          "cartesia:sonic-3",
+          "sarvam:bulbul:v3",
+          "sarvam:bulbul:v2",
+          "deepgram:aura-2",
+          "gcp:Chirp3-HD"
+        ],
+        "English (India)": [
+          "cartesia:sonic-3",
+          "sarvam:bulbul:v3",
+          "sarvam:bulbul:v2",
+          "deepgram:aura-2",
+          "gcp:Chirp3-HD"
+        ],
+        "Hindi": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "cartesia:sonic-3",
+          "gcp:Chirp3-HD"
+        ],
+        "Bengali": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Tamil": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Telugu": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Marathi": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Gujarati": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Kannada": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Malayalam": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Punjabi": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Odia": [
+          "sarvam:bulbul:v3",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Assamese": [
+          "sarvam:bulbul:v3",
+          "elevenlabs:eleven_multilingual_v2",
+          "gcp:Chirp3-HD",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Urdu": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts",
+          "gcp:Chirp3-HD"
+        ],
+        "Nepali": [
+          "elevenlabs:eleven_multilingual_v2",
+          "gcp:Chirp3-HD",
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "bhb": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Sanskrit": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Manipuri": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Bodo": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Dogri": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Konkani": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Maithili": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Santali": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ],
+        "Sindhi": [
+          "bhashini:bhashini indic parler",
+          "ai4bharat:indic-parler-tts"
+        ]
       }
     }
   }

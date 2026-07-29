@@ -31,6 +31,7 @@ import {
   Timer,
   Plus,
   Trash2,
+  Upload,
 } from "lucide-react"
 import {
   Dialog,
@@ -40,7 +41,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, uploadRefAudio, listRefAudios, deleteRefAudio, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode, type RefAudio } from "@/lib/api"
 import { agentsQueryKey } from "@/lib/queries/agents"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
@@ -92,6 +93,7 @@ const getProviderOfficialName = (providerId: string): string => {
     groq: "Groq",
     grok: "Grok",
     custom_llm: "Custom LLM",
+    omnivoice: "OmniVoice",
   }
   return nameMap[providerId] || providerId.charAt(0).toUpperCase() + providerId.slice(1)
 }
@@ -120,6 +122,7 @@ const getProviderIdFromName = (providerName: string): string => {
     "Groq": "groq",
     "Grok": "grok",
     "Custom LLM": "custom_llm",
+    "OmniVoice": "omnivoice",
   }
   return reverseMap[providerName] || providerName.toLowerCase()
 }
@@ -232,6 +235,95 @@ const formatDurationSeconds = (seconds: number) => {
   return `${seconds}s`
 }
 
+/** Parse a saved OmniVoice instruct string back into individual design fields. */
+function parseOmniInstruct(instruct: string): {
+  gender: string; age: string; pitch: string; style: string; accent: string
+} {
+  const parts = instruct.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  const genders = new Set(["male", "female"])
+  const ages = new Set(["child", "teenager", "young adult", "middle-aged", "elderly"])
+  const pitches = new Set([
+    "very low pitch", "low pitch", "moderate pitch", "high pitch", "very high pitch",
+  ])
+  const styles = new Set(["whisper"])
+  const accents = new Set([
+    "american accent", "british accent", "australian accent",
+    "canadian accent", "indian accent", "chinese accent",
+    "korean accent", "japanese accent", "portuguese accent", "russian accent",
+  ])
+
+  let gender = "", age = "", pitch = "", style = "", accent = ""
+  for (const part of parts) {
+    if (genders.has(part)) gender = part
+    else if (ages.has(part)) age = part
+    else if (pitches.has(part)) pitch = part
+    else if (styles.has(part)) style = part
+    else if (accents.has(part) || part.endsWith(" accent")) accent = part
+  }
+  return { gender, age, pitch, style, accent }
+}
+
+/** Decode a browser MediaRecorder blob (webm/opus) into a PCM WAV File for OmniVoice. */
+async function webmBlobToWavFile(blob: Blob, filename: string): Promise<File> {
+  const arrayBuffer = await blob.arrayBuffer()
+  const audioCtx = new AudioContext()
+  let audioBuffer: AudioBuffer
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0))
+  } finally {
+    await audioCtx.close()
+  }
+
+  const numChannels = 1 // mono — OmniVoice expects mono ref audio
+  const sampleRate = audioBuffer.sampleRate
+  const length = audioBuffer.length
+  const channelData = audioBuffer.getChannelData(0)
+
+  // Mix down to mono if needed
+  let mono: Float32Array
+  if (audioBuffer.numberOfChannels > 1) {
+    mono = new Float32Array(length)
+    for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+      const data = audioBuffer.getChannelData(c)
+      for (let i = 0; i < length; i++) mono[i] += data[i] / audioBuffer.numberOfChannels
+    }
+  } else {
+    mono = channelData
+  }
+
+  const bytesPerSample = 2
+  const blockAlign = numChannels * bytesPerSample
+  const dataSize = length * blockAlign
+  const buffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buffer)
+
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
+  }
+  writeStr(0, "RIFF")
+  view.setUint32(4, 36 + dataSize, true)
+  writeStr(8, "WAVE")
+  writeStr(12, "fmt ")
+  view.setUint32(16, 16, true) // PCM chunk size
+  view.setUint16(20, 1, true) // PCM format
+  view.setUint16(22, numChannels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * blockAlign, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, 16, true) // bits per sample
+  writeStr(36, "data")
+  view.setUint32(40, dataSize, true)
+
+  let offset = 44
+  for (let i = 0; i < length; i++) {
+    const s = Math.max(-1, Math.min(1, mono[i]))
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+    offset += 2
+  }
+
+  return new File([buffer], filename, { type: "audio/wav" })
+}
+
 export default function AgentDetailPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -285,6 +377,45 @@ export default function AgentDetailPage() {
   const [ttsDescription, setTtsDescription] = useState("")
   const [speed, setSpeed] = useState(1.0)
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("conversational")
+
+  // OmniVoice-specific state
+  const [omniMode, setOmniMode] = useState<"clone" | "design">("clone")
+  const [omniRefAudioKey, setOmniRefAudioKey] = useState<string>("")
+  const [omniRefText, setOmniRefText] = useState<string>("")
+  const [omniInstruct, setOmniInstruct] = useState<string>("")
+  // Voice Design individual pickers
+  const [omniGender, setOmniGender] = useState<string>("")
+  const [omniAge, setOmniAge] = useState<string>("")
+  const [omniPitch, setOmniPitch] = useState<string>("")
+  const [omniStyle, setOmniStyle] = useState<string>("")
+  const [omniAccent, setOmniAccent] = useState<string>("")
+  const [omniStoredRefs, setOmniStoredRefs] = useState<RefAudio[]>([])
+  const [omniUploadingRef, setOmniUploadingRef] = useState(false)
+  const [omniRecording, setOmniRecording] = useState(false)
+  const [omniMediaRecorder, setOmniMediaRecorder] = useState<MediaRecorder | null>(null)
+  const omniRefInputRef = useRef<HTMLInputElement>(null)
+
+  const OMNI_VOICE_PRESETS: Array<{
+    id: string; label: string
+    gender: string; age: string; pitch: string; style: string; accent: string
+  }> = [
+    { id: "male_neutral",    label: "Male · Neutral",          gender: "male",   age: "young adult",  pitch: "moderate pitch", style: "",       accent: "" },
+    { id: "female_neutral",  label: "Female · Neutral",        gender: "female", age: "young adult",  pitch: "moderate pitch", style: "",       accent: "" },
+    { id: "male_deep",       label: "Male · Deep",             gender: "male",   age: "middle-aged",  pitch: "low pitch",      style: "",       accent: "" },
+    { id: "female_soft",     label: "Female · Soft",           gender: "female", age: "young adult",  pitch: "high pitch",     style: "",       accent: "" },
+    { id: "male_elderly",    label: "Male · Elderly",          gender: "male",   age: "elderly",      pitch: "low pitch",      style: "",       accent: "" },
+    { id: "female_elderly",  label: "Female · Elderly",        gender: "female", age: "elderly",      pitch: "moderate pitch", style: "",       accent: "" },
+    { id: "child",           label: "Child",                   gender: "",       age: "child",        pitch: "high pitch",     style: "",       accent: "" },
+    { id: "whisper",         label: "Whisper",                 gender: "",       age: "",             pitch: "",               style: "whisper", accent: "" },
+    { id: "male_indian",     label: "Male · Indian Accent",    gender: "male",   age: "young adult",  pitch: "moderate pitch", style: "",       accent: "indian accent" },
+    { id: "female_indian",   label: "Female · Indian Accent",  gender: "female", age: "young adult",  pitch: "moderate pitch", style: "",       accent: "indian accent" },
+    { id: "male_british",    label: "Male · British",          gender: "male",   age: "young adult",  pitch: "moderate pitch", style: "",       accent: "british accent" },
+    { id: "female_british",  label: "Female · British",        gender: "female", age: "young adult",  pitch: "moderate pitch", style: "",       accent: "british accent" },
+    { id: "male_american",   label: "Male · American",         gender: "male",   age: "young adult",  pitch: "moderate pitch", style: "",       accent: "american accent" },
+    { id: "female_american", label: "Female · American",       gender: "female", age: "young adult",  pitch: "moderate pitch", style: "",       accent: "american accent" },
+    { id: "teen_male",       label: "Teen · Male",             gender: "male",   age: "teenager",     pitch: "moderate pitch", style: "",       accent: "" },
+    { id: "teen_female",     label: "Teen · Female",           gender: "female", age: "teenager",     pitch: "high pitch",     style: "",       accent: "" },
+  ]
 
   // Collapsible states
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(true)
@@ -687,6 +818,17 @@ export default function AgentDetailPage() {
           setSttProvider(getProviderIdFromName(sttProviderName))
           setSttModel(agentData.agent_config?.stt_model?.model || "")
 
+          // Reset OmniVoice state on fresh load
+          setOmniMode("clone")
+          setOmniRefAudioKey("")
+          setOmniRefText("")
+          setOmniInstruct("")
+          setOmniGender("")
+          setOmniAge("")
+          setOmniPitch("")
+          setOmniStyle("")
+          setOmniAccent("")
+
           // Load TTS settings - convert official name to internal ID
           const ttsProviderName = agentData.agent_config?.tts_model?.name || ""
           const ttsProviderId = getProviderIdFromName(ttsProviderName)
@@ -712,6 +854,27 @@ export default function AgentDetailPage() {
             setTtsDescription("")
           }
           setSpeed(agentData.agent_config?.tts_model?.speed || 1.0)
+          // OmniVoice-specific saved values
+          if (ttsProviderId === "omnivoice") {
+            const savedInstruct = (ttsModelConfig as any)?.instruct || ""
+            const savedRefKey = (ttsModelConfig as any)?.ref_audio_key || ""
+            setOmniRefAudioKey(savedRefKey)
+            setOmniRefText((ttsModelConfig as any)?.ref_text || "")
+            if (savedInstruct && !savedRefKey) {
+              // Restore design mode + individual pickers so UI is not blank
+              const parsed = parseOmniInstruct(savedInstruct)
+              setOmniGender(parsed.gender)
+              setOmniAge(parsed.age)
+              setOmniPitch(parsed.pitch)
+              setOmniStyle(parsed.style)
+              setOmniAccent(parsed.accent)
+              setOmniInstruct(savedInstruct)
+              setOmniMode("design")
+            } else {
+              setOmniMode("clone")
+              setOmniInstruct("")
+            }
+          }
 
           if (agentData.agent_config && typeof agentData.agent_config === 'object') {
             try {
@@ -836,6 +999,88 @@ export default function AgentDetailPage() {
     isLoading,
   ])
 
+  // Load OmniVoice stored ref audios when provider switches to omnivoice
+  useEffect(() => {
+    if (ttsProvider === "omnivoice") {
+      listRefAudios().then(setOmniStoredRefs).catch(() => {})
+    }
+  }, [ttsProvider])
+
+  // OmniVoice helpers
+  const handleOmniUploadRef = async (file: File) => {
+    setOmniUploadingRef(true)
+    try {
+      const uploaded = await uploadRefAudio(file)
+      setOmniStoredRefs((prev) => [
+        { key: uploaded.key, filename: uploaded.filename, size_bytes: uploaded.size_bytes, last_modified: null },
+        ...prev,
+      ])
+      setOmniRefAudioKey(uploaded.key)
+    } catch (e) {
+      console.error("Failed to upload ref audio", e)
+    } finally {
+      setOmniUploadingRef(false)
+    }
+  }
+
+  const handleOmniDeleteRef = async (key: string) => {
+    try {
+      await deleteRefAudio(key)
+      if (omniRefAudioKey === key) setOmniRefAudioKey("")
+      // Always re-fetch so UI matches MinIO (delete must actually succeed)
+      const fresh = await listRefAudios()
+      setOmniStoredRefs(fresh)
+    } catch (e) {
+      console.error("Failed to delete ref audio", e)
+      listRefAudios().then(setOmniStoredRefs).catch(() => {})
+    }
+  }
+
+  const handleOmniStartRecord = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      const chunks: Blob[] = []
+      mr.ondataavailable = (e) => chunks.push(e.data)
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const webmBlob = new Blob(chunks, { type: mr.mimeType || "audio/webm" })
+        // OmniVoice / soundfile need real WAV — MediaRecorder emits webm/opus.
+        // Convert via AudioContext so cloning gets clean PCM reference audio.
+        try {
+          const wavFile = await webmBlobToWavFile(webmBlob, `recording_${Date.now()}.wav`)
+          await handleOmniUploadRef(wavFile)
+        } catch (convErr) {
+          console.error("Failed to convert recording to WAV, uploading raw blob", convErr)
+          const fallback = new File([webmBlob], `recording_${Date.now()}.webm`, {
+            type: webmBlob.type || "audio/webm",
+          })
+          await handleOmniUploadRef(fallback)
+        }
+      }
+      mr.start()
+      setOmniMediaRecorder(mr)
+      setOmniRecording(true)
+    } catch (e) {
+      console.error("Microphone access denied", e)
+    }
+  }
+
+  const handleOmniStopRecord = () => {
+    omniMediaRecorder?.stop()
+    setOmniMediaRecorder(null)
+    setOmniRecording(false)
+  }
+
+  // Recompute omniInstruct from individual design pickers
+  useEffect(() => {
+    if (omniMode !== "design") return
+    // Skip while initial agent load is still applying saved fields
+    if (isInitialLoadRef.current) return
+    const parts = [omniGender, omniAge, omniPitch, omniStyle, omniAccent].filter(Boolean)
+    setOmniInstruct(parts.join(", "))
+  }, [omniMode, omniGender, omniAge, omniPitch, omniStyle, omniAccent])
+
   // Detect changes
   useEffect(() => {
     if (!originalConfig || !agent) {
@@ -905,6 +1150,9 @@ export default function AgentDetailPage() {
         ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && ttsVoice && { voice_id: ttsVoice }),
         speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
         speed: speed || 1.0,
+        ...(ttsProvider === "omnivoice" && omniRefAudioKey && { ref_audio_key: omniRefAudioKey }),
+        ...(ttsProvider === "omnivoice" && omniRefText && { ref_text: omniRefText }),
+        ...(ttsProvider === "omnivoice" && omniMode === "design" && omniInstruct && { instruct: omniInstruct }),
         ...(agent.agent_config?.tts_model?.description && { description: agent.agent_config.tts_model.description }),
         ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
         ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
@@ -936,7 +1184,7 @@ export default function AgentDetailPage() {
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
     const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, omniMode, omniRefAudioKey, omniRefText, omniInstruct, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -1033,10 +1281,14 @@ export default function AgentDetailPage() {
                 ...(ttsVoice && { voice_id: ttsVoice }),
               },
             }),
-            ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsProvider !== "elevenlabs" && ttsModel && { model: ttsModel }),
+            ...(ttsProvider !== "cartesia" && ttsProvider !== "gcp" && ttsProvider !== "elevenlabs" && ttsProvider !== "omnivoice" && ttsModel && { model: ttsModel }),
             speaker: (ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") ? "" : (ttsVoice || ""),
             speed: speed,
             ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && ttsDescription && { description: ttsDescription }),
+            ...(ttsProvider === "omnivoice" && omniRefAudioKey && { ref_audio_key: omniRefAudioKey }),
+            ...(ttsProvider === "omnivoice" && omniRefText && { ref_text: omniRefText }),
+            // instruct only for voice-design mode (conflicts with clone)
+            ...(ttsProvider === "omnivoice" && omniMode === "design" && omniInstruct && { instruct: omniInstruct }),
             ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
             ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
             ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
@@ -1595,7 +1847,7 @@ export default function AgentDetailPage() {
                   <Volume2 className="h-5 w-5 text-slate-400" />
                   Text-to-Speech
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 gap-4 ${ttsProvider === "omnivoice" ? "md:grid-cols-1 max-w-md" : "md:grid-cols-3"}`}>
                   <div>
                     <label className="text-sm font-semibold text-slate-700 mb-2 block">Provider</label>
                     <Select
@@ -1605,6 +1857,17 @@ export default function AgentDetailPage() {
                         setTtsModel("")
                         setTtsVoice("")
                         setTtsDescription("")
+                        if (v === "omnivoice") {
+                          setOmniMode("clone")
+                          setOmniRefAudioKey("")
+                          setOmniRefText("")
+                          setOmniInstruct("")
+                          setOmniGender("")
+                          setOmniAge("")
+                          setOmniPitch("")
+                          setOmniStyle("")
+                          setOmniAccent("")
+                        }
                       }}
                     >
                       <SelectTrigger className="border-slate-200 rounded-md h-11 bg-white">
@@ -1614,7 +1877,7 @@ export default function AgentDetailPage() {
                         {allTTSProviders
                           .filter((p) => supportedTTSProviders.has(p.id))
                           .map((provider) => {
-                            const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
+                            const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini" || provider.id === "omnivoice"
                             const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                             return (
                               <SelectItem key={provider.id} value={provider.id} disabled={!isIntegrated}>
@@ -1628,46 +1891,312 @@ export default function AgentDetailPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <label className="text-sm font-semibold text-slate-700 mb-2 block">Model</label>
-                    <Select value={ttsModel} onValueChange={setTtsModel} disabled={!ttsProvider || supportedTTSModels.size === 0}>
-                      <SelectTrigger className="border-slate-200 rounded-md h-11 bg-white">
-                        <SelectValue placeholder="Select model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from(supportedTTSModels).map((model) => (
-                          <SelectItem key={model} value={model} className="font-mono text-sm">
-                            {model}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-slate-700 mb-2 block">Voice</label>
-                    {(ttsProvider === "gcp" || ttsProvider === "cartesia" || ttsProvider === "elevenlabs") ? (
-                      <Input
-                        value={ttsVoice}
-                        onChange={(e) => setTtsVoice(e.target.value)}
-                        placeholder={ttsProvider === "elevenlabs" ? "Enter voice ID" : "Enter voice ID"}
-                        className="h-11 border-slate-200 rounded-md bg-white"
-                      />
-                    ) : (
-                      <Select value={ttsVoice} onValueChange={setTtsVoice} disabled={!ttsProvider || availableTTSVoices.length === 0}>
-                        <SelectTrigger className="border-slate-200 rounded-md h-11 bg-white">
-                          <SelectValue placeholder="Select voice" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableTTSVoices.map((voice) => (
-                            <SelectItem key={voice} value={voice}>
-                              {voice}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  {ttsProvider !== "omnivoice" && (
+                    <>
+                      <div>
+                        <label className="text-sm font-semibold text-slate-700 mb-2 block">Model</label>
+                        <Select value={ttsModel} onValueChange={setTtsModel} disabled={!ttsProvider || supportedTTSModels.size === 0}>
+                          <SelectTrigger className="border-slate-200 rounded-md h-11 bg-white">
+                            <SelectValue placeholder="Select model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from(supportedTTSModels).map((model) => (
+                              <SelectItem key={model} value={model} className="font-mono text-sm">
+                                {model}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-semibold text-slate-700 mb-2 block">Voice</label>
+                        {(ttsProvider === "gcp" || ttsProvider === "cartesia" || ttsProvider === "elevenlabs") ? (
+                          <Input
+                            value={ttsVoice}
+                            onChange={(e) => setTtsVoice(e.target.value)}
+                            placeholder={ttsProvider === "elevenlabs" ? "Enter voice ID" : "Enter voice ID"}
+                            className="h-11 border-slate-200 rounded-md bg-white"
+                          />
+                        ) : (
+                          <Select value={ttsVoice} onValueChange={setTtsVoice} disabled={!ttsProvider || availableTTSVoices.length === 0}>
+                            <SelectTrigger className="border-slate-200 rounded-md h-11 bg-white">
+                              <SelectValue placeholder="Select voice" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableTTSVoices.map((voice) => (
+                                <SelectItem key={voice} value={voice}>
+                                  {voice}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* OmniVoice — voice clone + voice design (no model/voice dropdowns) */}
+                {ttsProvider === "omnivoice" && (
+                  <div className="mt-5 space-y-4">
+                    <div className="flex rounded-lg border border-slate-200 bg-slate-100/80 p-1 w-full sm:w-fit">
+                      {(["clone", "design"] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => {
+                            setOmniMode(m)
+                            if (m === "clone") {
+                              setOmniInstruct("")
+                              setOmniGender("")
+                              setOmniAge("")
+                              setOmniPitch("")
+                              setOmniStyle("")
+                              setOmniAccent("")
+                            } else {
+                              setOmniRefAudioKey("")
+                              setOmniRefText("")
+                            }
+                          }}
+                          className={`flex-1 sm:flex-none px-5 py-2 rounded-md text-sm font-medium transition-colors ${
+                            omniMode === m
+                              ? "bg-white text-slate-900 shadow-sm"
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          {m === "clone" ? "Voice Cloning" : "Voice Design"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {omniMode === "clone" && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-4">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">Reference voice</p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Upload or record a 3–10s clip. Select a saved clip to reuse it.
+                          </p>
+                        </div>
+
+                        {omniStoredRefs.length > 0 && (
+                          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                            {omniStoredRefs.map((r) => (
+                              <div
+                                key={r.key}
+                                onClick={() => setOmniRefAudioKey(omniRefAudioKey === r.key ? "" : r.key)}
+                                className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                                  omniRefAudioKey === r.key
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">{r.filename}</p>
+                                  {r.size_bytes != null && (
+                                    <p className={`text-[11px] ${omniRefAudioKey === r.key ? "text-slate-300" : "text-slate-400"}`}>
+                                      {(r.size_bytes / 1024).toFixed(0)} KB
+                                    </p>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  title="Delete this voice"
+                                  className="ml-3 shrink-0 rounded p-1.5 opacity-70 hover:opacity-100 hover:bg-black/10"
+                                  onClick={(e) => { e.stopPropagation(); handleOmniDeleteRef(r.key) }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => omniRefInputRef.current?.click()}
+                            disabled={omniUploadingRef}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            {omniUploadingRef ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                            Upload
+                          </button>
+                          <button
+                            type="button"
+                            onClick={omniRecording ? handleOmniStopRecord : handleOmniStartRecord}
+                            disabled={omniUploadingRef}
+                            className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors ${
+                              omniRecording
+                                ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            <Mic className={`h-4 w-4 ${omniRecording ? "animate-pulse" : ""}`} />
+                            {omniRecording ? "Stop" : "Record"}
+                          </button>
+                          <input
+                            ref={omniRefInputRef}
+                            type="file"
+                            accept="audio/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0]
+                              if (file) await handleOmniUploadRef(file)
+                              if (omniRefInputRef.current) omniRefInputRef.current.value = ""
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                            Reference transcript <span className="text-slate-400 font-normal">(optional)</span>
+                          </label>
+                          <Input
+                            value={omniRefText}
+                            onChange={(e) => setOmniRefText(e.target.value)}
+                            placeholder="What is said in the reference clip…"
+                            className="h-10 text-sm border-slate-200 bg-white"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {omniMode === "design" && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-4">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">Design a synthetic voice</p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Pick attributes below — no reference recording needed.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium text-slate-600 mb-1.5 block">Quick preset</label>
+                          <Select
+                            value="_unset"
+                            onValueChange={(id) => {
+                              if (id === "_unset") return
+                              const preset = OMNI_VOICE_PRESETS.find((p) => p.id === id)
+                              if (preset) {
+                                setOmniGender(preset.gender)
+                                setOmniAge(preset.age)
+                                setOmniPitch(preset.pitch)
+                                setOmniStyle(preset.style)
+                                setOmniAccent(preset.accent)
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="border-slate-200 h-10 bg-white text-sm">
+                              <SelectValue placeholder="Choose a preset…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_unset" disabled>Choose a preset…</SelectItem>
+                              {OMNI_VOICE_PRESETS.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-medium text-slate-600 mb-1.5 block">Gender</label>
+                            <Select value={omniGender || "_none"} onValueChange={(v) => setOmniGender(v === "_none" ? "" : v)}>
+                              <SelectTrigger className="border-slate-200 h-10 bg-white text-sm">
+                                <SelectValue placeholder="Any" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_none">Any</SelectItem>
+                                <SelectItem value="male">Male</SelectItem>
+                                <SelectItem value="female">Female</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-slate-600 mb-1.5 block">Age</label>
+                            <Select value={omniAge || "_none"} onValueChange={(v) => setOmniAge(v === "_none" ? "" : v)}>
+                              <SelectTrigger className="border-slate-200 h-10 bg-white text-sm">
+                                <SelectValue placeholder="Any" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_none">Any</SelectItem>
+                                <SelectItem value="child">Child</SelectItem>
+                                <SelectItem value="teenager">Teenager</SelectItem>
+                                <SelectItem value="young adult">Young Adult</SelectItem>
+                                <SelectItem value="middle-aged">Middle-aged</SelectItem>
+                                <SelectItem value="elderly">Elderly</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-slate-600 mb-1.5 block">Pitch</label>
+                            <Select value={omniPitch || "_none"} onValueChange={(v) => setOmniPitch(v === "_none" ? "" : v)}>
+                              <SelectTrigger className="border-slate-200 h-10 bg-white text-sm">
+                                <SelectValue placeholder="Any" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_none">Any</SelectItem>
+                                <SelectItem value="very low pitch">Very Low</SelectItem>
+                                <SelectItem value="low pitch">Low</SelectItem>
+                                <SelectItem value="moderate pitch">Moderate</SelectItem>
+                                <SelectItem value="high pitch">High</SelectItem>
+                                <SelectItem value="very high pitch">Very High</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-slate-600 mb-1.5 block">Style</label>
+                            <Select value={omniStyle || "_none"} onValueChange={(v) => setOmniStyle(v === "_none" ? "" : v)}>
+                              <SelectTrigger className="border-slate-200 h-10 bg-white text-sm">
+                                <SelectValue placeholder="Normal" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_none">Normal</SelectItem>
+                                <SelectItem value="whisper">Whisper</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                              Accent <span className="text-slate-400 font-normal">(English speech)</span>
+                            </label>
+                            <Select value={omniAccent || "_none"} onValueChange={(v) => setOmniAccent(v === "_none" ? "" : v)}>
+                              <SelectTrigger className="border-slate-200 h-10 bg-white text-sm">
+                                <SelectValue placeholder="None" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_none">None</SelectItem>
+                                <SelectItem value="american accent">American</SelectItem>
+                                <SelectItem value="british accent">British</SelectItem>
+                                <SelectItem value="australian accent">Australian</SelectItem>
+                                <SelectItem value="canadian accent">Canadian</SelectItem>
+                                <SelectItem value="indian accent">Indian</SelectItem>
+                                <SelectItem value="chinese accent">Chinese</SelectItem>
+                                <SelectItem value="korean accent">Korean</SelectItem>
+                                <SelectItem value="japanese accent">Japanese</SelectItem>
+                                <SelectItem value="portuguese accent">Portuguese</SelectItem>
+                                <SelectItem value="russian accent">Russian</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {omniInstruct ? (
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2.5">
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700/80 mb-0.5">
+                              Active design
+                            </p>
+                            <p className="text-sm text-emerald-950">{omniInstruct}</p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                            Select at least one attribute (or a preset) before saving.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
-                </div>
+                )}
 
                 {(ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && (
                   <div className="mt-4">
@@ -1691,7 +2220,7 @@ export default function AgentDetailPage() {
                   </div>
                 )}
 
-                {ttsModel && ttsProvider && (
+                {ttsProvider && (
                   <div className="mt-5">
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-sm font-semibold text-slate-700">Speed rate</label>

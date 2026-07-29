@@ -1656,6 +1656,150 @@ export async function checkUserJoinEligibility(
   return response.json()
 }
 
+// ---------------------------------------------------------------------------
+// TTS Studio API
+// ---------------------------------------------------------------------------
+
+export interface TTSLanguage {
+  name: string
+  code: string
+}
+
+export interface VoiceDesignPreset {
+  id: string
+  label: string
+  instruct: string
+}
+
+export interface RefAudio {
+  key: string
+  filename: string
+  size_bytes: number
+  last_modified: string | null
+}
+
+export interface TTSSynthesizeParams {
+  text: string
+  language?: string
+  refText?: string
+  refAudioKey?: string
+  refAudioFile?: File
+  instruct?: string
+  speed?: number
+  duration?: number
+}
+
+export interface TTSSynthesizeResult {
+  audioBlob: Blob
+  audioDuration: number | null
+  synthTime: number | null
+  rtf: number | null
+}
+
+export async function getTTSLanguages(): Promise<TTSLanguage[]> {
+  const response = await fetchWithAuth("/api/tts/languages")
+  if (!response.ok) throw new Error("Failed to fetch TTS languages")
+  return response.json()
+}
+
+export async function getVoiceDesignPresets(): Promise<VoiceDesignPreset[]> {
+  const response = await fetchWithAuth("/api/tts/voice-designs")
+  if (!response.ok) throw new Error("Failed to fetch voice design presets")
+  return response.json()
+}
+
+export async function synthesizeTTS(params: TTSSynthesizeParams): Promise<TTSSynthesizeResult> {
+  const token = getAuthToken()
+  if (!token) throw new Error("No authentication token found")
+
+  const formData = new FormData()
+  formData.append("text", params.text)
+  if (params.language) formData.append("language", params.language)
+  if (params.refText) formData.append("ref_text", params.refText)
+  if (params.refAudioKey) formData.append("ref_audio_key", params.refAudioKey)
+  if (params.instruct) formData.append("instruct", params.instruct)
+  if (params.speed !== undefined) formData.append("speed", String(params.speed))
+  if (params.duration !== undefined) formData.append("duration", String(params.duration))
+  if (params.refAudioFile) formData.append("ref_audio", params.refAudioFile)
+
+  const response = await fetch("/api/tts/synthesize", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+
+  if (response.status === 401) {
+    clearAuth()
+    if (typeof window !== "undefined") window.location.href = "/"
+    throw new Error("Unauthorized")
+  }
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || `Synthesis failed (${response.status})`)
+  }
+
+  const audioBlob = await response.blob()
+  const audioDuration = parseFloat(response.headers.get("X-Audio-Duration") ?? "") || null
+  const synthTime = parseFloat(response.headers.get("X-Synth-Time") ?? "") || null
+  const rtf = parseFloat(response.headers.get("X-RTF") ?? "") || null
+
+  return { audioBlob, audioDuration, synthTime, rtf }
+}
+
+export async function uploadRefAudio(file: File): Promise<RefAudio> {
+  const token = getAuthToken()
+  if (!token) throw new Error("No authentication token found")
+
+  const formData = new FormData()
+  formData.append("file", file)
+
+  const response = await fetch("/api/tts/ref-audio", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || "Upload failed")
+  }
+  return response.json()
+}
+
+export async function listRefAudios(): Promise<RefAudio[]> {
+  const response = await fetchWithAuth("/api/tts/ref-audio")
+  if (!response.ok) return []
+  return response.json()
+}
+
+export async function deleteRefAudio(key: string): Promise<void> {
+  const token = getAuthToken()
+  if (!token) throw new Error("No authentication token found")
+
+  // Use query param — path segments ending in .wav are unreliable in Next.js routing
+  const response = await fetch(`/api/tts/ref-audio?key=${encodeURIComponent(key)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok && response.status !== 204) {
+    throw new Error("Delete failed")
+  }
+}
+
+export async function getRefAudioUrl(key: string): Promise<string> {
+  const token = getAuthToken()
+  if (!token) throw new Error("No authentication token found")
+
+  const response = await fetch(`/api/tts/ref-audio?key=${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error("Not found")
+  const blob = await response.blob()
+  return URL.createObjectURL(blob)
+}
+
+// ---------------------------------------------------------------------------
+
 /**
  * Check if a user exists by email (public endpoint - no auth required)
  * Returns the user if found, null if not found
