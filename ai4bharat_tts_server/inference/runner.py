@@ -17,6 +17,8 @@ class TTSRequest:
         self.token_cache = []
         self.audio_to_yield = 0
         self.finished = False
+        # Code-frame cursor for incremental DAC (avoids full-history re-decode).
+        self.dac_code_cursor = 0
 
     def __repr__(self):
         return f"""TTSRequest(
@@ -43,7 +45,7 @@ class ParlerTTSModelRunner:
             num_layers=num_layers,
             type="dense",
             max_seq_len=768,
-            max_batch_size=48,
+            max_batch_size=24,
         )
         self.cross_attn_vmem = VirtualMemory(
             max_num_pages=1024,
@@ -53,7 +55,7 @@ class ParlerTTSModelRunner:
             num_layers=num_layers,
             type="dense",
             max_seq_len=128,
-            max_batch_size=48,
+            max_batch_size=24,
         )
         self.topk_processor = transformers.TopKLogitsWarper(top_k=50)
         self.num_codebooks = self.model.config["decoder"]["num_codebooks"]
@@ -66,7 +68,17 @@ class ParlerTTSModelRunner:
         dac_cfg = self.model.dac.config
         hop = math.floor(dac_cfg.sampling_rate / dac_cfg.frame_rate)
         print(dac_cfg.sampling_rate, dac_cfg.frame_rate)
+        self._dac_hop = hop
+        # Short lookback is enough for DAC continuity; keeps periodic windows ~O(play_steps).
+        self._dac_context_frames = 8
+        # Cap live DAC per tick (RR). Full-24 each tick is ~100ms+ and fights KV VRAM.
+        # Prefer advancing yield for a few streams so EOS tails stay short.
+        # ~8 live/tick ⇒ each of 24 streams gets DAC ~2× before typical EOS (keeps finals short).
+        self._dac_max_live_per_tick = 8
+        self._dac_max_finals_per_tick = 2
+        self._dac_micro_batch = 1
         self._audio_stride = max(0, hop * (play_steps - self.num_codebooks) // 6)
+        self._dac_compiled = False
         self.use_cuda_graph = bool(use_cuda_graph) and device.type == "cuda"
         self._cuda_graphs = {}
         self._cuda_graph = None
@@ -215,6 +227,9 @@ class ParlerTTSModelRunner:
             req.decoder_position_ids.append(
                 next_decoder_position_ids[bid].unsqueeze(0)
             )
+            # Compact token_cache occasionally so DAC prep isn't O(steps) cats.
+            if len(req.token_cache) >= 64:
+                req.token_cache = [torch.cat(req.token_cache, dim=-1)]
 
     def _invalidate_cuda_graph(self):
         self._cuda_graphs = {}
@@ -243,10 +258,12 @@ class ParlerTTSModelRunner:
 
     @staticmethod
     def _seq_bucket(seq_len, max_seq_len):
-        # Coarse enough to limit ~30ms recaptures; fine enough for early-step speed.
-        for b in (128, 256, 512, 768):
-            if seq_len <= b:
-                return min(b, max_seq_len)
+        # Monotonic-ish coarse buckets: fewer CUDA-graph recaptures than 128/256/512/768.
+        # Early 128 keeps first ~1s fast; then jump to 512 to avoid a mid-run 256 capture.
+        if seq_len <= 128:
+            return min(128, max_seq_len)
+        if seq_len <= 512:
+            return min(512, max_seq_len)
         return max_seq_len
 
     def _decode_with_cuda_graph(self, decoder_input_ids, decoder_position_ids):
@@ -483,41 +500,251 @@ class ParlerTTSModelRunner:
             split_indices.append(int(total_samples * cumulative / total_tokens))
         return np.split(audio_arr, split_indices, axis=-1)
 
-    def audio_decode(self):
-        audio_dict = dict(self._pending_audio_decode)
+    def _prepare_audio_decode_inputs(self):
+        """Snapshot codes for DAC without running it (safe while stepping continues).
+
+        Live requests use *incremental* code windows (lookback ``_dac_context_frames``)
+        so DAC cost stays roughly O(decode_every) instead of O(total_steps).
+        """
+        seed = dict(self._pending_audio_decode)
         self._pending_audio_decode.clear()
-        # Final audio for just-evicted requests (server calls this on eviction).
-        audio_dict.update(self._flush_pending_final_tokens())
-        sorted_pids = self._ordered_pids()
-        list_of_audio_tokens = []
-        decoded_pids = []
-        for pid in sorted_pids:
-            token_cache = self.running_requests[pid].token_cache
+
+        hop = self._dac_hop
+        ctx = self._dac_context_frames
+        S = self._audio_stride
+
+        live_codes = []
+        live_meta = []  # (pid, code_start, skip_samples, stride)
+        # Round-robin subset of live pids to keep periodic DAC bounded at high BS.
+        live_pids = self._ordered_pids()
+        if not hasattr(self, "_dac_rr") or self._dac_rr >= len(live_pids):
+            self._dac_rr = 0
+        max_live = min(len(live_pids), int(self._dac_max_live_per_tick))
+        if live_pids:
+            ordered = live_pids[self._dac_rr :] + live_pids[: self._dac_rr]
+            selected = ordered[:max_live]
+            self._dac_rr = (self._dac_rr + max_live) % max(1, len(live_pids))
+        else:
+            selected = []
+
+        for pid in selected:
+            req = self.running_requests[pid]
+            if len(req.token_cache) == 0:
+                continue
+            audio_tokens = torch.cat(req.token_cache, dim=-1)
+            fixed = self._stacked_audio_codes_from_timeline(audio_tokens)
+            if fixed is None:
+                continue
+            n_codes = int(fixed.shape[-1])
+            # Only need codes covering new audio past audio_to_yield, plus lookback.
+            need_from = max(0, int(req.audio_to_yield) // hop - ctx)
+            if n_codes <= need_from:
+                continue
+            # If almost nothing new beyond stride holdback, skip.
+            approx_full_samples = n_codes * hop
+            if S > 0 and approx_full_samples <= req.audio_to_yield + S:
+                continue
+            codes_slice = fixed[:, :, need_from:].detach().contiguous().clone()
+            skip_samples = max(0, int(req.audio_to_yield) - need_from * hop)
+            live_codes.append(codes_slice)
+            live_meta.append((pid, need_from, skip_samples, S))
+
+        # Cap finals per tick; leave the rest queued so a wave of EOS doesn't stall steps.
+        pending_finals = self._pending_final_tokens
+        final_items = list(pending_finals.items())
+        take_n = min(len(final_items), int(self._dac_max_finals_per_tick))
+        take = final_items[:take_n]
+        self._pending_final_tokens = dict(final_items[take_n:])
+
+        final_codes = []
+        # (pid, skip_samples) — incremental tail decode, not full history.
+        final_meta = []
+        for pid, (token_cache, audio_to_yield) in take:
             if len(token_cache) == 0:
                 continue
-
-            audio_tokens = torch.cat(token_cache, dim=-1)
-            audio_tokens_fixed = self._stacked_audio_codes_from_timeline(audio_tokens)
-            if audio_tokens_fixed is None:
+            trimmed = []
+            for t in token_cache:
+                trimmed.append(t)
+                if bool(torch.all(t == self.eos_token_id).item()):
+                    break
+            audio_tokens = torch.cat(trimmed, dim=-1)
+            fixed = self._stacked_audio_codes_from_timeline(audio_tokens)
+            if fixed is None:
                 continue
-            list_of_audio_tokens.append(audio_tokens_fixed)
-            decoded_pids.append(pid)
+            n_codes = int(fixed.shape[-1])
+            need_from = max(0, int(audio_to_yield) // hop - ctx)
+            if n_codes <= need_from:
+                # Nothing left to emit; drop.
+                continue
+            codes_slice = fixed[:, :, need_from:].detach().contiguous().clone()
+            skip_samples = max(0, int(audio_to_yield) - need_from * hop)
+            final_codes.append(codes_slice)
+            final_meta.append((pid, skip_samples))
 
-        if len(list_of_audio_tokens) == 0:
+        return {
+            "seed": seed,
+            "live_codes": live_codes,
+            "live_meta": live_meta,
+            "final_codes": final_codes,
+            "final_meta": final_meta,
+            "hop": hop,
+        }
+
+    def start_audio_decode_async(self, stream):
+        """
+        Launch DAC on ``stream`` without blocking the default decode stream.
+        Returns a handle for ``try_finish_audio_decode_async``, or None if nothing to do.
+        """
+        snap = self._prepare_audio_decode_inputs()
+        if (
+            not snap["seed"]
+            and not snap["live_codes"]
+            and not snap["final_codes"]
+        ):
+            return None
+
+        all_codes = snap["live_codes"] + snap["final_codes"]
+        handle = {
+            "event": torch.cuda.Event(),
+            "snap": snap,
+            "gpu_audios": None,
+        }
+        if not all_codes:
+            handle["event"].record(stream)
+            return handle
+
+        # DAC stream must see completed clones from the decode stream.
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            # Micro-batch=1: DAC scales poorly in B and fragments VRAM next to graphs.
+            gpu_audios = [None] * len(all_codes)
+            micro = max(1, int(self._dac_micro_batch))
+            for start in range(0, len(all_codes), micro):
+                chunk = all_codes[start : start + micro]
+                max_t = max(c.shape[-1] for c in chunk)
+                n_cb = chunk[0].shape[1]
+                batched = chunk[0].new_zeros((len(chunk), n_cb, max_t))
+                lengths = []
+                for i, codes in enumerate(chunk):
+                    t = codes.shape[-1]
+                    batched[i, :, :t] = codes[0]
+                    lengths.append(t)
+                audio_b = self.model.dac.decode(audio_codes=batched)[0]
+                if audio_b.dim() == 3:
+                    audio_b = audio_b.squeeze(1)
+                total_samples = audio_b.shape[-1]
+                for i, t in enumerate(lengths):
+                    gpu_audios[start + i] = audio_b[
+                        i, : max(1, int(total_samples * t / max_t))
+                    ].contiguous()
+                del audio_b, batched
+            handle["gpu_audios"] = gpu_audios
+        handle["event"].record(stream)
+        return handle
+
+    def try_finish_audio_decode_async(self, handle, block=False):
+        """
+        If DAC finished (or block=True), return audio_dict and apply yield cursors.
+        Returns None if still running and block=False.
+        """
+        if handle is None:
+            return {}
+        ev = handle["event"]
+        if not block and not ev.query():
+            return None
+        ev.synchronize()
+
+        snap = handle["snap"]
+        audio_dict = dict(snap["seed"])
+        hop = snap["hop"]
+        gpu_audios = handle.get("gpu_audios")
+        if not gpu_audios:
             return audio_dict
-        self.list_of_audio_tokens = list_of_audio_tokens
-        audio_arrays = self.decode_audio_parts(list_of_audio_tokens)
-        S = self._audio_stride
-        for pid, audio_arr in zip(decoded_pids, audio_arrays):
-            req = self.running_requests[pid]
-            t0 = req.audio_to_yield
-            if S > 0 and len(audio_arr) > t0 + S:
-                req.audio_to_yield = len(audio_arr) - S
-                audio_dict[pid] = audio_arr[t0:-S]
-            elif S == 0 and len(audio_arr) > t0:
-                req.audio_to_yield = len(audio_arr)
-                audio_dict[pid] = audio_arr[t0:]
+
+        n_live = len(snap["live_meta"])
+        for i, (pid, code_start, skip_samples, S) in enumerate(snap["live_meta"]):
+            audio_i = gpu_audios[i].detach().float().cpu().numpy()
+            if skip_samples >= len(audio_i):
+                continue
+            usable = audio_i[skip_samples:]
+            if S > 0:
+                if len(usable) <= S:
+                    continue
+                chunk = usable[:-S]
+                new_yield = code_start * hop + (len(audio_i) - S)
+            else:
+                chunk = usable
+                new_yield = code_start * hop + len(audio_i)
+            if chunk.size == 0:
+                continue
+            audio_dict[pid] = chunk
+            req = self.running_requests.get(pid)
+            if req is not None:
+                req.audio_to_yield = int(new_yield)
+
+        for j, (pid, skip_samples) in enumerate(snap["final_meta"]):
+            audio_i = gpu_audios[n_live + j].detach().float().cpu().numpy()
+            if skip_samples >= len(audio_i):
+                continue
+            tail = audio_i[skip_samples:]
+            if tail.size:
+                audio_dict[pid] = tail
         return audio_dict
+
+    def audio_decode(self):
+        """Synchronous DAC. Drains remaining finals if callers keep invoking after EOS."""
+        if device.type != "cuda":
+            # Fall back to original sync path on CPU.
+            audio_dict = dict(self._pending_audio_decode)
+            self._pending_audio_decode.clear()
+            audio_dict.update(self._flush_pending_final_tokens())
+            sorted_pids = self._ordered_pids()
+            list_of_audio_tokens = []
+            decoded_pids = []
+            for pid in sorted_pids:
+                token_cache = self.running_requests[pid].token_cache
+                if len(token_cache) == 0:
+                    continue
+                audio_tokens = torch.cat(token_cache, dim=-1)
+                audio_tokens_fixed = self._stacked_audio_codes_from_timeline(audio_tokens)
+                if audio_tokens_fixed is None:
+                    continue
+                list_of_audio_tokens.append(audio_tokens_fixed)
+                decoded_pids.append(pid)
+            if not list_of_audio_tokens:
+                return audio_dict
+            audio_arrays = self.decode_audio_parts(list_of_audio_tokens)
+            S = self._audio_stride
+            for pid, audio_arr in zip(decoded_pids, audio_arrays):
+                req = self.running_requests[pid]
+                t0 = req.audio_to_yield
+                if S > 0 and len(audio_arr) > t0 + S:
+                    req.audio_to_yield = len(audio_arr) - S
+                    audio_dict[pid] = audio_arr[t0:-S]
+                elif S == 0 and len(audio_arr) > t0:
+                    req.audio_to_yield = len(audio_arr)
+                    audio_dict[pid] = audio_arr[t0:]
+            return audio_dict
+
+        if not hasattr(self, "_dac_stream") or self._dac_stream is None:
+            self._dac_stream = torch.cuda.Stream()
+        out = {}
+        # One capped tick while decode is still running. After the batch drains,
+        # keep going until pending finals are empty (still incremental / capped).
+        drain_all = len(self.running_requests) == 0
+        for _ in range(64 if drain_all else 1):
+            handle = self.start_audio_decode_async(self._dac_stream)
+            if handle is None:
+                break
+            part = self.try_finish_audio_decode_async(handle, block=True) or {}
+            for pid, arr in part.items():
+                prev = out.get(pid)
+                out[pid] = arr if prev is None else np.concatenate([prev, arr], axis=-1)
+            if not self._pending_final_tokens:
+                break
+            if drain_all and device.type == "cuda":
+                torch.cuda.empty_cache()
+        return out
 
 
 
