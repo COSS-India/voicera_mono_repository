@@ -11,7 +11,7 @@ here = os.path.dirname(__file__)
 @torch.no_grad()
 def test_runner_obj():
     model_runner = ParlerTTSModelRunner(os.path.join(here, "checkpoints"))
-
+    step_times = []
     bs = 16
     requests = [
         TTSRequest(
@@ -43,10 +43,11 @@ def test_runner_obj():
                 model_runner.prefill(req)
 
         model_runner.check_stopping_criteria()
+        step_times.append(1000 * (time.time() - start))
         print("model runner step",len(model_runner.running_requests),1000 * (time.time() - start),)
-        if idx%60==0:
-            model_runner.audio_decode()
+        #if idx%60==0:
+        #    model_runner.audio_decode()
 
     model_runner.audio_decode()
-
+    print('average step time',sum(step_times)/len(step_times))
 test_runner_obj()

@@ -61,6 +61,8 @@ class ParlerTTSModelRunner:
         self.eos_token_id = self.model.config["decoder"]["eos_token_id"]
         self.running_requests = {}
         self._pending_audio_decode = {}
+        # Final utterances queued on evict; DAC runs in audio_decode() (not on step path).
+        self._pending_final_tokens = {}
         dac_cfg = self.model.dac.config
         hop = math.floor(dac_cfg.sampling_rate / dac_cfg.frame_rate)
         print(dac_cfg.sampling_rate, dac_cfg.frame_rate)
@@ -71,6 +73,12 @@ class ParlerTTSModelRunner:
         self._cuda_graph_bs = None
         self._cuda_graph_bucket = None
         self._cuda_graph_retired = False
+        self._cg_hold_key = None
+        self._cg_hold_steps = 0
+        self._session_peak_bs = 0
+        # Fast capture while batch is stable/growing; avoid recapture storms while draining.
+        self._cg_capture_after_grow = 2
+        self._cg_capture_after_shrink = 6
         self._cg_input_ids = None
         self._cg_position_ids = None
         self._cg_logits = None
@@ -114,6 +122,7 @@ class ParlerTTSModelRunner:
         if len(self.running_requests) == 0:
             # New generation wave — allow CUDA graph capture again.
             self._cuda_graph_retired = False
+            self._session_peak_bs = 0
             self._invalidate_cuda_graph()
 
         self.running_requests[request.pid] = request
@@ -212,6 +221,9 @@ class ParlerTTSModelRunner:
         self._cuda_graph = None
         self._cuda_graph_bs = None
         self._cuda_graph_bucket = None
+        self._cg_hold_key = None
+        self._cg_hold_steps = 0
+        self._session_peak_bs = 0
         self._cg_input_ids = None
         self._cg_position_ids = None
         self._cg_logits = None
@@ -231,7 +243,8 @@ class ParlerTTSModelRunner:
 
     @staticmethod
     def _seq_bucket(seq_len, max_seq_len):
-        for b in (64, 96, 128, 160, 192, 256, 320, 384, 512, 640, 768, 1024):
+        # Coarse enough to limit ~30ms recaptures; fine enough for early-step speed.
+        for b in (128, 256, 512, 768):
             if seq_len <= b:
                 return min(b, max_seq_len)
         return max_seq_len
@@ -245,9 +258,10 @@ class ParlerTTSModelRunner:
         ]
         contiguous = slots == list(range(bs))
         if not contiguous:
-            self._cuda_graphs.clear()
             self._cuda_graph = None
             self._cuda_graph_bs = None
+            self._cg_hold_key = None
+            self._cg_hold_steps = 0
             self.self_attn_vmem.disable_cuda_graph()
             self.cross_attn_vmem.disable_cuda_graph()
             return self.model.decode(
@@ -257,22 +271,54 @@ class ParlerTTSModelRunner:
                 model_encoder_kv_cache_vmem=self.cross_attn_vmem,
             )
 
-        if self._cuda_graph_bs != bs:
-            # bs changed — drop old graphs (each holds a large memory pool).
-            self._cuda_graphs.clear()
-            self._cuda_graph = None
-            self.self_attn_vmem.enable_cuda_graph(bs)
-            self.cross_attn_vmem.enable_cuda_graph(bs)
-            self._cuda_graph_bs = bs
-            torch.cuda.empty_cache()
-
-        # Host counters — no CUDA sync on the hot path.
         live_before = self.self_attn_vmem.max_host_seq_len(bs) + 1
         bucket = self._seq_bucket(live_before, self.self_attn_vmem.max_seq_len)
         cross_bucket = self._seq_bucket(
             max(self.cross_attn_vmem.max_host_seq_len(bs), 1),
             self.cross_attn_vmem.max_seq_len,
         )
+        key = (bs, bucket, cross_bucket)
+        self._session_peak_bs = max(self._session_peak_bs, bs)
+
+        if key != self._cg_hold_key:
+            self._cg_hold_key = key
+            self._cg_hold_steps = 1
+        else:
+            self._cg_hold_steps += 1
+
+        entry = self._cuda_graphs.get(key)
+        # Reuse an already-captured graph immediately.
+        if entry is not None:
+            self.self_attn_vmem.enable_cuda_graph(bs)
+            self.cross_attn_vmem.enable_cuda_graph(bs)
+            self._cuda_graph_bs = bs
+            # Side-effect grow for captured closures' write-position buffers.
+            self.self_attn_vmem.get_decode_closures(grow=True, attn_len=bucket)
+            self.cross_attn_vmem.get_decode_closures(grow=False, attn_len=cross_bucket)
+            entry["input_ids"].copy_(decoder_input_ids)
+            entry["pos_ids"].copy_(decoder_position_ids)
+            entry["graph"].replay()
+            return entry["logits"]
+
+        shrinking = bs < self._session_peak_bs
+        need = (
+            self._cg_capture_after_shrink if shrinking else self._cg_capture_after_grow
+        )
+        if self._cg_hold_steps < need:
+            self.self_attn_vmem.disable_cuda_graph()
+            self.cross_attn_vmem.disable_cuda_graph()
+            return self.model.decode(
+                decoder_input_ids=decoder_input_ids,
+                decoder_position_ids=decoder_position_ids,
+                model_kv_cache_vmem=self.self_attn_vmem,
+                model_encoder_kv_cache_vmem=self.cross_attn_vmem,
+            )
+
+        # Stable — capture once for this (bs, bucket).
+        self._cuda_graphs.clear()
+        self.self_attn_vmem.enable_cuda_graph(bs)
+        self.cross_attn_vmem.enable_cuda_graph(bs)
+        self._cuda_graph_bs = bs
 
         self_updater, self_attn = self.self_attn_vmem.get_decode_closures(
             grow=True, attn_len=bucket
@@ -281,49 +327,33 @@ class ParlerTTSModelRunner:
             grow=False, attn_len=cross_bucket
         )
 
-        key = (bs, bucket, cross_bucket)
-        entry = self._cuda_graphs.get(key)
-        if entry is None:
-            # Only keep one graph resident to avoid multi-pool OOM.
-            self._cuda_graphs.clear()
-            torch.cuda.empty_cache()
+        static_ids = decoder_input_ids.clone()
+        static_pos = decoder_position_ids.clone()
 
-            static_ids = decoder_input_ids.clone()
-            static_pos = decoder_position_ids.clone()
+        s = torch.cuda.Stream()
+        s.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(s):
+            logits = self.model.decode_forward(
+                static_ids, static_pos, self_updater, self_attn, cross_attn
+            )
+        torch.cuda.current_stream().wait_stream(s)
 
-            s = torch.cuda.Stream()
-            s.wait_stream(torch.cuda.current_stream())
-            with torch.cuda.stream(s):
-                for _ in range(2):
-                    logits = self.model.decode_forward(
-                        static_ids, static_pos, self_updater, self_attn, cross_attn
-                    )
-            torch.cuda.current_stream().wait_stream(s)
-            torch.cuda.synchronize()
-
-            g = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(g):
-                logits = self.model.decode_forward(
-                    static_ids, static_pos, self_updater, self_attn, cross_attn
-                )
-            # Capture-time execution can disagree with eager on this stack;
-            # replay is correct — always replay once before using logits.
-            g.replay()
-            entry = {
-                "graph": g,
-                "input_ids": static_ids,
-                "pos_ids": static_pos,
-                "logits": logits,
-            }
-            self._cuda_graphs[key] = entry
-            self._cuda_graph = g
-            self._cuda_graph_bucket = key
-            return logits
-
-        entry["input_ids"].copy_(decoder_input_ids)
-        entry["pos_ids"].copy_(decoder_position_ids)
-        entry["graph"].replay()
-        return entry["logits"]
+        g = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(g):
+            logits = self.model.decode_forward(
+                static_ids, static_pos, self_updater, self_attn, cross_attn
+            )
+        g.replay()
+        entry = {
+            "graph": g,
+            "input_ids": static_ids,
+            "pos_ids": static_pos,
+            "logits": logits,
+        }
+        self._cuda_graphs[key] = entry
+        self._cuda_graph = g
+        self._cuda_graph_bucket = key
+        return logits
 
     def _sample_decode(self, logits, sampling="multinomial", sorted_pids=None):
         if sorted_pids is None:
@@ -386,6 +416,7 @@ class ParlerTTSModelRunner:
         if not to_evict:
             return
         # Batch free: compact once after all frees to avoid repeated KV moves.
+        # Defer DAC to audio_decode() so check_stopping stays off the step hot path.
         for i, req in enumerate(to_evict):
             is_last = i == len(to_evict) - 1
             token_cache = req.token_cache
@@ -393,26 +424,17 @@ class ParlerTTSModelRunner:
             pid = req.pid
             del self.running_requests[pid]
             self.free(req, compact=is_last)
-            try:
-                audio = self._audio_numpy_from_token_cache(token_cache)
-            except Exception:
-                torch.cuda.empty_cache()
-                try:
-                    audio = self._audio_numpy_from_token_cache(token_cache)
-                except Exception:
-                    audio = None
-            if audio is not None:
-                tail = audio[audio_to_yield:]
-                if tail.size:
-                    self._pending_audio_decode[pid] = tail
+            self._pending_final_tokens[pid] = (token_cache, audio_to_yield)
 
     def free(self, request, compact=True):
         self.self_attn_vmem.free(request.pid, compact=compact)
         self.cross_attn_vmem.free(request.pid, compact=compact)
-        # Slot / batch-size change — drop graphs so next step re-captures.
-        self._cuda_graphs.clear()
+        # Drop active graph pointer; keep hysteresis so we don't recapture every eviction.
         self._cuda_graph = None
         self._cuda_graph_bs = None
+        self._cuda_graphs.clear()
+        self._cg_hold_key = None
+        self._cg_hold_steps = 0
         try:
             self.self_attn_vmem.disable_cuda_graph()
             self.cross_attn_vmem.disable_cuda_graph()
@@ -425,18 +447,27 @@ class ParlerTTSModelRunner:
         pid = request.pid
         del self.running_requests[pid]
         self.free(request, compact=True)
-        try:
-            audio = self._audio_numpy_from_token_cache(token_cache)
-        except Exception:
-            torch.cuda.empty_cache()
+        self._pending_final_tokens[pid] = (token_cache, audio_to_yield)
+
+    def _flush_pending_final_tokens(self):
+        """DAC any utterances queued at evict time."""
+        out = {}
+        pending = self._pending_final_tokens
+        self._pending_final_tokens = {}
+        for pid, (token_cache, audio_to_yield) in pending.items():
             try:
                 audio = self._audio_numpy_from_token_cache(token_cache)
             except Exception:
-                audio = None
-        if audio is not None:
-            tail = audio[audio_to_yield:]
-            if tail.size:
-                self._pending_audio_decode[pid] = tail
+                torch.cuda.empty_cache()
+                try:
+                    audio = self._audio_numpy_from_token_cache(token_cache)
+                except Exception:
+                    audio = None
+            if audio is not None:
+                tail = audio[audio_to_yield:]
+                if tail.size:
+                    out[pid] = tail
+        return out
 
     def decode_audio_parts(self, list_of_audio_ids):
         audio_ids_e = torch.cat(list_of_audio_ids, -1)
@@ -455,6 +486,8 @@ class ParlerTTSModelRunner:
     def audio_decode(self):
         audio_dict = dict(self._pending_audio_decode)
         self._pending_audio_decode.clear()
+        # Final audio for just-evicted requests (server calls this on eviction).
+        audio_dict.update(self._flush_pending_final_tokens())
         sorted_pids = self._ordered_pids()
         list_of_audio_tokens = []
         decoded_pids = []
