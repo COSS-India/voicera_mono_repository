@@ -163,7 +163,7 @@ STT_LANGUAGE_MAP = {
         "Bodo": "brx",
         "Dogri": "doi",
         "Kashmiri": "ks",
-        "Konkani": "kok",
+        "Konkani": "gom",
         "Maithili": "mai",
         "Manipuri": "mni",
         "Sanskrit": "sa",

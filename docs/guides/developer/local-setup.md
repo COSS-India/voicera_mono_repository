@@ -49,10 +49,10 @@ cp .env.example .env.local
 Edit `voicera_frontend/.env.local`:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_JOHNAIC_SERVER_URL=http://localhost:7860
-NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL=ws://localhost:7860
 ```
+
+Backend API calls go through Next.js `/api/*` routes, which proxy to `http://localhost:8000` by default (`lib/api-config.ts`). No backend URL env var is required for local dev.
 
 Run the dev server:
 

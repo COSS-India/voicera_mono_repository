@@ -45,10 +45,7 @@ def test_runner_obj():
         model_runner.check_stopping_criteria()
         print("model runner step",len(model_runner.running_requests),1000 * (time.time() - start),)
         if idx%60==0:
-            time_taken = time.time()
             model_runner.audio_decode()
-            time_taken = time.time() - time_taken
-            print("time taken to decode", time_taken)
 
     model_runner.audio_decode()
 

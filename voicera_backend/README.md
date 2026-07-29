@@ -52,7 +52,7 @@ Typically also used by the full stack:
 | Service | Notes |
 |---------|--------|
 | **voice_server** | `VOICERA_BACKEND_URL`, `INTERNAL_API_KEY` |
-| **frontend** | `NEXT_PUBLIC_API_URL` → backend |
+| **frontend** | `NEXT_PUBLIC_JOHNAIC_SERVER_URL` → voice server; backend via hardcoded `http://localhost:8000` proxy |
 
 ## Configuration
 

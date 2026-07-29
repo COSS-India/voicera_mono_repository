@@ -67,7 +67,9 @@ from utils.bot_utils import (
     patch_immediate_first_chunk,
 )
 from utils.language_switching import (
-    LANGUAGE_SWITCH_SYSTEM_PROMPT,
+    build_language_switch_system_prompt,
+    is_bilingual_agent,
+    resolve_agent_language_codes,
     setup_language_switching,
 )
 from utils.call_recording_utils import submit_call_recording
@@ -153,6 +155,9 @@ async def run_bot(
             llm_config["knowledge_top_k"] = 10
         
         language = agent_config.get("language")
+        primary_language_code, allowed_language_codes = resolve_agent_language_codes(
+            agent_config
+        )
         if language:
             if not stt_config.get("language"):
                 stt_config["language"] = language
@@ -198,14 +203,20 @@ async def run_bot(
             and stt_provider_name == "ai4bharat"
             and tts_model == "indic-parler-tts"
             and stt_model == "indic-conformer-stt"
+            and is_bilingual_agent(agent_config)
         )
 
         system_prompt = agent_config.get("system_prompt", None)
         if llm_provider_name in ("qwen", "localqwen", "vllm"):
             system_prompt = ensure_no_think_suffix(system_prompt or "")
         if language_switching_enabled:
-            system_prompt = (system_prompt or "") + LANGUAGE_SWITCH_SYSTEM_PROMPT
-            logger.info("Language switching enabled (OpenAI + AI4Bharat STT/TTS)")
+            system_prompt = (system_prompt or "") + build_language_switch_system_prompt(
+                allowed_language_codes
+            )
+            logger.info(
+                "Language switching enabled (OpenAI + AI4Bharat STT/TTS) "
+                f"for languages: {', '.join(allowed_language_codes)}"
+            )
         context = OpenAILLMContext([{"role": "system", "content": system_prompt}])
 
         if language_switching_enabled:
@@ -214,7 +225,8 @@ async def run_bot(
                 stt=stt,
                 tts=tts,
                 context=context,
-                default_language=language or "hi",
+                default_language=language or primary_language_code,
+                allowed_languages=allowed_language_codes,
             )
         
         # Use stored user aggregator params if available (for OpenAI services)

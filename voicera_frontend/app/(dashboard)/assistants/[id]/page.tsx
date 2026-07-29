@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,10 +41,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { agentsQueryKey } from "@/lib/queries/agents"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 
 // Import JSON data
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
+import {
+  buildLanguageConfigFields,
+  dedupeLanguages,
+  getActiveLanguages,
+  getIntersectedSTTModels,
+  getIntersectedSTTProviders,
+  getIntersectedTTSModels,
+  getIntersectedTTSProviders,
+  loadSelectedLanguagesFromConfig,
+} from "@/lib/languageModelSupport"
+import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
 import {
   type KenpathVariant,
   isBharatVistaarLanguageSupported,
@@ -53,19 +67,6 @@ import {
 } from "@/lib/kenpath"
 import ttsData from "@/tts.json"
 import descriptionsData from "@/descriptions.json"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
 
 // Provider name mappings for official names (used for display and database)
 const getProviderOfficialName = (providerId: string): string => {
@@ -233,6 +234,7 @@ const formatDurationSeconds = (seconds: number) => {
 
 export default function AgentDetailPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const params = useParams()
   // Decode the agentId from URL
   const agentId = params.id ? decodeURIComponent(params.id as string) : ""
@@ -267,7 +269,7 @@ export default function AgentDetailPage() {
   const [userOnlineDetectionClosingMessage, setUserOnlineDetectionClosingMessage] =
     useState("")
   const [agentType, setAgentType] = useState("")
-  const [language, setLanguage] = useState("")
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([])
   const [llmProvider, setLlmProvider] = useState("")
   const [llmModel, setLlmModel] = useState("")
   const [customLlmId, setCustomLlmId] = useState("")
@@ -317,8 +319,38 @@ export default function AgentDetailPage() {
     const merged = new Set([...sttLangs, ...ttsLangs])
     return Array.from(merged)
       .sort()
-      .map((code) => ({ code, label: displayLanguageName(code) }))
+      .map((code) => ({ code, name: displayLanguageName(code) }))
   }, [])
+
+  const activeLanguages = useMemo(
+    () => getActiveLanguages(selectedLanguages),
+    [selectedLanguages]
+  )
+  const primaryLanguage = activeLanguages[0] || ""
+
+  // Get supported STT providers for all selected languages (intersection)
+  const supportedSTTProviders = useMemo(
+    () => getIntersectedSTTProviders(activeLanguages),
+    [activeLanguages]
+  )
+
+  // Get supported STT models for selected provider across all selected languages
+  const supportedSTTModels = useMemo(
+    () => getIntersectedSTTModels(activeLanguages, sttProvider),
+    [activeLanguages, sttProvider]
+  )
+
+  // Get supported TTS providers for all selected languages (intersection)
+  const supportedTTSProviders = useMemo(
+    () => getIntersectedTTSProviders(activeLanguages),
+    [activeLanguages]
+  )
+
+  // Get supported TTS models for selected provider across all selected languages
+  const supportedTTSModels = useMemo(
+    () => getIntersectedTTSModels(activeLanguages, ttsProvider),
+    [activeLanguages, ttsProvider]
+  )
 
   // Derive all STT providers from JSON (across all languages)
   const allSTTProviders = useMemo(() => {
@@ -348,77 +380,11 @@ export default function AgentDetailPage() {
     }))
   }, [])
 
-  // Get supported STT providers for selected language
-  const supportedSTTProviders = useMemo(() => {
-    if (!language) return new Set<string>()
-    const langData =
-      sttData.stt.languages[language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
-
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, models]) => Array.isArray(models) && models.length > 0)
-        .map(([provider]) => provider)
-    )
-  }, [language])
-
-  // Get supported STT models for selected provider
-  const supportedSTTModels = useMemo(() => {
-    if (!language || !sttProvider) return new Set<string>()
-    const langData =
-      sttData.stt.languages[language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
-
-    const models = langData.models[sttProvider as keyof typeof langData.models]
-    return new Set(Array.isArray(models) ? models : [])
-  }, [language, sttProvider])
-
-  // Get supported TTS providers for selected language
-  const supportedTTSProviders = useMemo(() => {
-    if (!language) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
-
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, data]) => {
-          const modelData = data as { available?: boolean }
-          return modelData.available === true
-        })
-        .map(([provider]) => provider)
-    )
-  }, [language])
-
-  // Get supported TTS models for selected provider
-  const supportedTTSModels = useMemo(() => {
-    if (!language || !ttsProvider) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
-
-    const providerData = langData.models[ttsProvider as keyof typeof langData.models] as {
-      model?: string
-      models?: string[]
-      available?: boolean
-    }
-    if (!providerData || !providerData.available) return new Set<string>()
-
-    const models: string[] = []
-    if (providerData.models && Array.isArray(providerData.models)) {
-      models.push(...providerData.models)
-    }
-    if (providerData.model) {
-      models.push(providerData.model)
-    }
-    return new Set(models)
-  }, [language, ttsProvider])
-
-  // Get available TTS voices for selected provider/model (Sarvam: voices vary by model)
+  // Get available TTS voices for primary language + selected provider/model
   const availableTTSVoices = useMemo(() => {
-    if (!language || !ttsProvider) return []
+    if (!primaryLanguage || !ttsProvider) return []
     const langData =
-      ttsData.tts.languages[language as keyof typeof ttsData.tts.languages]
+      ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
     if (!langData) return []
 
     const providerData = langData.models[ttsProvider as keyof typeof langData.models] as {
@@ -434,7 +400,7 @@ export default function AgentDetailPage() {
       return providerData.voices
     }
     return []
-  }, [language, ttsProvider, ttsModel])
+  }, [primaryLanguage, ttsProvider, ttsModel])
 
   // Get available TTS descriptions for AI4Bharat and Bhashini providers
   const availableTTSDescriptions = useMemo(() => {
@@ -461,6 +427,64 @@ export default function AgentDetailPage() {
     )
   }
 
+  const applyLanguageAudioDefaults = (primaryLanguage: string) => {
+    setSttProvider("")
+    setSttModel("")
+    setTtsProvider("")
+    setTtsModel("")
+    setTtsVoice("")
+    setTtsDescription("")
+
+    if (
+      primaryLanguage &&
+      primaryLanguage !== "English (United States)" &&
+      primaryLanguage !== "English (India)"
+    ) {
+      const sttLangData =
+        sttData.stt.languages[primaryLanguage as keyof typeof sttData.stt.languages]
+      if (
+        sttLangData?.models?.ai4bharat &&
+        Array.isArray(sttLangData.models.ai4bharat) &&
+        sttLangData.models.ai4bharat.length > 0
+      ) {
+        setSttProvider("ai4bharat")
+        setSttModel(sttLangData.models.ai4bharat[0])
+      }
+
+      const ttsLangData =
+        ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
+      const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as
+        | { available?: boolean; model?: string; voices?: string[] }
+        | undefined
+      if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
+        setTtsProvider("ai4bharat")
+        setTtsModel(ttsAi4bharatData.model)
+        if (
+          ttsAi4bharatData.voices &&
+          Array.isArray(ttsAi4bharatData.voices) &&
+          ttsAi4bharatData.voices.length > 0
+        ) {
+          setTtsVoice(ttsAi4bharatData.voices[0])
+          setTtsDescription(
+            descriptionsData.length > 0 ? descriptionsData[0].description : ""
+          )
+        }
+      }
+    }
+  }
+
+  const handleLanguagesChange = (languages: string[]) => {
+    setSelectedLanguages(languages)
+    if (languages[0]) {
+      applyLanguageAudioDefaults(languages[0])
+    }
+  }
+
+  const languageConfigFields = useMemo(
+    () => buildLanguageConfigFields(selectedLanguages),
+    [selectedLanguages]
+  )
+
   // Load agent data
   useEffect(() => {
     // Reset all state when agentId changes
@@ -470,7 +494,7 @@ export default function AgentDetailPage() {
     setSystemPrompt("")
     setGreetingMessage("")
     setAgentType("")
-    setLanguage("")
+    setSelectedLanguages([])
     setLlmProvider("")
     setLlmModel("")
     setSttProvider("")
@@ -629,8 +653,8 @@ export default function AgentDetailPage() {
           // Load language - use language name directly (no conversion needed)
           // Priority: agent_config.language > stt_model.language > tts_model.language
           const configLangName = (agentData.agent_config as any)?.language || ""
-          const sttLangName = agentData.agent_config?.stt_model?.language || ""
-          const ttsLangName = agentData.agent_config?.tts_model?.language || ""
+          const sttLangName = (agentData.agent_config?.stt_model as { language?: string })?.language || ""
+          const ttsLangName = (agentData.agent_config?.tts_model as { language?: string })?.language || ""
 
           // Check if language exists in JSON (more reliable than checking allLanguages array)
           const languageExistsInJSON = (langName: string) => {
@@ -638,20 +662,25 @@ export default function AgentDetailPage() {
             return langName in sttData.stt.languages || langName in ttsData.tts.languages
           }
 
-          // Use the first available language name, verifying it exists in JSON
-          // Priority: agent_config.language > stt_model.language > tts_model.language
-          let selectedLanguage = ""
-          if (configLangName && languageExistsInJSON(configLangName)) {
-            selectedLanguage = configLangName.trim()
-          } else if (sttLangName && languageExistsInJSON(sttLangName)) {
-            selectedLanguage = sttLangName.trim()
-          } else if (ttsLangName && languageExistsInJSON(ttsLangName)) {
-            selectedLanguage = ttsLangName.trim()
+          let loadedLanguages = loadSelectedLanguagesFromConfig(
+            (agentData.agent_config as any) || {}
+          ).filter((langName) => languageExistsInJSON(langName))
+
+          if (loadedLanguages.length === 0) {
+            let selectedLanguage = ""
+            if (configLangName && languageExistsInJSON(configLangName)) {
+              selectedLanguage = configLangName.trim()
+            } else if (sttLangName && languageExistsInJSON(sttLangName)) {
+              selectedLanguage = sttLangName.trim()
+            } else if (ttsLangName && languageExistsInJSON(ttsLangName)) {
+              selectedLanguage = ttsLangName.trim()
+            }
+            if (selectedLanguage) {
+              loadedLanguages = [selectedLanguage]
+            }
           }
 
-          if (selectedLanguage) {
-            setLanguage(selectedLanguage)
-          }
+          setSelectedLanguages(loadedLanguages)
 
           // Load STT settings - convert official name to internal ID
           const sttProviderName = agentData.agent_config?.stt_model?.name || ""
@@ -764,20 +793,22 @@ export default function AgentDetailPage() {
   // Only validate after initial load is complete (not during loading)
   useEffect(() => {
     // Don't validate during initial load
-    if (isLoading || isInitialLoadRef.current || !language) return
+    if (isLoading || isInitialLoadRef.current || activeLanguages.length === 0) return
 
-    // Clear STT model if it's not supported for current language/provider
-    if (sttProvider && sttModel) {
-      if (!supportedSTTModels.has(sttModel)) {
-        setSttModel("")
-      }
+    if (sttProvider && !supportedSTTProviders.has(sttProvider)) {
+      setSttProvider("")
+      setSttModel("")
+    } else if (sttProvider && sttModel && !supportedSTTModels.has(sttModel)) {
+      setSttModel("")
     }
 
-    // Clear TTS model if it's not supported for current language/provider
-    if (ttsProvider && ttsModel) {
-      if (!supportedTTSModels.has(ttsModel)) {
-        setTtsModel("")
-      }
+    if (ttsProvider && !supportedTTSProviders.has(ttsProvider)) {
+      setTtsProvider("")
+      setTtsModel("")
+      setTtsVoice("")
+      setTtsDescription("")
+    } else if (ttsProvider && ttsModel && !supportedTTSModels.has(ttsModel)) {
+      setTtsModel("")
     }
 
     // Clear TTS voice if it's not available for current provider; for Sarvam set to first voice of model
@@ -790,7 +821,20 @@ export default function AgentDetailPage() {
         }
       }
     }
-  }, [language, sttProvider, ttsProvider, ttsModel, supportedSTTModels, supportedTTSModels, availableTTSVoices, isLoading])
+  }, [
+    activeLanguages,
+    sttProvider,
+    sttModel,
+    ttsProvider,
+    ttsModel,
+    ttsVoice,
+    supportedSTTModels,
+    supportedSTTProviders,
+    supportedTTSModels,
+    supportedTTSProviders,
+    availableTTSVoices,
+    isLoading,
+  ])
 
   // Detect changes
   useEffect(() => {
@@ -800,14 +844,14 @@ export default function AgentDetailPage() {
     }
 
     // Language is already a name, use it directly
-    const languageName = language || ""
+    const languageName = primaryLanguage
 
     // Build current config with same structure as original
     const currentConfig: any =
       interactionMode === "non_conversational"
         ? {
             interaction_mode: "non_conversational",
-            language: languageName || "",
+            ...languageConfigFields,
             greeting_message: greetingMessage || "",
             tts_model: {
               name: ttsProvider || "",
@@ -823,7 +867,7 @@ export default function AgentDetailPage() {
             },
           }
         : {
-      language: languageName || "", // Include top-level language field
+      ...languageConfigFields,
       interaction_mode: "conversational",
       system_prompt: systemPrompt || "",
       greeting_message: greetingMessage || "",
@@ -892,7 +936,7 @@ export default function AgentDetailPage() {
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
     const hasChanged = hasConfigChanged || hasAgentTypeChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, language, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -909,7 +953,6 @@ export default function AgentDetailPage() {
     setShowConfirmModal(false)
     setIsSaving(true)
     try {
-      const languageName = language || ""
       const originalAgentType = (agent.agent_type || agentId).trim()
       const agentIdSlug =
         agent.agent_id || originalAgentType.replace(/\s+/g, "_").toLowerCase()
@@ -924,7 +967,7 @@ export default function AgentDetailPage() {
           interactionMode === "non_conversational"
             ? {
                 interaction_mode: "non_conversational",
-                language: languageName,
+                ...languageConfigFields,
                 greeting_message: greetingMessage,
                 tts_model: {
                   name: getProviderOfficialName(ttsProvider),
@@ -943,11 +986,16 @@ export default function AgentDetailPage() {
                   ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
                 },
               }
-            : {
-          ...agent.agent_config,
-          interaction_mode: "conversational",
-          language: languageName, // Update the top-level language field
-          system_prompt: systemPrompt,
+            : (() => {
+                const baseConfig = { ...(agent.agent_config || {}) }
+                delete baseConfig.secondary_language
+                delete baseConfig.secondary_languages
+                delete baseConfig.languages
+                return {
+                  ...baseConfig,
+                  interaction_mode: "conversational",
+                  ...languageConfigFields,
+                  system_prompt: systemPrompt,
           greeting_message: greetingMessage,
           ignore_user_speech_before_greeting: ignoreUserSpeechBeforeGreeting,
           interruption_min_words: interruptionMinWords,
@@ -993,12 +1041,17 @@ export default function AgentDetailPage() {
             ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
             ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
           },
-        },
+                }
+              })(),
       }
 
       const updatedAgent = await updateAgent(originalAgentType, updatedConfig)
 
       if (user?.org_id) {
+        await queryClient.invalidateQueries({
+          queryKey: agentsQueryKey(user.org_id),
+        })
+
         const refreshedAgent = await getAgent(trimmedAgentType, user.org_id)
         setAgent(refreshedAgent)
         setAgentType(refreshedAgent.agent_type || trimmedAgentType)
@@ -1088,29 +1141,30 @@ export default function AgentDetailPage() {
   return (
     <div className="flex flex-col h-screen bg-slate-50/50">
       {/* Header with Progress */}
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 sticky top-0 z-10">
-        <div className="flex items-center gap-4">
+      <header className="flex h-auto min-h-14 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 bg-white px-4 sm:px-6 sticky top-0 z-10 py-3 sm:py-0">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <SidebarTrigger className="h-9 w-9 shrink-0" />
           <Button
             variant="ghost"
             size="sm"
             onClick={handleBackToList}
-            className="h-8 px-3 text-slate-600 hover:bg-slate-100 gap-1.5"
+            className="h-8 px-3 text-slate-600 hover:bg-slate-100 gap-1.5 shrink-0"
           >
             <ChevronLeft className="h-4 w-4" />
-            Back
+            <span className="sr-only sm:not-sr-only sm:inline">Back</span>
           </Button>
-          <Separator orientation="vertical" className="h-5" />
-          <h1 className="text-sm font-semibold text-slate-900">Configure Telephony Agent</h1>
+          <Separator orientation="vertical" className="h-5 hidden sm:block" />
+          <h1 className="text-sm font-semibold text-slate-900 truncate">Configure Telephony Agent</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500">Progress</span>
-          <div className="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+        <div className="flex items-center gap-3 w-full sm:w-auto sm:shrink-0">
+          <span className="text-xs text-slate-500 shrink-0">Progress</span>
+          <div className="flex-1 sm:w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[5rem]">
             <div
               className="h-full bg-slate-900 rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <span className="text-xs font-medium text-slate-700">{Math.round(progressPercent)}%</span>
+          <span className="text-xs font-medium text-slate-700 shrink-0">{Math.round(progressPercent)}%</span>
         </div>
       </header>
 
@@ -1265,10 +1319,11 @@ export default function AgentDetailPage() {
                             setKenpathVariant(variant)
                             if (
                               llmProvider === "kenpath" &&
-                              language &&
-                              !isBharatVistaarLanguageSupported(variant, language)
+                              selectedLanguages.some(
+                                (lang) => !isBharatVistaarLanguageSupported(variant, lang)
+                              )
                             ) {
-                              setLanguage("")
+                              setSelectedLanguages([])
                               setSttProvider("")
                               setSttModel("")
                               setTtsProvider("")
@@ -1455,119 +1510,30 @@ export default function AgentDetailPage() {
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-4 flex items-center gap-2">
                   <Languages className="h-5 w-5 text-slate-400" />
-                  Configure Language
+                  Configure Languages
                 </h3>
-                <div className="space-y-3">
-                  <label className="text-base font-bold text-slate-900">Language</label>
-                  {allLanguages.length > 0 ? (
-                    <Popover open={languageOpen} onOpenChange={setLanguageOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={languageOpen}
-                          className="w-full min-h-[48px] py-3 px-4 justify-between rounded-lg border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-left [&>div]:whitespace-normal"
-                        >
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <Languages className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                            <span className="truncate">
-                              {language ? displayLanguageName(language) : "Select language..."}
-                            </span>
-                          </div>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[400px] p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Search languages..." />
-                          <CommandList>
-                            <CommandEmpty>No language found.</CommandEmpty>
-                            <CommandGroup heading="Languages">
-                              {allLanguages.map((lang) => {
-                                const bharatBlocked =
-                                  llmProvider === "kenpath" &&
-                                  !isBharatVistaarLanguageSupported(
-                                    kenpathVariant,
-                                    lang.code
-                                  )
-                                return (
-                                <CommandItem
-                                  key={lang.code}
-                                  value={`${lang.code} ${lang.label}`}
-                                  disabled={bharatBlocked}
-                                  onSelect={() => {
-                                    if (bharatBlocked) return
-                                    setLanguage(lang.code)
-                                    if (lang.code && lang.code !== "English (United States)" && lang.code !== "English (India)") {
-                                      const sttLangData = sttData.stt.languages[lang.code as keyof typeof sttData.stt.languages]
-                                      if (sttLangData?.models?.ai4bharat && Array.isArray(sttLangData.models.ai4bharat) && sttLangData.models.ai4bharat.length > 0) {
-                                        setSttProvider("ai4bharat")
-                                        setSttModel(sttLangData.models.ai4bharat[0])
-                                      } else {
-                                        setSttProvider("")
-                                        setSttModel("")
-                                      }
-
-                                      const ttsLangData = ttsData.tts.languages[lang.code as keyof typeof ttsData.tts.languages]
-                                      const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as { available?: boolean; model?: string; voices?: string[] } | undefined
-                                      if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
-                                        setTtsProvider("ai4bharat")
-                                        setTtsModel(ttsAi4bharatData.model)
-                                        if (ttsAi4bharatData.voices && Array.isArray(ttsAi4bharatData.voices) && ttsAi4bharatData.voices.length > 0) {
-                                          setTtsVoice(ttsAi4bharatData.voices[0])
-                                          setTtsDescription(
-                                            descriptionsData && descriptionsData.length > 0
-                                              ? descriptionsData[0].description
-                                              : ""
-                                          )
-                                        } else {
-                                          setTtsVoice("")
-                                          setTtsDescription("")
-                                        }
-                                      } else {
-                                        setTtsProvider("")
-                                        setTtsModel("")
-                                        setTtsVoice("")
-                                        setTtsDescription("")
-                                      }
-                                    } else {
-                                      setSttProvider("")
-                                      setSttModel("")
-                                      setTtsProvider("")
-                                      setTtsModel("")
-                                      setTtsVoice("")
-                                      setTtsDescription("")
-                                    }
-                                    setLanguageOpen(false)
-                                  }}
-                                  className="py-2.5"
-                                >
-                                  <span
-                                    className={`font-medium ${bharatBlocked ? "text-slate-400" : ""}`}
-                                  >
-                                    {lang.label}
-                                  </span>
-                                  {bharatBlocked && (
-                                    <span className="ml-2 text-xs text-slate-400">
-                                      (not supported)
-                                    </span>
-                                  )}
-                                </CommandItem>
-                                )
-                              })}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  ) : (
-                    <div className="px-3 py-2 text-base text-slate-500 border border-slate-200 rounded-lg bg-slate-50">
-                      Loading languages...
-                    </div>
-                  )}
-                </div>
+                {allLanguages.length > 0 ? (
+                  <LanguageSelectionSection
+                    selectedLanguages={selectedLanguages}
+                    allLanguages={allLanguages}
+                    llmProvider={llmProvider}
+                    kenpathVariant={kenpathVariant}
+                    sttProvider={sttProvider}
+                    sttModel={sttModel}
+                    ttsProvider={ttsProvider}
+                    ttsModel={ttsModel}
+                    open={languageOpen}
+                    onOpenChange={setLanguageOpen}
+                    onLanguagesChange={handleLanguagesChange}
+                  />
+                ) : (
+                  <div className="px-3 py-2 text-base text-slate-500 border border-slate-200 rounded-lg bg-slate-50">
+                    Loading languages...
+                  </div>
+                )}
               </div>
 
-              {interactionMode !== "non_conversational" && (
+              {interactionMode !== "non_conversational" && activeLanguages.length > 0 && (
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-5 flex items-center gap-2">
                   <Mic className="h-5 w-5 text-slate-400" />
@@ -1623,6 +1589,7 @@ export default function AgentDetailPage() {
               </div>
               )}
 
+              {activeLanguages.length > 0 && (
               <div className="bg-white rounded-xl border border-slate-200 p-6">
                 <h3 className="text-2xl font-semibold text-slate-900 mb-5 flex items-center gap-2">
                   <Volume2 className="h-5 w-5 text-slate-400" />
@@ -1738,6 +1705,7 @@ export default function AgentDetailPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           </div>
 
@@ -1777,7 +1745,7 @@ export default function AgentDetailPage() {
                       value={greetingMessage}
                       onChange={(e) => setGreetingMessage(e.target.value)}
                       className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                      placeholder="Hello from Framewise"
+                      placeholder="Hello"
                     />
                   )}
                   <p className="text-xs text-slate-500 mt-1">
