@@ -200,18 +200,21 @@ class ParlerTTS(torch.nn.Module):
         ).to(inputs_embeds.device)
         hidden_states = inputs_embeds + position_embeds
 
-        # run layers
+        # Self-attn grows 1 token/step; cross-attn KV is static (plan cached).
         model_kv_cache_updater, model_attn_kernel = (
-            model_kv_cache_vmem.get_decode_closures()
+            model_kv_cache_vmem.get_decode_closures(grow=True)
         )
-        _, model_encoder_attn_kernel = model_encoder_kv_cache_vmem.get_decode_closures()
+        _, model_encoder_attn_kernel = model_encoder_kv_cache_vmem.get_decode_closures(
+            grow=False
+        )
         for layer_id in range(num_decoder_layers):
+            # Bind layer_id by default arg so all layers don't close over the final id.
             decoder_kv_cache_vmem_thingy = (
-                lambda append_kv: model_kv_cache_updater(layer_id, append_kv),
-                lambda q: model_attn_kernel(layer_id, q),
+                lambda append_kv, lid=layer_id: model_kv_cache_updater(lid, append_kv),
+                lambda q, lid=layer_id: model_attn_kernel(lid, q),
             )
-            encoder_kv_cache_vmem_thingy = lambda q: model_encoder_attn_kernel(
-                layer_id, q
+            encoder_kv_cache_vmem_thingy = lambda q, lid=layer_id: model_encoder_attn_kernel(
+                lid, q
             )
 
             hidden_states = self.decoder_layers[layer_id].decode(

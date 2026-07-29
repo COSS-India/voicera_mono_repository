@@ -1,15 +1,14 @@
-from typing_extensions import ValuesView
 import torch
 from inference.config import device
 import math
 import flashinfer
-import time
 
 
 class PageTable:
-    def __init__(self, page_size):
+    def __init__(self, page_size, max_num_pages=None):
         # dictionary from pid -> pages
         self.page_size = page_size
+        self.max_num_pages = max_num_pages
 
         # pid -> list of pages
         self.pid_page_table = {}
@@ -30,6 +29,8 @@ class PageTable:
         num_existing_pages = len(self.pid_page_table[pid])
         num_new_pages = math.ceil(new_mem_size / self.page_size)
         num_pages_to_allocate = num_new_pages - num_existing_pages
+        if num_pages_to_allocate <= 0:
+            return
 
         all_occupied_pages = {
             p for pages in self.pid_page_table.values() for p in pages
@@ -37,6 +38,7 @@ class PageTable:
         if len(all_occupied_pages) == 0:
             # no pages used so far
             self.pid_page_table[pid].extend(range(0, num_pages_to_allocate))
+            self._check_page_budget()
             return
         else:
             first_occupied_page = min(all_occupied_pages)
@@ -44,6 +46,7 @@ class PageTable:
             if first_occupied_page > 0:
                 if first_occupied_page >= num_pages_to_allocate:
                     self.pid_page_table[pid].extend(range(0, num_pages_to_allocate))
+                    self._check_page_budget()
                     return
                 else:
                     self.pid_page_table[pid].extend(range(0, first_occupied_page))
@@ -57,6 +60,7 @@ class PageTable:
             )
             if len(gaps) >= num_pages_to_allocate:
                 self.pid_page_table[pid].extend(gaps[:num_pages_to_allocate])
+                self._check_page_budget()
                 return
             else:
                 self.pid_page_table[pid].extend(gaps)
@@ -69,7 +73,18 @@ class PageTable:
                     last_occupied_page + 1 + num_pages_to_allocate,
                 )
             )
+            self._check_page_budget()
             return
+
+    def _check_page_budget(self):
+        if self.max_num_pages is None:
+            return
+        occupied = {p for pages in self.pid_page_table.values() for p in pages}
+        if occupied and max(occupied) >= self.max_num_pages:
+            raise RuntimeError(
+                f"paged KV overflow: need page {max(occupied)} but max_num_pages="
+                f"{self.max_num_pages} (occupied={len(occupied)})"
+            )
 
     def free(self, pid):
         del self.pid_page_table[pid]
@@ -82,31 +97,22 @@ class PageTable:
 
     def convert_to_flashinfer(self):
         sorted_pids = sorted(self.pid_page_table.keys())
-        page_indices = (
-            torch.Tensor(
-                [page for pid in sorted_pids for page in self.pid_page_table[pid]]
-            )
-            .int()
-            .to(device)
-        )
-        page_indptr = (
-            torch.cumsum(
-                torch.Tensor(
-                    [0] + [len(self.pid_page_table[pid]) for pid in sorted_pids]
-                ),
-                dim=0,
-            )
-            .int()
-            .to(device)
-        )
-        mem_sizes = torch.Tensor([self.pid_mem_sizes[pid] for pid in sorted_pids]).int()
-        last_page_lens = (mem_sizes % self.page_size).to(device)
-        last_page_lens = torch.where(
-            (mem_sizes > 0).to(device) & (last_page_lens == 0),
-            torch.full_like(last_page_lens, self.page_size),
-            last_page_lens,
-        )
+        pages = []
+        indptr = [0]
+        last_page_lens = []
+        for pid in sorted_pids:
+            pages.extend(self.pid_page_table[pid])
+            indptr.append(len(pages))
+            mem = self.pid_mem_sizes[pid]
+            last = mem % self.page_size
+            if mem > 0 and last == 0:
+                last = self.page_size
+            last_page_lens.append(last)
 
+        # Single H2D copy each; avoid Tensor(list).to(device) chaining.
+        page_indices = torch.tensor(pages, dtype=torch.int32, device=device)
+        page_indptr = torch.tensor(indptr, dtype=torch.int32, device=device)
+        last_page_lens = torch.tensor(last_page_lens, dtype=torch.int32, device=device)
         return page_indices, page_indptr, last_page_lens
 
     def convert_to_sdpa_ragged_attn_mask(self, max_pages):
@@ -147,12 +153,15 @@ class VirtualMemoryPaged:
             )
             for _ in range(num_layers)
         ]
-        self.page_table = PageTable(page_size=page_size)
+        self.page_table = PageTable(page_size=page_size, max_num_pages=max_num_pages)
         self.num_kv_heads = num_kv_heads
         self.num_qo_heads = num_kv_heads  # no gqa for now
         self.head_dim = head_dim
         self.page_size = page_size
         self.num_layers = num_layers
+        # Invalidate static (cross-attn) decode plans when page table changes.
+        self._layout_version = 0
+        self._planned_layout_version = -1
 
         workspace_buffer = torch.zeros(
             128 * 1024 * 1024, dtype=torch.uint8, device=device
@@ -161,11 +170,28 @@ class VirtualMemoryPaged:
             workspace_buffer
         )
 
+    def _bump_layout(self):
+        self._layout_version += 1
+
+    def _plan_decode(self, kv_indptr, kv_indices, kv_last_page_len):
+        self.decode_wrapper.plan(
+            kv_indptr,
+            kv_indices,
+            kv_last_page_len,
+            self.num_qo_heads,
+            self.num_kv_heads,
+            self.head_dim,
+            self.page_size,
+            data_type=torch.float16,
+        )
+        self._planned_layout_version = self._layout_version
+
     def prefill(self, pid, model_kv_cache):
         n_seq = model_kv_cache[0][0].shape[2]
         assert model_kv_cache[0][0].shape[0] == 1
 
         self.page_table.allocate(pid=pid, mem_size=n_seq)
+        self._bump_layout()
         sorted_pids = sorted(self.page_table.pid_mem_sizes.keys())
         bid = sorted_pids.index(pid)
         batch_indices = torch.full((n_seq,), bid, dtype=torch.int32, device=device)
@@ -192,50 +218,68 @@ class VirtualMemoryPaged:
 
     def free(self, pid):
         self.page_table.free(pid)
+        self._bump_layout()
 
-    def get_decode_closures(self):
+    def get_decode_closures(self, grow=True):
+        """
+        grow=True  (self-attn): allocate 1 token slot per seq, plan, return updater+attn.
+        grow=False (cross-attn): KV is static; plan only when layout changed, attn only.
+        """
         sorted_pids = sorted(self.page_table.pid_mem_sizes.keys())
-        for pid in sorted_pids:
-            self.page_table.allocate(pid=pid, mem_size=1)
+        n = len(sorted_pids)
 
-        # we gotta insert at the last position
-        positions = [self.page_table.pid_mem_sizes[pid] - 1 for pid in sorted_pids]
-        positions = torch.Tensor(positions).int().to(device)
+        if grow:
+            for pid in sorted_pids:
+                self.page_table.allocate(pid=pid, mem_size=1)
+            self._bump_layout()
 
-        batch_indices = torch.arange(len(sorted_pids), dtype=torch.int32, device=device)
-        kv_indices, kv_indptr, kv_last_page_len = (
-            self.page_table.convert_to_flashinfer()
-        )
-        self.decode_wrapper.plan(
-            kv_indptr,
-            kv_indices,
-            kv_last_page_len,
-            self.num_qo_heads,
-            self.num_kv_heads,
-            self.head_dim,
-            self.page_size,
-            data_type=torch.float16,
-        )
-
-        def _cache_updater(layer_id, append_kv):
-            num_batches = append_kv[0].shape[0]
-            num_seqs = append_kv[0].shape[2]
-            assert num_batches == len(
-                self.page_table.pid_mem_sizes
-            ), "batch size doesn't match active sequences"
-            assert num_seqs == 1, "decode step assumes only 1 token decoded per batch"
-            append_key = append_kv[0][:, :, 0].contiguous().half()
-            append_value = append_kv[1][:, :, 0].contiguous().half()
-            flashinfer.append_paged_kv_cache(
-                append_key=append_key,
-                append_value=append_value,
-                batch_indices=batch_indices,
-                positions=positions,
-                paged_kv_cache=self.paged_model_kv_cache[layer_id],
-                kv_indices=kv_indices,
-                kv_indptr=kv_indptr,
-                kv_last_page_len=kv_last_page_len,
+            positions = torch.tensor(
+                [self.page_table.pid_mem_sizes[pid] - 1 for pid in sorted_pids],
+                dtype=torch.int32,
+                device=device,
             )
+            batch_indices = torch.arange(n, dtype=torch.int32, device=device)
+            kv_indices, kv_indptr, kv_last_page_len = (
+                self.page_table.convert_to_flashinfer()
+            )
+            self._plan_decode(kv_indptr, kv_indices, kv_last_page_len)
+
+            def _cache_updater(layer_id, append_kv):
+                num_batches = append_kv[0].shape[0]
+                num_seqs = append_kv[0].shape[2]
+                assert num_batches == len(
+                    self.page_table.pid_mem_sizes
+                ), "batch size doesn't match active sequences"
+                assert num_seqs == 1, "decode step assumes only 1 token decoded per batch"
+                # Already fp16 from attention projs; keep contiguous for flashinfer.
+                append_key = append_kv[0][:, :, 0].contiguous()
+                append_value = append_kv[1][:, :, 0].contiguous()
+                if append_key.dtype != torch.float16:
+                    append_key = append_key.half()
+                    append_value = append_value.half()
+                flashinfer.append_paged_kv_cache(
+                    append_key=append_key,
+                    append_value=append_value,
+                    batch_indices=batch_indices,
+                    positions=positions,
+                    paged_kv_cache=self.paged_model_kv_cache[layer_id],
+                    kv_indices=kv_indices,
+                    kv_indptr=kv_indptr,
+                    kv_last_page_len=kv_last_page_len,
+                )
+
+        else:
+            # Static cross-attn: skip allocate; replan only after prefill/free.
+            if self._planned_layout_version != self._layout_version:
+                kv_indices, kv_indptr, kv_last_page_len = (
+                    self.page_table.convert_to_flashinfer()
+                )
+                self._plan_decode(kv_indptr, kv_indices, kv_last_page_len)
+
+            def _cache_updater(layer_id, append_kv):
+                raise RuntimeError(
+                    "cross-attn KV is static; cache updater must not be called"
+                )
 
         def _attn(layer_id, q):
             num_seqs = q.shape[2]
@@ -256,14 +300,15 @@ class VirtualMemorySDPA:
         assert model_kv_cache[0][0].shape[0] == 1
         self.pid_kv_cache[pid] = model_kv_cache
 
-    def get_decode_closures(self):
+    def get_decode_closures(self, grow=True):
         sorted_pids = sorted(self.pid_kv_cache.keys())
 
         def _cache_updater(layer_id, append_kv):
-
-            time_ = time.time()
+            if not grow:
+                raise RuntimeError(
+                    "cross-attn KV is static; cache updater must not be called"
+                )
             for bid, pid in enumerate(sorted_pids):
-                # keys
                 self.pid_kv_cache[pid][layer_id] = (
                     torch.cat(
                         [
@@ -280,39 +325,10 @@ class VirtualMemorySDPA:
                         dim=2,
                     ),
                 )
-            # print("cache updater time: ", 1000 * (time.time() - time_), "seconds")
-
-        def _attn_(layer_id, q):
-            num_seqs = q.shape[2]
-            assert num_seqs == 1, "decode step assumes only 1 token decoded per batch"
-
-            sorted_pids = sorted(self.pid_kv_cache.keys())
-            attn = []
-            keys = []
-            values = []
-
-            for bid, pid in enumerate(sorted_pids):
-                key = self.pid_kv_cache[pid][layer_id][0]
-                value = self.pid_kv_cache[pid][layer_id][1]
-                assert key.shape[0] == 1
-
-                bid_attn_output = torch.nn.functional.scaled_dot_product_attention(
-                    q[bid].unsqueeze(0), key, value
-                )
-                attn.append(bid_attn_output)
-                keys.append(key[0])
-                values.append(value[0])
-
-            attn_output_ = torch.cat(attn, dim=0)
-
-            return attn_output_
 
         def _attn(layer_id, q):
-            time_0 = time.time()
             num_seqs = q.shape[2]
             assert num_seqs == 1, "decode step assumes only 1 token decoded per batch"
-
-            sorted_pids = sorted(self.pid_kv_cache.keys())
 
             keys_list = [
                 self.pid_kv_cache[pid][layer_id][0].squeeze(0) for pid in sorted_pids
@@ -346,20 +362,9 @@ class VirtualMemorySDPA:
             )
             additive_mask.masked_fill_(~mask, float("-inf"))
 
-            time_ = time.time()
             attn_output = torch.nn.functional.scaled_dot_product_attention(
                 q, keys_padded, values_padded, attn_mask=additive_mask
             )
-
-            # attn_output_fp16 = torch.nn.functional.scaled_dot_product_attention(
-            #    q.half(), keys_padded.half(), values_padded.half(), attn_mask=additive_mask.half()
-            # )
-            # print("attention time: ", 1000 * (time.time() - time_), "ms")
-            # print("total calculation time: ", 1000 * (time.time() - time_0), "ms")
-
-            # attn_output_fp16 = attn_output_fp16 + torch.randn_like(attn_output_fp16) * 1e-1
-            # print((attn_output - attn_output_fp16).abs().max())
-
             return attn_output
 
         return _cache_updater, _attn
@@ -381,9 +386,9 @@ class VirtualMemoryCompare:
         self.vm_paged.prefill(pid, model_kv_cache)
         self.vm_sdpa.prefill(pid, model_kv_cache)
 
-    def get_decode_closures(self):
-        paged_cache_updater, paged_attn = self.vm_paged.get_decode_closures()
-        sdpa_cache_updater, sdpa_attn = self.vm_sdpa.get_decode_closures()
+    def get_decode_closures(self, grow=True):
+        paged_cache_updater, paged_attn = self.vm_paged.get_decode_closures(grow=grow)
+        sdpa_cache_updater, sdpa_attn = self.vm_sdpa.get_decode_closures(grow=grow)
 
         def _cache_updater(layer_id, append_kv):
             paged_cache_updater(layer_id, append_kv)
