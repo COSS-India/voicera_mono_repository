@@ -30,6 +30,7 @@ import {
   type KnowledgeDocument,
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { formatKnowledgeBaseError } from "@/lib/knowledge-base-errors"
 
 function statusBadgeClass(status: KnowledgeDocument["status"]) {
   switch (status) {
@@ -121,7 +122,11 @@ export default function KnowledgeBasePage() {
       if (fileInputRef.current) fileInputRef.current.value = ""
       await loadDocuments()
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed")
+      setUploadError(
+        formatKnowledgeBaseError(
+          err instanceof Error ? err.message : "Upload failed"
+        ) ?? "Upload failed"
+      )
     } finally {
       setIsUploading(false)
     }
@@ -247,9 +252,12 @@ export default function KnowledgeBasePage() {
                         {doc.status === "failed" && doc.error_message && (
                           <span
                             className="block text-xs text-red-600 font-normal mt-1 truncate"
-                            title={doc.error_message}
+                            title={
+                              formatKnowledgeBaseError(doc.error_message) ??
+                              doc.error_message
+                            }
                           >
-                            {doc.error_message}
+                            {formatKnowledgeBaseError(doc.error_message)}
                           </span>
                         )}
                       </TableCell>

@@ -16,6 +16,23 @@ from pipecat.frames.frames import (
 from pipecat.services.tts_service import TTSService
 
 
+def _parse_gain() -> float:
+    raw = os.getenv("INDIC_TTS_GAIN", "1.0").strip()
+    try:
+        gain = float(raw)
+    except ValueError:
+        logger.warning("Invalid INDIC_TTS_GAIN={!r}, using 1.0", raw)
+        return 1.0
+    if gain <= 0:
+        logger.warning("INDIC_TTS_GAIN must be > 0, got {}, using 1.0", gain)
+        return 1.0
+    if gain > 4.0:
+        logger.warning(
+            "INDIC_TTS_GAIN={} is very high; audio clipping may occur", gain
+        )
+    return gain
+
+
 def _ws_url(raw: str) -> str:
     base = raw.strip().rstrip("/")
     for suffix in ("/tts/stream", "/tts"):
@@ -47,6 +64,7 @@ class IndicParlerRESTTTSService(TTSService):
         self._speaker = speaker
         self._description = description
         self._language_id = language_id
+        self._gain = _parse_gain()
         self._session: aiohttp.ClientSession | None = None
 
     def _description_for_server(self) -> str:
@@ -55,7 +73,10 @@ class IndicParlerRESTTTSService(TTSService):
         return self._description
 
     async def start(self, frame: Frame):
-        logger.info("Starting IndicParler TTS service")
+        if self._gain != 1.0:
+            logger.info("Starting IndicParler TTS service (output gain={})", self._gain)
+        else:
+            logger.info("Starting IndicParler TTS service")
         connector = aiohttp.TCPConnector(limit=0, ttl_dns_cache=300)
         timeout = aiohttp.ClientTimeout(total=None, connect=10, sock_read=600)
         self._session = aiohttp.ClientSession(connector=connector, timeout=timeout)
@@ -135,9 +156,9 @@ class IndicParlerRESTTTSService(TTSService):
                         f32 = np.frombuffer(msg.data, dtype=np.float32)
                         if f32.size == 0:
                             continue
-                        pcm = (np.clip(f32, -1.0, 1.0) * 32767.0).astype(
-                            np.int16
-                        ).tobytes()
+                        pcm = (
+                            np.clip(f32 * self._gain, -1.0, 1.0) * 32767.0
+                        ).astype(np.int16).tobytes()
                         yield TTSAudioRawFrame(
                             audio=pcm,
                             sample_rate=out_rate,

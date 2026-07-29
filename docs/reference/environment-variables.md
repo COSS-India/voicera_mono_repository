@@ -169,15 +169,13 @@ In-memory, per-process, per-org state (see `utils/call_management/usage_guard.py
 
 ## Frontend (`voicera_frontend/.env.local`)
 
-All public frontend env vars must be prefixed `NEXT_PUBLIC_` to be exposed to the browser bundle.
+Public frontend env vars must be prefixed `NEXT_PUBLIC_` to be exposed to the browser bundle.
 
 | Name | Service | Default | Required | Description |
 |------|---------|---------|----------|-------------|
-| `NEXT_PUBLIC_API_URL` | frontend | `http://localhost:8000` | yes | Backend REST base URL (browser-side) |
-| `API_URL` | frontend | – | no | Backend URL for server-side routes; falls back to `NEXT_PUBLIC_API_URL` |
-| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | frontend | – | yes (prod) | Public HTTPS voice server URL — used for Vobiz answer URLs and browser test |
-| `NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL` | frontend | – | no | Explicit `wss://` base for **Test on Browser**; derived from `NEXT_PUBLIC_JOHNAIC_SERVER_URL` if absent |
-| `VOICE_SERVER_URL` | frontend | `http://localhost:7860` | no | Voice server URL for server-side Next.js routes |
+| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | frontend | – | yes | Voice server base — Vobiz/Plivo answer URLs and **Test on Browser** WebSocket (`http`→`ws`, `https`→`wss`). See `lib/johnaic-config.ts`. |
+| `VOICE_SERVER_URL` | frontend | `http://localhost:7860` | no | Voice server URL for server-side Next.js routes (outbound call, telemetry) |
+| `API_URL` | frontend (Docker) | `http://localhost:8000` | no | Backend URL for Next.js `/api/*` proxies. Hardcoded to `http://localhost:8000` in `lib/api-config.ts` when unset. Set to `http://backend:8000` in Docker Compose. |
 
 ---
 

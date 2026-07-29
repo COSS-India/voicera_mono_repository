@@ -28,6 +28,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 import {
@@ -120,7 +121,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   }
 
   return (
-    <Sidebar collapsible="none" className="bg-[#F1EFE8]" {...props}>
+    <Sidebar collapsible="offcanvas" className="bg-[#F1EFE8]" {...props}>
       {/* Header - Logo area with proper padding */}
       <SidebarHeader className="bg-[#F1EFE8] px-4 py-4">
         <div className="flex w-full items-center border-b border-[#d6d3cc] pb-2">
@@ -263,6 +264,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   )
 }

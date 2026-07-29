@@ -171,15 +171,11 @@ VOBIZ_AUTH_TOKEN=your-auth-token
 ### Frontend (`voicera_frontend/.env.local`)
 
 ```bash
-# API URLs
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-API_URL=http://localhost:8000
+NEXT_PUBLIC_JOHNAIC_SERVER_URL=https://your-public-voice-host
 VOICE_SERVER_URL=http://localhost:7860
 
-# When running in Docker, use service names:
-# NEXT_PUBLIC_API_URL=http://nginx:8080/api/v1
-# API_URL=http://backend:8000
-# VOICE_SERVER_URL=http://voice_server:7860
+# Backend is proxied via Next.js /api/* routes to http://localhost:8000 (hardcoded).
+# Docker Compose sets API_URL=http://backend:8000 on the frontend container.
 ```
 
 ### Voice Server (`voice_2_voice_server/.env`)

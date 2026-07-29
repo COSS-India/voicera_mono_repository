@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Eye, EyeOff, Mail, Lock, User, Building2, Loader2, Check, Users, AlertCircle } from "lucide-react"
-import { joinOrganization, checkUserExists } from "@/lib/api"
+import { joinOrganization, checkUserJoinEligibility } from "@/lib/api"
 import { AnimatePresence, motion } from "framer-motion"
 
 interface PageProps {
@@ -28,6 +28,7 @@ export default function AddMemberPage({ params }: PageProps) {
     company_name: "",
   })
   const [emailError, setEmailError] = useState("")
+  const [emailHint, setEmailHint] = useState("")
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
 
   // Parse the slug to extract org_id and uuid
@@ -63,18 +64,43 @@ export default function AddMemberPage({ params }: PageProps) {
     { met: /[0-9]/.test(formData.password), text: "One number" },
   ]
 
-  // Check if email already exists when user finishes typing
+  const getJoinBlockMessage = (reason: string) => {
+    if (reason === "already_in_org") {
+      return "This email is already a member of this organization."
+    }
+    if (reason === "member_of_other_org") {
+      return "This email is already part of an organization."
+    }
+    return "This email cannot join this organization."
+  }
+
+  const evaluateJoinEligibility = async (email: string) => {
+    const eligibility = await checkUserJoinEligibility(email, orgId || undefined)
+    if (!eligibility.can_join) {
+      setEmailHint("")
+      setEmailError(getJoinBlockMessage(eligibility.reason))
+      return false
+    }
+
+    setEmailError("")
+    if (eligibility.exists) {
+      setEmailHint("Account found. Use your existing password to join this organization.")
+    } else {
+      setEmailHint("")
+    }
+    return true
+  }
+
+  // Check if email can join when user finishes typing
   const handleEmailBlur = async () => {
-    if (!formData.email || !formData.email.includes("@")) return
+    if (!formData.email || !formData.email.includes("@") || !orgId) return
     
     setIsCheckingEmail(true)
     setEmailError("")
+    setEmailHint("")
     
     try {
-      const existingUser = await checkUserExists(formData.email)
-      if (existingUser) {
-        setEmailError("This email is already part of an organization. Please try a different email.")
-      }
+      await evaluateJoinEligibility(formData.email)
     } catch {
       // If the check fails, we'll let the form submission handle it
     } finally {
@@ -87,6 +113,7 @@ export default function AddMemberPage({ params }: PageProps) {
     setIsLoading(true)
     setError("")
     setEmailError("")
+    setEmailHint("")
 
     if (!orgId) {
       setError("Invalid invite link - organization ID not found")
@@ -94,11 +121,9 @@ export default function AddMemberPage({ params }: PageProps) {
       return
     }
 
-    // Check if email already exists before submitting
     try {
-      const existingUser = await checkUserExists(formData.email)
-      if (existingUser) {
-        setEmailError("This email is already part of an organization. Please try a different email.")
+      const canJoin = await evaluateJoinEligibility(formData.email)
+      if (!canJoin) {
         setIsLoading(false)
         return
       }
@@ -319,7 +344,8 @@ export default function AddMemberPage({ params }: PageProps) {
                   value={formData.email}
                   onChange={(e) => {
                     setFormData({ ...formData, email: e.target.value })
-                    setEmailError("") // Clear error when user starts typing
+                    setEmailError("")
+                    setEmailHint("")
                   }}
                   onBlur={handleEmailBlur}
                   className={`h-12 pl-11 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-200 ${
@@ -336,6 +362,9 @@ export default function AddMemberPage({ params }: PageProps) {
                   <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <span>{emailError}</span>
                 </div>
+              )}
+              {!emailError && emailHint && (
+                <p className="text-sm text-slate-600">{emailHint}</p>
               )}
             </div>
 

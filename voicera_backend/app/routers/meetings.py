@@ -99,6 +99,12 @@ async def get_meetings(
     duration_sort_order: Optional[str] = Query(
         None, description="longest or shortest; overrides date sort when set"
     ),
+    has_latency_metrics: Optional[bool] = Query(
+        None, description="When true, only return meetings with latency turn data"
+    ),
+    search: Optional[str] = Query(
+        None, description="Search meeting id, agent, phone numbers, or call direction"
+    ),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
@@ -120,6 +126,8 @@ async def get_meetings(
         date_to=date_to,
         date_sort_order=date_sort_order or "latest",
         duration_sort_order=duration_sort_order,
+        has_latency_metrics=has_latency_metrics,
+        search=search,
     )
     return result
 

@@ -51,18 +51,14 @@ Production build: `npm run build` then `npm run start`, or the repo `frontend` D
 
 | Variable | Where | Purpose |
 |----------|--------|---------|
-| `NEXT_PUBLIC_API_URL` | Client + server | Backend API base (browser calls; default `http://localhost:8000`) |
-| `API_URL` | Server routes only | Docker internal URL, e.g. `http://backend:8000` |
-| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | Client | Public HTTPS base for Vobiz/Plivo answer URLs and browser test |
-| `NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL` | Client (optional) | WebSocket base for **Test on Browser**; falls back from server URL |
+| `API_URL` | Server routes only (Docker) | Override backend proxy target; default hardcoded `http://localhost:8000` in `lib/api-config.ts` |
+| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | Client | Voice server base for Vobiz/Plivo answer URLs and Test on Browser (http→ws, https→wss) |
 | `VOICE_SERVER_URL` | Server routes only | Outbound call / telemetry proxy (default `http://localhost:7860`) |
 
 Example `.env.local` for local dev:
 
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_JOHNAIC_SERVER_URL=https://your-public-voice-host
-NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL=wss://your-public-voice-host
+NEXT_PUBLIC_JOHNAIC_SERVER_URL=http://localhost:7860
 VOICE_SERVER_URL=http://localhost:7860
 ```
 

@@ -26,3 +26,5 @@ dist/
 build/
 scripts/
 kenpath_llm/load_test.py
+*.pem
+
