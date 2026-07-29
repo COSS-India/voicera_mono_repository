@@ -1,0 +1,24 @@
+voicera_backend/app/services/user_service.py
+  s_5eab0538c20ffd::t_9139043089c2fe 153,157-158,160,163,167,172,185,188,198,200,221,223,234,238,245,247,252,255,257,262,273,281,289,292,298,302,308,312,318,327,330,337,342,346,356,359,362,369,377,381,388,394,397,402,405,414,417
+  s_5eab0538c20ffd::t_27e514fd03d8cc 17-135
+voicera_backend/app/services/agent_service.py
+  s_5eab0538c20ffd::t_7cafd7ec96bdb1 76-138,223,226,233,241,250,256,266,289,293,301,304,333,336,352,355,375,379,386,401,423,455,458,481,489,492,499,505,508,511,519,522
+voicera_backend/app/routers/users.py
+  s_5eab0538c20ffd::t_9b4f371afe49d3 4,12,67-77,89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b20e40238ded36571e01b04f3e2aaa6e31e47424",
+  "prompts": {},
+  "sessions": {
+    "s_5eab0538c20ffd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d5d0dc0-307f-4275-9479-4533926ca681",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
