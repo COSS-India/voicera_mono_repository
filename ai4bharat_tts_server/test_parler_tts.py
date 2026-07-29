@@ -14,7 +14,7 @@ def test_runner_obj():
         os.path.join(here, "checkpoints"), use_cuda_graph=True
     )
 
-    bs = 24
+    bs = 32
     requests = [
         TTSRequest(
             prompt="अरे, तुम आज कैसे हो? कैसे हो? कैसे हो? कैसे हो?",
