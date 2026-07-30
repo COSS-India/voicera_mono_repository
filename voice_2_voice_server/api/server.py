@@ -38,33 +38,39 @@ AGENT_CONFIGS_DIR = Path("agent_configs")
 
 # === TCP_NODELAY WebSocket Protocol ===
 
+try:
+    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+
+    class NoDelayWebSocketProtocol(WebSocketProtocol):
+        """WebSocket protocol with TCP_NODELAY enabled.
+
+        Disables Nagle's algorithm for lower latency on small packets, which is
+        critical for real-time voice applications.
+        """
+
+        def connection_made(self, transport):
+            # Set TCP_NODELAY before calling parent
+            try:
+                sock = transport.get_extra_info("socket")
+                if sock is not None:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    logger.debug("TCP_NODELAY enabled on WebSocket connection")
+            except Exception as e:
+                logger.warning(f"Failed to set TCP_NODELAY: {e}")
+
+            super().connection_made(transport)
+
+except ImportError:
+    NoDelayWebSocketProtocol = None
+
+
 def create_nodelay_websocket_protocol():
-    """Create a WebSocket protocol class with TCP_NODELAY enabled.
-    
-    This disables Nagle's algorithm for lower latency on small packets,
-    which is critical for real-time voice applications.
-    """
-    try:
-        from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
-
-        class NoDelayWebSocketProtocol(WebSocketProtocol):
-            def connection_made(self, transport):
-                # Set TCP_NODELAY before calling parent
-                try:
-                    sock = transport.get_extra_info("socket")
-                    if sock is not None:
-                        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                        logger.debug("TCP_NODELAY enabled on WebSocket connection")
-                except Exception as e:
-                    logger.warning(f"Failed to set TCP_NODELAY: {e}")
-                
-                super().connection_made(transport)
-
-        return NoDelayWebSocketProtocol
-    
-    except ImportError:
+    """Return the module-level TCP_NODELAY WebSocket protocol class, or None if
+    uvicorn's WebSocketProtocol could not be imported."""
+    if NoDelayWebSocketProtocol is None:
         logger.warning("Could not import WebSocketProtocol from uvicorn, TCP_NODELAY not available")
         return None
+    return NoDelayWebSocketProtocol
 
 
 # === Pydantic Models ===
