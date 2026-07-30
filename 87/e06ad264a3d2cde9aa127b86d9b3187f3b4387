@@ -1,0 +1,19 @@
+voice_2_voice_server/api/server.py
+  s_27598213e0e532::t_df07ca612cbef3 41-66,68-70,73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "87e06ad264a3d2cde9aa127b86d9b3187f3b4387",
+  "prompts": {},
+  "sessions": {
+    "s_27598213e0e532": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d50b8ae-2262-4105-b334-cc0f91d845af",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
