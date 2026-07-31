@@ -36,12 +36,12 @@ WebSocket endpoint  WS /ws/tts
 
 Usage:
     python server.py [--model k2-fsa/OmniVoice] [--num_gpus 4] \
-                     [--nj_per_gpu 2] [--num_step 8] [--max_batch_per_worker 4] \
+                     [--nj_per_gpu 2] [--num_step 16] [--max_batch_per_worker 4] \
                      [--batch_duration 60] [--batch_size 0] [--warmup 1] [--port 8005]
 
-Default layout: 4 GPUs × 2 models = 8 workers. With --max_batch_per_worker 4 that
-packs 32 concurrent requests into one wave (8 × 4). --num_step 8 is ~4× fewer
-diffusion steps than the model default (32) → ~2–3× lower latency.
+Default layout: 4 GPUs × 2 models = 8 workers. Default --max_batch_per_worker 2
+keeps per-request latency low for longer utterances. --num_step 16 +
+--guidance_scale 0 skips CFG's unconditional forward → ~2× vs default CFG=2.
 """
 
 import argparse
@@ -76,7 +76,8 @@ from omnivoice.utils.duration import RuleDurationEstimator
 # ---------------------------------------------------------------------------
 SAMPLING_RATE = 24_000
 worker_model: Optional[OmniVoice] = None   # process-local, set by process_init
-worker_num_step: int = 8                   # process-local diffusion steps
+worker_num_step: int = 16                  # process-local diffusion steps
+worker_guidance_scale: float = 0.0         # 0 → skip CFG uncond forward (~2×)
 
 def _noop():
     """Picklable no-op used to trigger worker pool initialisation."""
@@ -115,11 +116,13 @@ def process_init(
     rank_queue,
     model_checkpoint: str,
     warmup: int = 0,
-    num_step: int = 8,
+    num_step: int = 16,
+    guidance_scale: float = 0.0,
 ):
-    global worker_model, worker_num_step
+    global worker_model, worker_num_step, worker_guidance_scale
 
     worker_num_step = num_step
+    worker_guidance_scale = guidance_scale
     torch.set_num_threads(2)
     torch.set_num_interop_threads(2)
     if torch.cuda.is_available():
@@ -141,23 +144,33 @@ def process_init(
         worker_device = f"{device_type}:{device_id}"
 
     logging.info(
-        f"Initializing worker on {worker_device} (num_step={num_step})"
+        f"Initializing worker on {worker_device} "
+        f"(num_step={num_step}, guidance_scale={guidance_scale})"
     )
-    worker_model = OmniVoice.from_pretrained(
-        model_checkpoint, device_map=worker_device, dtype=torch.float16
-    )
-
-    if warmup > 0:
-        logging.info(f"Running {warmup} warmup pass(es) on {worker_device}")
-        dummy = (torch.randn(1, SAMPLING_RATE), SAMPLING_RATE)
-        for _ in range(warmup):
-            with torch.inference_mode():
-                worker_model.generate(
-                    text=["hello"], language=["en"],
-                    ref_audio=[dummy], ref_text=["hello"],
-                    num_step=num_step,
-                )
-        logging.info(f"Warmup done on {worker_device}")
+    # Serialize from_pretrained per GPU: transformers' caching_allocator_warmup
+    # can briefly reserve ~10GB+, and 2 workers on a 16GB card OOM if they overlap.
+    import fcntl
+    lock_path = f"/tmp/omnivoice_init_gpu_{device_id}.lock"
+    with open(lock_path, "w") as lock_f:
+        fcntl.flock(lock_f, fcntl.LOCK_EX)
+        try:
+            worker_model = OmniVoice.from_pretrained(
+                model_checkpoint, device_map=worker_device, dtype=torch.float16
+            )
+            if warmup > 0:
+                logging.info(f"Running {warmup} warmup pass(es) on {worker_device}")
+                dummy = (torch.randn(1, SAMPLING_RATE), SAMPLING_RATE)
+                for _ in range(warmup):
+                    with torch.inference_mode():
+                        worker_model.generate(
+                            text=["hello"], language=["en"],
+                            ref_audio=[dummy], ref_text=["hello"],
+                            num_step=num_step,
+                            guidance_scale=guidance_scale,
+                        )
+                logging.info(f"Warmup done on {worker_device}")
+        finally:
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
 
     logging.info(f"Worker on {worker_device} ready.")
 
@@ -200,7 +213,7 @@ def run_inference_batch(batch_samples: List[Tuple]) -> List[Tuple]:
     prompt_path takes priority over ref_audio_path for voice cloning.
     Returns list of (request_id, audio_bytes, audio_dur, synth_time).
     """
-    global worker_model, worker_num_step
+    global worker_model, worker_num_step, worker_guidance_scale
     from omnivoice.models.omnivoice import VoiceClonePrompt  # noqa: F401
 
     request_ids, ref_texts, ref_audio_paths = [], [], []
@@ -233,29 +246,34 @@ def run_inference_batch(batch_samples: List[Tuple]) -> List[Tuple]:
             else:
                 voice_clone_prompts.append(None)
 
+    gen_kwargs = dict(
+        num_step=worker_num_step,
+        guidance_scale=worker_guidance_scale,
+    )
+
     t0 = time.time()
     with torch.inference_mode():
         if has_prompts:
             audios = worker_model.generate(
                 text=texts,
                 language=langs,
-                num_step=worker_num_step,
                 voice_clone_prompt=voice_clone_prompts,
                 duration=durations if any(d is not None for d in durations) else None,
                 speed=speeds       if any(s is not None for s in speeds)    else None,
                 instruct=instructs if any(i is not None for i in instructs) else None,
+                **gen_kwargs,
             )
         else:
             # Voice-design / auto: must pass num_step — default is 32 and ~2x slower.
             audios = worker_model.generate(
                 text=texts,
                 language=langs,
-                num_step=worker_num_step,
                 ref_audio=ref_audio_paths if any(p is not None for p in ref_audio_paths) else None,
                 ref_text=ref_texts        if any(t is not None for t in ref_texts)        else None,
                 duration=durations        if any(d is not None for d in durations)        else None,
                 speed=speeds              if any(s is not None for s in speeds)            else None,
                 instruct=instructs        if any(i is not None for i in instructs)        else None,
+                **gen_kwargs,
             )
 
         # OmniVoice sometimes returns near-empty audio after silence removal
@@ -278,9 +296,9 @@ def run_inference_batch(batch_samples: List[Tuple]) -> List[Tuple]:
                 retry_audios = worker_model.generate(
                     text=retry_texts,
                     language=retry_langs,
-                    num_step=worker_num_step,
                     voice_clone_prompt=retry_prompts,
                     postprocess_output=False,
+                    **gen_kwargs,
                 )
             else:
                 retry_ref_audio = [ref_audio_paths[i] for i in empty_idx]
@@ -288,10 +306,10 @@ def run_inference_batch(batch_samples: List[Tuple]) -> List[Tuple]:
                 retry_audios = worker_model.generate(
                     text=retry_texts,
                     language=retry_langs,
-                    num_step=worker_num_step,
                     ref_audio=retry_ref_audio if any(p is not None for p in retry_ref_audio) else None,
                     ref_text=retry_ref_text if any(t is not None for t in retry_ref_text) else None,
                     postprocess_output=False,
+                    **gen_kwargs,
                 )
             for j, i in enumerate(empty_idx):
                 audios[i] = retry_audios[j]
@@ -428,10 +446,8 @@ def ensure_worker_parallelism(
 async def batcher_loop():
     """
     Runs as an asyncio task.
-    Every BATCH_WINDOW_MS it drains the pending queue, clusters the waiting
-    requests (clone vs design, same split as infer_batch.py), submits each
-    batch to the ProcessPoolExecutor, and resolves the per-request futures
-    when results come back.
+    Waits for the first queued request, then coalesces arrivals for
+    BATCH_WINDOW_MS before clustering + dispatch (same as infer_batch.py).
 
     Dispatch model (same as infer_batch.py):
       one clustered batch  →  one ProcessPoolExecutor.submit / run_in_executor
@@ -439,26 +455,36 @@ async def batcher_loop():
     """
     global _pending_queue, _executor, _result_map, _duration_estimator, _args, _loop, _num_workers
 
-    # Short window: concurrent barrier-fire clients all land together; long
-    # windows only add latency. Still long enough to coalesce near-simultaneous arrivals.
-    BATCH_WINDOW_MS = 15
+    # Coalesce window after the first arrival. Barrier-fire clients all land
+    # within a few ms; a short trailing drain catches stragglers.
+    BATCH_WINDOW_MS = 25
+    TRAIL_MS = 5
 
     logger.info("Batcher loop started.")
 
     while True:
-        await asyncio.sleep(BATCH_WINDOW_MS / 1000.0)
+        # Block until at least one request is queued
+        first = await _pending_queue.get()
+        pending: List[Tuple] = [first]
 
-        # Drain everything currently in the queue
-        pending: List[Tuple] = []
+        deadline = _loop.time() + (BATCH_WINDOW_MS / 1000.0)
         while True:
+            timeout = deadline - _loop.time()
+            if timeout <= 0:
+                break
             try:
-                item = _pending_queue.get_nowait()  # (request_id, sample_tuple)
+                item = await asyncio.wait_for(_pending_queue.get(), timeout=timeout)
                 pending.append(item)
-            except asyncio.QueueEmpty:
+            except asyncio.TimeoutError:
                 break
 
-        if not pending:
-            continue
+        # Trailing drain for stragglers still being accepted on the event loop
+        await asyncio.sleep(TRAIL_MS / 1000.0)
+        while True:
+            try:
+                pending.append(_pending_queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
 
         # Separate into sample tuples, keeping request_id as the first field
         samples = [item[1] for item in pending]   # each is a 9-tuple (req_id, ...)
@@ -476,9 +502,10 @@ async def batcher_loop():
                 clustered = cluster_by_batch_size(subset, _duration_estimator, _args.batch_size)
             else:
                 clustered = cluster_by_duration(subset, _duration_estimator, _args.batch_duration)
-            # Fan out across idle GPU workers (see ensure_worker_parallelism docstring)
-            # Cap per-batch size so 32 concurrent → 8 workers × ≤4 samples.
-            max_per_worker = max(1, getattr(_args, "max_batch_per_worker", 4))
+            # Fan out across idle GPU workers, then cap batch size.
+            # Packing 4 long utterances (~5s) into one worker is much slower
+            # than 2 waves of size 2 (attention cost grows super-linearly).
+            max_per_worker = max(1, getattr(_args, "max_batch_per_worker", 2))
             clustered = ensure_worker_parallelism(clustered, _num_workers)
             refined: List[List[Tuple]] = []
             for b in clustered:
@@ -819,7 +846,7 @@ async def startup():
     _executor = ProcessPoolExecutor(
         max_workers=num_processes,
         initializer=process_init,
-        initargs=(rank_queue, _args.model, _args.warmup, _args.num_step),
+        initargs=(rank_queue, _args.model, _args.warmup, _args.num_step, _args.guidance_scale),
     )
 
     # Trigger worker initialisation immediately by submitting dummy futures
@@ -855,10 +882,14 @@ def get_parser():
                    help="Max total duration per batch in seconds (duration-based batching).")
     p.add_argument("--batch_size",     type=int,   default=0,
                    help="Fixed batch size. 0 = use duration-based batching.")
-    p.add_argument("--max_batch_per_worker", type=int, default=4,
-                   help="Max samples packed per GPU worker (32 concurrency / 8 workers = 4).")
-    p.add_argument("--num_step",       type=int,   default=8,
-                   help="Diffusion decoding steps (default 8 ≈ 2–4x faster than model default 32).")
+    p.add_argument("--max_batch_per_worker", type=int, default=2,
+                   help="Max samples packed per GPU worker (default 2: lower latency for long audio; "
+                        "use 4 only for short utterances).")
+    p.add_argument("--num_step",       type=int,   default=16,
+                   help="Diffusion decoding steps (default 16 ≈ 2x vs model default 32).")
+    p.add_argument("--guidance_scale", type=float, default=0.0,
+                   help="CFG scale. 0 skips the unconditional forward (~2x faster). "
+                        "Model default is 2.0 (higher quality, slower).")
     p.add_argument("--warmup",         type=int,   default=1,
                    help="Warmup iterations per worker.")
     p.add_argument("--host",           type=str,   default="0.0.0.0")
@@ -878,8 +909,8 @@ if __name__ == "__main__":
         f"Config: model={_args.model}  num_gpus={_args.num_gpus}  "
         f"nj_per_gpu={_args.nj_per_gpu}  batch_size={_args.batch_size}  "
         f"max_batch_per_worker={_args.max_batch_per_worker}  "
-        f"num_step={_args.num_step}  batch_duration={_args.batch_duration}  "
-        f"warmup={_args.warmup}"
+        f"num_step={_args.num_step}  guidance_scale={_args.guidance_scale}  "
+        f"batch_duration={_args.batch_duration}  warmup={_args.warmup}"
     )
 
     uvicorn.run(
