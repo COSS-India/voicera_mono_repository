@@ -40,61 +40,11 @@ import { getAuthToken } from "@/lib/api"
 import { useWavesurfer } from "@wavesurfer/react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Separator } from "@radix-ui/react-separator"
-
-/** Chrome built-in Translator / Language Detector (not in all TS libs yet). */
-type ChromeAvailability = "available" | "downloadable" | "downloading" | "unavailable"
-
-type ChromeTranslator = {
-  translate: (input: string) => Promise<string>
-  destroy?: () => void
-}
-
-type ChromeLanguageDetector = {
-  detect: (
-    input: string
-  ) => Promise<Array<{ detectedLanguage: string; confidence: number }>>
-  destroy?: () => void
-}
-
-type ChromeTranslatorCtor = {
-  availability: (options: {
-    sourceLanguage: string
-    targetLanguage: string
-  }) => Promise<ChromeAvailability>
-  create: (options: {
-    sourceLanguage: string
-    targetLanguage: string
-    monitor?: (m: {
-      addEventListener: (
-        type: "downloadprogress",
-        listener: (e: { loaded: number }) => void
-      ) => void
-    }) => void
-  }) => Promise<ChromeTranslator>
-}
-
-type ChromeLanguageDetectorCtor = {
-  availability: () => Promise<ChromeAvailability>
-  create: (options?: {
-    monitor?: (m: {
-      addEventListener: (
-        type: "downloadprogress",
-        listener: (e: { loaded: number }) => void
-      ) => void
-    }) => void
-  }) => Promise<ChromeLanguageDetector>
-}
-
-function getChromeTranslatorAPI(): ChromeTranslatorCtor | null {
-  const api = (globalThis as { Translator?: ChromeTranslatorCtor }).Translator
-  return api ?? null
-}
-
-function getChromeLanguageDetectorAPI(): ChromeLanguageDetectorCtor | null {
-  const api = (globalThis as { LanguageDetector?: ChromeLanguageDetectorCtor })
-    .LanguageDetector
-  return api ?? null
-}
+import {
+  detectTextLanguage,
+  getChromeTranslatorAPI,
+} from "@/lib/chrome-translation"
+import { agentLanguageToBcp47 } from "@/lib/greeting-message"
 
 interface MeetingDetailSheetProps {
   open: boolean
@@ -391,7 +341,6 @@ export function MeetingDetailSheet({
     }
 
     const TranslatorAPI = getChromeTranslatorAPI()
-    const LanguageDetectorAPI = getChromeLanguageDetectorAPI()
     if (!TranslatorAPI) {
       setTranslateError(
         "Translation is not available in this browser."
@@ -410,23 +359,10 @@ export function MeetingDetailSheet({
         .slice(0, 2000)
 
       let sourceLanguage = "auto"
-      if (LanguageDetectorAPI && sample.trim()) {
-        const detectorAvailability = await LanguageDetectorAPI.availability()
-        if (detectorAvailability !== "unavailable") {
-          const detector = await LanguageDetectorAPI.create({
-            monitor(m) {
-              m.addEventListener("downloadprogress", () => {})
-            },
-          })
-          try {
-            const detections = await detector.detect(sample)
-            const top = detections?.[0]
-            if (top?.detectedLanguage && top.detectedLanguage !== "und") {
-              sourceLanguage = top.detectedLanguage
-            }
-          } finally {
-            detector.destroy?.()
-          }
+      if (sample.trim()) {
+        const detected = await detectTextLanguage(sample)
+        if (detected?.language) {
+          sourceLanguage = detected.language
         }
       }
 
@@ -436,17 +372,8 @@ export function MeetingDetailSheet({
           (meeting as { language?: string } | null)?.language ||
             (meetingDetails as { language?: string } | null)?.language ||
             ""
-        ).toLowerCase()
-        const nameToCode: Record<string, string> = {
-          hindi: "hi",
-          marathi: "mr",
-          tamil: "ta",
-          telugu: "te",
-          kannada: "kn",
-          bengali: "bn",
-          english: "en",
-        }
-        sourceLanguage = nameToCode[langName] || "hi"
+        )
+        sourceLanguage = agentLanguageToBcp47(langName) || "hi"
       }
 
       if (sourceLanguage === "en") {
