@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
 import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { isValidAgentName, sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
 import { agentsQueryKey, useAgentsQuery } from "@/lib/queries/agents"
 import { requireJohnaicServerUrl } from "@/lib/johnaic-config"
 import { Separator } from "@/components/ui/separator"
@@ -769,11 +770,10 @@ export default function AssistantsPage() {
       }
 
       // Step 3: Delete the agent
-      const agentId = agent.id || agent._id || agent.agent_type
-      if (!agentId) {
-        throw new Error("Agent ID is missing")
+      if (!agent.agent_type) {
+        throw new Error("Agent type is missing")
       }
-      await deleteAgent(agentId, { agentType: agent.agent_type })
+      await deleteAgent(agent.agent_type)
 
       await queryClient.invalidateQueries({
         queryKey: agentsQueryKey(user.org_id),
@@ -936,8 +936,14 @@ export default function AssistantsPage() {
     setIsCreatingAgent(true)
 
     try {
-      // Generate agent_id from agent_type: replace spaces with underscores and convert to lowercase
-      const agentId = config.name.replace(/\s+/g, '_').toLowerCase()
+      const trimmedName = config.name.trim()
+      const nameError = validateAgentName(trimmedName)
+      if (nameError) {
+        alert(nameError)
+        return
+      }
+
+      const agentId = slugifyAgentId(trimmedName)
 
       const languageFields = buildLanguageConfigFields(config.selectedLanguages)
 
@@ -1034,7 +1040,7 @@ export default function AssistantsPage() {
       const agentData: CreateAgentRequest = {
         org_id: user.org_id,
         agent_category: "voicera_telephony",
-        agent_type: config.name,
+        agent_type: trimmedName,
         agent_id: agentId,
         agent_config:
           config.interactionMode === "non_conversational"
@@ -1121,9 +1127,9 @@ export default function AssistantsPage() {
         return config.interactionMode !== null
       case "agent":
         if (config.interactionMode === "non_conversational") {
-          return (config.name?.length ?? 0) > 0 && (config.greetingMessage?.trim().length ?? 0) > 0
+          return isValidAgentName(config.name) && (config.greetingMessage?.trim().length ?? 0) > 0
         }
-        return (config.name?.length ?? 0) > 0 && config.systemPrompt.length > 0
+        return isValidAgentName(config.name) && config.systemPrompt.length > 0
       case "llm":
         if (config.llmProvider === "kenpath") {
           return !!config.llmProvider
@@ -1514,12 +1520,12 @@ export default function AssistantsPage() {
                     <label className="text-base font-bold text-slate-900">Agent Name</label>
                     <Input
                       value={config.name}
-                      onChange={(e) => updateConfig("name", e.target.value)}
+                      onChange={(e) => updateConfig("name", sanitizeAgentNameInput(e.target.value))}
                       placeholder="Enter agent name"
                       className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                     />
                     <p className="text-sm text-slate-500">
-                      Give your agent a unique name to identify it.
+                      Use letters, numbers, underscores, or hyphens only. No spaces.
                     </p>
                   </div>
 

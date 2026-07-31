@@ -41,6 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
 import { agentsQueryKey } from "@/lib/queries/agents"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
@@ -945,8 +946,9 @@ export default function AgentDetailPage() {
   const handleSave = async () => {
     if (!agent || !user) return
     const trimmedAgentType = agentType.trim()
-    if (!trimmedAgentType) {
-      setErrorMessage("Agent name cannot be empty")
+    const nameError = validateAgentName(trimmedAgentType)
+    if (nameError) {
+      setErrorMessage(nameError)
       return
     }
 
@@ -955,7 +957,7 @@ export default function AgentDetailPage() {
     try {
       const originalAgentType = (agent.agent_type || agentId).trim()
       const agentIdSlug =
-        agent.agent_id || originalAgentType.replace(/\s+/g, "_").toLowerCase()
+        agent.agent_id || slugifyAgentId(originalAgentType)
 
       const updatedConfig: CreateAgentRequest = {
         org_id: user.org_id,
@@ -1723,10 +1725,13 @@ export default function AgentDetailPage() {
                   </label>
                   <Input
                     value={agentType}
-                    onChange={(e) => setAgentType(e.target.value)}
+                    onChange={(e) => setAgentType(sanitizeAgentNameInput(e.target.value))}
                     className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
                     placeholder="Enter agent name"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Letters, numbers, underscores, and hyphens only. No spaces.
+                  </p>
                 </div>
 
                 <div>

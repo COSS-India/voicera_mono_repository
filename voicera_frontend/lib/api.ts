@@ -208,26 +208,25 @@ export async function updateAgent(agentId: string, agentData: CreateAgentRequest
 }
 
 /**
- * Delete an agent
+ * Delete an agent by agent_type (display name).
  */
 export async function deleteAgent(
-  agentId: string,
-  options?: { agentType?: string }
+  agentType: string
 ): Promise<{ status: string; message: string }> {
-  const trimmedAgentType = options?.agentType?.trim() || ""
-  const hasAgentType = trimmedAgentType.length > 0
-  const response = hasAgentType
-    ? await fetchApiRoute(`/api/agents?agent_type=${encodeURIComponent(trimmedAgentType)}`, {
-        method: "DELETE",
-      })
-    : await fetchApiRoute(`/api/agents/${encodeURIComponent(agentId)}`, {
-        method: "DELETE",
-      })
-  
+  const trimmedAgentType = agentType.trim()
+  if (!trimmedAgentType) {
+    throw new Error("Agent type is required")
+  }
+
+  const response = await fetchApiRoute(
+    `/api/agents?agent_type=${encodeURIComponent(trimmedAgentType)}`,
+    { method: "DELETE" }
+  )
+
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response, "Failed to delete agent"))
   }
-  
+
   return response.json()
 }
 
