@@ -314,6 +314,7 @@ async def create_rejected_call_meeting(
             "from_number": from_num,
             "to_number": to_num,
             "inbound": inbound,
+            "call_type": "inbound" if inbound else "outbound",
             "call_busy": True,
         }
         

@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { CallTypeBadge } from "@/components/history/call-type-badge"
+import { resolveCallType } from "@/lib/call-type"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { type Meeting, type MeetingDetails } from "@/lib/api"
 import { displayCallPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
@@ -23,8 +25,6 @@ import {
   Bot,
   User,
   Copy,
-  PhoneIncoming,
-  PhoneOutgoing,
   Loader2,
   Check,
   Hash,
@@ -566,8 +566,14 @@ export function MeetingDetailSheet({
     URL.revokeObjectURL(url)
   }
 
-  const isInbound = meeting?.inbound ?? true
-  const customerNumber = isInbound ? meeting?.from_number : meeting?.to_number
+  const callType = meeting ? resolveCallType(meeting) : "outbound"
+  const isInbound = callType === "inbound"
+  const isWebCall = callType === "web"
+  const customerNumber = isWebCall
+    ? null
+    : isInbound
+      ? meeting?.from_number
+      : meeting?.to_number
 
   const agentName = useMemo(() => {
     return (
@@ -755,22 +761,7 @@ export function MeetingDetailSheet({
             {/* METADATA STRIP - Single row, scannable */}
             <div className="px-5 py-3 bg-white border-b border-slate-200 flex items-center gap-3 flex-wrap">
               <span className="text-xs text-slate-500">{formattedDate}</span>
-              <Badge 
-                variant="outline" 
-                className="bg-slate-100 text-slate-700 border-slate-200"
-              >
-                {meeting.inbound ? (
-                  <>
-                    <PhoneIncoming className="h-3 w-3" />
-                    <span>Inbound</span>
-                  </>
-                ) : (
-                  <>
-                    <PhoneOutgoing className="h-3 w-3" />
-                    <span>Outbound</span>
-                  </>
-                )}
-              </Badge>
+              <CallTypeBadge meeting={meeting} className="bg-transparent border border-slate-200" />
               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">
                 {meeting.call_busy ? "Busy" : (meeting.end_time_utc ? "Completed" : "In Progress")}
               </Badge>

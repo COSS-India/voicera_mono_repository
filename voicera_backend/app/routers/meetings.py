@@ -91,7 +91,10 @@ async def get_meetings(
     agent_type: Optional[str] = Query(None, description="Filter by agent type"),
     from_number: Optional[str] = Query(None),
     to_number: Optional[str] = Query(None),
-    inbound: Optional[bool] = Query(None, description="True=inbound, False=outbound"),
+    inbound: Optional[bool] = Query(None, description="True=inbound, False=outbound (legacy)"),
+    call_type: Optional[str] = Query(
+        None, description="Filter by call type: inbound, outbound, or web"
+    ),
     call_status: Optional[str] = Query(None, description="Busy, Completed, or In Progress"),
     date_from: Optional[str] = Query(None, description="ISO date start (inclusive)"),
     date_to: Optional[str] = Query(None, description="ISO date end (inclusive)"),
@@ -121,6 +124,7 @@ async def get_meetings(
         from_number=from_number,
         to_number=to_number,
         inbound=inbound,
+        call_type=call_type,
         call_status=call_status,
         date_from=date_from,
         date_to=date_to,

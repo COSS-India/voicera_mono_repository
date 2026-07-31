@@ -481,6 +481,7 @@ export interface MeetingsPageParams {
   from_number?: string
   to_number?: string
   inbound?: boolean
+  call_type?: string
   call_status?: string
   date_from?: string
   date_to?: string
@@ -512,6 +513,7 @@ function buildMeetingsQueryString(params: MeetingsPageParams): string {
   if (params.from_number) q.set("from_number", params.from_number)
   if (params.to_number) q.set("to_number", params.to_number)
   if (params.inbound !== undefined) q.set("inbound", String(params.inbound))
+  if (params.call_type) q.set("call_type", params.call_type)
   if (params.call_status) q.set("call_status", params.call_status)
   if (params.date_from) q.set("date_from", params.date_from)
   if (params.date_to) q.set("date_to", params.date_to)
@@ -854,6 +856,7 @@ export interface Meeting {
   agent_category?: string
   agent_config?: Record<string, any>
   inbound?: boolean
+  call_type?: string
   from_number?: string
   to_number?: string
   created_at?: string
