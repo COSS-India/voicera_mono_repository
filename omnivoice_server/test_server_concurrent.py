@@ -34,7 +34,7 @@ from typing import Any, Optional
 
 import websockets
 
-DEFAULT_TEXT = "हॅलो, तुम्ही अजून कॉलवर आहात का"
+DEFAULT_TEXT = "हॅलो, तुम्ही अजून कॉलवर आहात का हॅलो, तुम्ही अजून कॉलवर आहात का हॅलो"
 DEFAULT_INSTRUCT = "female, young adult, high pitch"
 DEFAULT_LANGUAGE = "mr"  # Marathi
 

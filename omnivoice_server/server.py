@@ -36,8 +36,12 @@ WebSocket endpoint  WS /ws/tts
 
 Usage:
     python server.py [--model k2-fsa/OmniVoice] [--num_gpus 4] \
-                     [--nj_per_gpu 2] [--batch_duration 60] \
-                     [--batch_size 0] [--warmup 1] [--port 8000]
+                     [--nj_per_gpu 2] [--num_step 8] [--max_batch_per_worker 4] \
+                     [--batch_duration 60] [--batch_size 0] [--warmup 1] [--port 8005]
+
+Default layout: 4 GPUs × 2 models = 8 workers. With --max_batch_per_worker 4 that
+packs 32 concurrent requests into one wave (8 × 4). --num_step 8 is ~4× fewer
+diffusion steps than the model default (32) → ~2–3× lower latency.
 """
 
 import argparse
@@ -72,6 +76,7 @@ from omnivoice.utils.duration import RuleDurationEstimator
 # ---------------------------------------------------------------------------
 SAMPLING_RATE = 24_000
 worker_model: Optional[OmniVoice] = None   # process-local, set by process_init
+worker_num_step: int = 8                   # process-local diffusion steps
 
 def _noop():
     """Picklable no-op used to trigger worker pool initialisation."""
@@ -106,11 +111,21 @@ _prompt_cache: Dict[str, str] = {}  # prompt_id → absolute .pt path
 # Worker process helpers  (identical to infer_batch.py)
 # ---------------------------------------------------------------------------
 
-def process_init(rank_queue, model_checkpoint: str, warmup: int = 0):
-    global worker_model
+def process_init(
+    rank_queue,
+    model_checkpoint: str,
+    warmup: int = 0,
+    num_step: int = 8,
+):
+    global worker_model, worker_num_step
 
+    worker_num_step = num_step
     torch.set_num_threads(2)
     torch.set_num_interop_threads(2)
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
     fmt = ("%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] "
            "[Worker %(process)d] %(message)s")
@@ -125,7 +140,9 @@ def process_init(rank_queue, model_checkpoint: str, warmup: int = 0):
     else:
         worker_device = f"{device_type}:{device_id}"
 
-    logging.info(f"Initializing worker on {worker_device}")
+    logging.info(
+        f"Initializing worker on {worker_device} (num_step={num_step})"
+    )
     worker_model = OmniVoice.from_pretrained(
         model_checkpoint, device_map=worker_device, dtype=torch.float16
     )
@@ -134,10 +151,12 @@ def process_init(rank_queue, model_checkpoint: str, warmup: int = 0):
         logging.info(f"Running {warmup} warmup pass(es) on {worker_device}")
         dummy = (torch.randn(1, SAMPLING_RATE), SAMPLING_RATE)
         for _ in range(warmup):
-            worker_model.generate(
-                text=["hello"], language=["en"],
-                ref_audio=[dummy], ref_text=["hello"],
-            )
+            with torch.inference_mode():
+                worker_model.generate(
+                    text=["hello"], language=["en"],
+                    ref_audio=[dummy], ref_text=["hello"],
+                    num_step=num_step,
+                )
         logging.info(f"Warmup done on {worker_device}")
 
     logging.info(f"Worker on {worker_device} ready.")
@@ -181,7 +200,7 @@ def run_inference_batch(batch_samples: List[Tuple]) -> List[Tuple]:
     prompt_path takes priority over ref_audio_path for voice cloning.
     Returns list of (request_id, audio_bytes, audio_dur, synth_time).
     """
-    global worker_model
+    global worker_model, worker_num_step
     from omnivoice.models.omnivoice import VoiceClonePrompt  # noqa: F401
 
     request_ids, ref_texts, ref_audio_paths = [], [], []
@@ -215,62 +234,67 @@ def run_inference_batch(batch_samples: List[Tuple]) -> List[Tuple]:
                 voice_clone_prompts.append(None)
 
     t0 = time.time()
-    if has_prompts:
-        audios = worker_model.generate(
-            text=texts,
-            language=langs,
-            num_step=16,
-            voice_clone_prompt=voice_clone_prompts,
-            duration=durations if any(d is not None for d in durations) else None,
-            speed=speeds       if any(s is not None for s in speeds)    else None,
-            instruct=instructs if any(i is not None for i in instructs) else None,
-        )
-    else:
-        audios = worker_model.generate(
-            text=texts,
-            language=langs,
-            ref_audio=ref_audio_paths if any(p is not None for p in ref_audio_paths) else None,
-            ref_text=ref_texts        if any(t is not None for t in ref_texts)        else None,
-            duration=durations        if any(d is not None for d in durations)        else None,
-            speed=speeds              if any(s is not None for s in speeds)            else None,
-            instruct=instructs        if any(i is not None for i in instructs)        else None,
-        )
-
-    # OmniVoice sometimes returns near-empty audio after silence removal
-    # (especially short greetings with quiet clone prompts). Retry those once
-    # with post-processing disabled so the greeting is still audible.
-    empty_idx = [
-        i for i, a in enumerate(audios)
-        if a is None or getattr(a, "size", 0) == 0 or a.shape[-1] < int(0.05 * worker_model.sampling_rate)
-    ]
-    if empty_idx:
-        logging.warning(
-            "Empty/near-empty audio for %d sample(s); retrying without postprocess: %s",
-            len(empty_idx),
-            [texts[i][:40] for i in empty_idx],
-        )
-        retry_texts = [texts[i] for i in empty_idx]
-        retry_langs = [langs[i] for i in empty_idx]
+    with torch.inference_mode():
         if has_prompts:
-            retry_prompts = [voice_clone_prompts[i] for i in empty_idx]
-            retry_audios = worker_model.generate(
-                text=retry_texts,
-                language=retry_langs,
-                voice_clone_prompt=retry_prompts,
-                postprocess_output=False,
+            audios = worker_model.generate(
+                text=texts,
+                language=langs,
+                num_step=worker_num_step,
+                voice_clone_prompt=voice_clone_prompts,
+                duration=durations if any(d is not None for d in durations) else None,
+                speed=speeds       if any(s is not None for s in speeds)    else None,
+                instruct=instructs if any(i is not None for i in instructs) else None,
             )
         else:
-            retry_ref_audio = [ref_audio_paths[i] for i in empty_idx]
-            retry_ref_text = [ref_texts[i] for i in empty_idx]
-            retry_audios = worker_model.generate(
-                text=retry_texts,
-                language=retry_langs,
-                ref_audio=retry_ref_audio if any(p is not None for p in retry_ref_audio) else None,
-                ref_text=retry_ref_text if any(t is not None for t in retry_ref_text) else None,
-                postprocess_output=False,
+            # Voice-design / auto: must pass num_step — default is 32 and ~2x slower.
+            audios = worker_model.generate(
+                text=texts,
+                language=langs,
+                num_step=worker_num_step,
+                ref_audio=ref_audio_paths if any(p is not None for p in ref_audio_paths) else None,
+                ref_text=ref_texts        if any(t is not None for t in ref_texts)        else None,
+                duration=durations        if any(d is not None for d in durations)        else None,
+                speed=speeds              if any(s is not None for s in speeds)            else None,
+                instruct=instructs        if any(i is not None for i in instructs)        else None,
             )
-        for j, i in enumerate(empty_idx):
-            audios[i] = retry_audios[j]
+
+        # OmniVoice sometimes returns near-empty audio after silence removal
+        # (especially short greetings with quiet clone prompts). Retry those once
+        # with post-processing disabled so the greeting is still audible.
+        empty_idx = [
+            i for i, a in enumerate(audios)
+            if a is None or getattr(a, "size", 0) == 0 or a.shape[-1] < int(0.05 * worker_model.sampling_rate)
+        ]
+        if empty_idx:
+            logging.warning(
+                "Empty/near-empty audio for %d sample(s); retrying without postprocess: %s",
+                len(empty_idx),
+                [texts[i][:40] for i in empty_idx],
+            )
+            retry_texts = [texts[i] for i in empty_idx]
+            retry_langs = [langs[i] for i in empty_idx]
+            if has_prompts:
+                retry_prompts = [voice_clone_prompts[i] for i in empty_idx]
+                retry_audios = worker_model.generate(
+                    text=retry_texts,
+                    language=retry_langs,
+                    num_step=worker_num_step,
+                    voice_clone_prompt=retry_prompts,
+                    postprocess_output=False,
+                )
+            else:
+                retry_ref_audio = [ref_audio_paths[i] for i in empty_idx]
+                retry_ref_text = [ref_texts[i] for i in empty_idx]
+                retry_audios = worker_model.generate(
+                    text=retry_texts,
+                    language=retry_langs,
+                    num_step=worker_num_step,
+                    ref_audio=retry_ref_audio if any(p is not None for p in retry_ref_audio) else None,
+                    ref_text=retry_ref_text if any(t is not None for t in retry_ref_text) else None,
+                    postprocess_output=False,
+                )
+            for j, i in enumerate(empty_idx):
+                audios[i] = retry_audios[j]
 
     batch_synth_time = time.time() - t0
     synth_per_sample = batch_synth_time / len(batch_samples)
@@ -415,7 +439,9 @@ async def batcher_loop():
     """
     global _pending_queue, _executor, _result_map, _duration_estimator, _args, _loop, _num_workers
 
-    BATCH_WINDOW_MS = 50   # collect requests for up to 50 ms before dispatching
+    # Short window: concurrent barrier-fire clients all land together; long
+    # windows only add latency. Still long enough to coalesce near-simultaneous arrivals.
+    BATCH_WINDOW_MS = 15
 
     logger.info("Batcher loop started.")
 
@@ -451,8 +477,17 @@ async def batcher_loop():
             else:
                 clustered = cluster_by_duration(subset, _duration_estimator, _args.batch_duration)
             # Fan out across idle GPU workers (see ensure_worker_parallelism docstring)
+            # Cap per-batch size so 32 concurrent → 8 workers × ≤4 samples.
+            max_per_worker = max(1, getattr(_args, "max_batch_per_worker", 4))
             clustered = ensure_worker_parallelism(clustered, _num_workers)
-            batches.extend(clustered)
+            refined: List[List[Tuple]] = []
+            for b in clustered:
+                if len(b) <= max_per_worker:
+                    refined.append(b)
+                else:
+                    for i in range(0, len(b), max_per_worker):
+                        refined.append(b[i : i + max_per_worker])
+            batches.extend(refined)
 
         logger.info(
             f"Batcher: {len(samples)} request(s) → {len(batches)} batch(es) "
@@ -784,7 +819,7 @@ async def startup():
     _executor = ProcessPoolExecutor(
         max_workers=num_processes,
         initializer=process_init,
-        initargs=(rank_queue, _args.model, _args.warmup),
+        initargs=(rank_queue, _args.model, _args.warmup, _args.num_step),
     )
 
     # Trigger worker initialisation immediately by submitting dummy futures
@@ -815,11 +850,15 @@ def get_parser():
     p.add_argument("--num_gpus",       type=int,   default=None,
                    help="Number of GPUs to use (default: all).")
     p.add_argument("--nj_per_gpu",     type=int,   default=2,
-                   help="Model instances per GPU (default: 2).")
+                   help="Model instances per GPU (default: 2 → 8 models on 4 GPUs).")
     p.add_argument("--batch_duration", type=float, default=60.0,
                    help="Max total duration per batch in seconds (duration-based batching).")
     p.add_argument("--batch_size",     type=int,   default=0,
                    help="Fixed batch size. 0 = use duration-based batching.")
+    p.add_argument("--max_batch_per_worker", type=int, default=4,
+                   help="Max samples packed per GPU worker (32 concurrency / 8 workers = 4).")
+    p.add_argument("--num_step",       type=int,   default=8,
+                   help="Diffusion decoding steps (default 8 ≈ 2–4x faster than model default 32).")
     p.add_argument("--warmup",         type=int,   default=1,
                    help="Warmup iterations per worker.")
     p.add_argument("--host",           type=str,   default="0.0.0.0")
@@ -838,7 +877,9 @@ if __name__ == "__main__":
     logger.info(
         f"Config: model={_args.model}  num_gpus={_args.num_gpus}  "
         f"nj_per_gpu={_args.nj_per_gpu}  batch_size={_args.batch_size}  "
-        f"batch_duration={_args.batch_duration}  warmup={_args.warmup}"
+        f"max_batch_per_worker={_args.max_batch_per_worker}  "
+        f"num_step={_args.num_step}  batch_duration={_args.batch_duration}  "
+        f"warmup={_args.warmup}"
     )
 
     uvicorn.run(

@@ -7,3 +7,4 @@ ai4bharat_tts_server/compare_marathi_tts_metrics.py
 ai4bharat_tts_server/server_grpc.py
 ai4bharat_tts_server/tts_pb2_grpc.py
 ai4bharat_tts_server/tts_pb2.py
+*wav
