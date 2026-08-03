@@ -36,11 +36,12 @@ WebSocket endpoint  WS /ws/tts
 
 Usage:
     python server.py [--model k2-fsa/OmniVoice] [--num_gpus 4] \
-                     [--nj_per_gpu 2] [--num_step 16] [--max_batch_per_worker 4] \
-                     [--batch_duration 60] [--batch_size 0] [--warmup 1] [--port 8005]
+                     [--nj_per_gpu 1] [--num_step 16] [--max_batch_per_worker 4] \
+                     [--batch_duration 60] [--batch_size 0] [--warmup 3] [--port 8005]
 
-Default layout: 4 GPUs × 2 models = 8 workers. Default --max_batch_per_worker 2
-keeps per-request latency low for longer utterances. --num_step 16 +
+Default layout: 4 GPUs × 1 model = 4 workers (best with CUDA graphs).
+torch.compile(reduce-overhead) is ON by default (~2–3× decode vs eager).
+Use --nj_per_gpu 2 only if you need more concurrency; it often slows graphs.
 --guidance_scale 0 skips CFG's unconditional forward → ~2× vs default CFG=2.
 """
 
@@ -118,6 +119,9 @@ def process_init(
     warmup: int = 0,
     num_step: int = 16,
     guidance_scale: float = 0.0,
+    compile_model: bool = True,
+    ready_count=None,
+    ready_lock=None,
 ):
     global worker_model, worker_num_step, worker_guidance_scale
 
@@ -126,9 +130,13 @@ def process_init(
     torch.set_num_threads(2)
     torch.set_num_interop_threads(2)
     if torch.cuda.is_available():
+        torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
+        torch.backends.cuda.enable_flash_sdp(True)
+        torch.backends.cuda.enable_mem_efficient_sdp(True)
 
     fmt = ("%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] "
            "[Worker %(process)d] %(message)s")
@@ -145,7 +153,7 @@ def process_init(
 
     logging.info(
         f"Initializing worker on {worker_device} "
-        f"(num_step={num_step}, guidance_scale={guidance_scale})"
+        f"(num_step={num_step}, guidance_scale={guidance_scale}, compile={compile_model})"
     )
     # Serialize from_pretrained per GPU: transformers' caching_allocator_warmup
     # can briefly reserve ~10GB+, and 2 workers on a 16GB card OOM if they overlap.
@@ -155,24 +163,67 @@ def process_init(
         fcntl.flock(lock_f, fcntl.LOCK_EX)
         try:
             worker_model = OmniVoice.from_pretrained(
-                model_checkpoint, device_map=worker_device, dtype=torch.float16
+                model_checkpoint,
+                device_map=worker_device,
+                dtype=torch.float16,
+                attn_implementation="sdpa",
             )
+            worker_model.eval()
+
+            if compile_model and torch.cuda.is_available() and device_type == "cuda":
+                try:
+                    # reduce-overhead enables CUDA graphs → ~2.5× on fixed-shape
+                    # decode (profiled: fp16 eager 387ms → compile 153ms @ B=2).
+                    worker_model.llm = torch.compile(
+                        worker_model.llm,
+                        mode="reduce-overhead",
+                        fullgraph=False,
+                        dynamic=True,
+                    )
+                    logging.info(
+                        f"torch.compile(reduce-overhead) enabled on LLM ({worker_device})"
+                    )
+                except Exception as e:
+                    logging.warning(f"torch.compile skipped on {worker_device}: {e}")
+
             if warmup > 0:
                 logging.info(f"Running {warmup} warmup pass(es) on {worker_device}")
-                dummy = (torch.randn(1, SAMPLING_RATE), SAMPLING_RATE)
+                # Match production shapes so CUDA graphs capture the hot path.
+                warm_text = (
+                    "हॅलो, तुम्ही अजून कॉलवर आहात का हॅलो, तुम्ही अजून कॉलवर आहात का हॅलो"
+                )
                 for _ in range(warmup):
                     with torch.inference_mode():
                         worker_model.generate(
-                            text=["hello"], language=["en"],
-                            ref_audio=[dummy], ref_text=["hello"],
+                            text=[warm_text, warm_text],
+                            language=["mr", "mr"],
+                            instruct=[
+                                "female, young adult, high pitch",
+                                "female, young adult, high pitch",
+                            ],
                             num_step=num_step,
                             guidance_scale=guidance_scale,
+                            postprocess_output=False,
                         )
+                        worker_model.generate(
+                            text=[warm_text],
+                            language=["mr"],
+                            instruct=["female, young adult, high pitch"],
+                            num_step=num_step,
+                            guidance_scale=guidance_scale,
+                            postprocess_output=False,
+                        )
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize(device_id if device_type == "cuda" else None)
                 logging.info(f"Warmup done on {worker_device}")
         finally:
             fcntl.flock(lock_f, fcntl.LOCK_UN)
 
     logging.info(f"Worker on {worker_device} ready.")
+    if ready_count is not None and ready_lock is not None:
+        with ready_lock:
+            ready_count.value += 1
+            logging.info(f"Workers ready: {ready_count.value}")
 
 
 def worker_create_voice_clone_prompt(
@@ -840,17 +891,33 @@ async def startup():
 
     manager = mp.Manager()
     rank_queue = manager.Queue()
+    ready_count = manager.Value("i", 0)
+    ready_lock = manager.Lock()
     for rank in list(range(num_devices)) * _args.nj_per_gpu:
         rank_queue.put((device_type, rank))
 
     _executor = ProcessPoolExecutor(
         max_workers=num_processes,
         initializer=process_init,
-        initargs=(rank_queue, _args.model, _args.warmup, _args.num_step, _args.guidance_scale),
+        initargs=(
+            rank_queue,
+            _args.model,
+            _args.warmup,
+            _args.num_step,
+            _args.guidance_scale,
+            _args.compile,
+            ready_count,
+            ready_lock,
+        ),
     )
 
-    # Trigger worker initialisation immediately by submitting dummy futures
+    # Spawn all workers; wait on ready_count (first worker can drain noops alone).
     dummy_futs = [_loop.run_in_executor(_executor, _noop) for _ in range(num_processes)]
+    while ready_count.value < num_processes:
+        await asyncio.sleep(0.5)
+        logger.info(
+            f"Waiting for workers… {ready_count.value}/{num_processes} ready"
+        )
     await asyncio.gather(*dummy_futs)
     logger.info("All workers initialised.")
 
@@ -876,22 +943,25 @@ def get_parser():
     p.add_argument("--model",          type=str,   default="k2-fsa/OmniVoice")
     p.add_argument("--num_gpus",       type=int,   default=None,
                    help="Number of GPUs to use (default: all).")
-    p.add_argument("--nj_per_gpu",     type=int,   default=2,
-                   help="Model instances per GPU (default: 2 → 8 models on 4 GPUs).")
+    p.add_argument("--nj_per_gpu",     type=int,   default=1,
+                   help="Model instances per GPU (default 1: best with CUDA graphs; "
+                        "use 2 if you need more concurrency).")
     p.add_argument("--batch_duration", type=float, default=60.0,
                    help="Max total duration per batch in seconds (duration-based batching).")
     p.add_argument("--batch_size",     type=int,   default=0,
                    help="Fixed batch size. 0 = use duration-based batching.")
-    p.add_argument("--max_batch_per_worker", type=int, default=2,
-                   help="Max samples packed per GPU worker (default 2: lower latency for long audio; "
-                        "use 4 only for short utterances).")
+    p.add_argument("--max_batch_per_worker", type=int, default=4,
+                   help="Max samples packed per GPU worker (default 4 with compile).")
     p.add_argument("--num_step",       type=int,   default=16,
                    help="Diffusion decoding steps (default 16 ≈ 2x vs model default 32).")
     p.add_argument("--guidance_scale", type=float, default=0.0,
                    help="CFG scale. 0 skips the unconditional forward (~2x faster). "
                         "Model default is 2.0 (higher quality, slower).")
-    p.add_argument("--warmup",         type=int,   default=1,
-                   help="Warmup iterations per worker.")
+    p.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True,
+                   help="torch.compile LLM with CUDA graphs (default: on). "
+                        "Use --no-compile to disable.")
+    p.add_argument("--warmup",         type=int,   default=3,
+                   help="Warmup iterations per worker (default 3; needed for CUDA graphs).")
     p.add_argument("--host",           type=str,   default="0.0.0.0")
     p.add_argument("--port",           type=int,   default=8005)
     return p
@@ -910,6 +980,7 @@ if __name__ == "__main__":
         f"nj_per_gpu={_args.nj_per_gpu}  batch_size={_args.batch_size}  "
         f"max_batch_per_worker={_args.max_batch_per_worker}  "
         f"num_step={_args.num_step}  guidance_scale={_args.guidance_scale}  "
+        f"compile={_args.compile}  "
         f"batch_duration={_args.batch_duration}  warmup={_args.warmup}"
     )
 
