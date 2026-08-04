@@ -4,17 +4,23 @@ FROM nvcr.io/nvidia/pytorch:25.06-py3
 
 WORKDIR /app
 COPY requirements.txt .
-# torch ships in the base image.  miocodec pulls torchaudio transitively —
-# the PyPI torchaudio wheel links against a CUDA runtime that doesn't match
-# this NGC image's CUDA (OSError: libcudart.so.13 not found).
-# Fix: pre-install torchaudio from the PyTorch wheel index matching the
-# container's CUDA, then install miocodec normally — pip sees torchaudio
-# already satisfied and won't re-pull the incompatible PyPI wheel.
+# torch ships in the base image (custom NVIDIA build 2.8.0a0).  No official
+# torchaudio wheel is ABI-compatible with it (undefined symbol errors).
+#
+# torchaudio is only imported by miocodec's SSLFeatureExtractor (the *encoder*
+# path).  We only use MioCodec.decode() (tokens → audio), so torchaudio is
+# never called at runtime.  Strategy:
+#   1. Install miocodec's other runtime deps (not torch/torchaudio).
+#   2. Install miocodec itself with --no-deps.
+#   3. Patch ssl_extractor.py to make the torchaudio import a soft try/except
+#      so the module loads without it.
 RUN grep -vE '^\s*(torch|git\+)' requirements.txt > /tmp/req.txt && \
     pip3 install --no-cache-dir -r /tmp/req.txt && \
-    CUDA_VER=$(python3 -c "import torch; print(torch.version.cuda.replace('.',''))") && \
-    pip3 install --no-cache-dir torchaudio --index-url https://download.pytorch.org/whl/cu${CUDA_VER} && \
-    pip3 install --no-cache-dir git+https://github.com/Aratako/MioCodec
+    pip3 install --no-cache-dir jsonargparse safetensors transformers huggingface_hub && \
+    pip3 install --no-cache-dir --no-deps git+https://github.com/Aratako/MioCodec && \
+    SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))") && \
+    sed -i 's/^import torchaudio$/try:\n    import torchaudio\nexcept (ImportError, OSError):\n    torchaudio = None  # decode-only; encoder not used/' \
+        "$SITE/miocodec/module/ssl_extractor.py"
 
 COPY . .
 EXPOSE 8003
