@@ -116,13 +116,24 @@ class ParlerTTS(torch.nn.Module):
         descriptions,
     ):
         num_codebooks = self.config["decoder"]["num_codebooks"]
-        desc_tokens = self.description_tokenizer(descriptions, return_tensors="pt")
+        desc_tokens = self.description_tokenizer(
+            descriptions, return_tensors="pt", padding=True
+        )
+        desc_attention_mask = desc_tokens["attention_mask"].to(device)
         encoder_hidden_states = self.description_encoder(
-            desc_tokens["input_ids"].to(device)
+            desc_tokens["input_ids"].to(device),
+            attention_mask=desc_attention_mask,
         ).last_hidden_state
-        prompt_tokens = self.prompt_tokenizer(prompts, return_tensors="pt").to(device)
+        prompt_tokens = self.prompt_tokenizer(
+            prompts, return_tensors="pt", padding=True
+        ).to(device)
         prompt_hidden_states = self.embed_prompt(prompt_tokens["input_ids"])
-        return encoder_hidden_states, prompt_hidden_states
+        return (
+            encoder_hidden_states,
+            prompt_hidden_states,
+            desc_attention_mask,
+            prompt_tokens["attention_mask"],
+        )
 
     @torch.no_grad
     def prefill(
@@ -131,11 +142,12 @@ class ParlerTTS(torch.nn.Module):
         decoder_position_ids,
         encoder_hidden_states,
         prompt_hidden_states,
+        encoder_attention_mask=None,
+        prompt_attention_mask=None,
     ):
         num_decoder_layers = self.config["decoder"]["num_hidden_layers"]
         num_codebooks = self.config["decoder"]["num_codebooks"]
         vocab_size = self.config["decoder"]["vocab_size"]
-
         decoder_input_ids = decoder_input_ids.reshape(
             -1, num_codebooks, decoder_input_ids.shape[-1]
         )
@@ -145,26 +157,62 @@ class ParlerTTS(torch.nn.Module):
                 for codebook in range(num_codebooks)
             ]
         )
+        audio_seq_len = inputs_embeds.shape[1]
         inputs_embeds = torch.cat([prompt_hidden_states, inputs_embeds], dim=1)
-
         position_embeds = self.embed_position.from_position_ids(
             decoder_position_ids
         ).to(inputs_embeds.device)
         hidden_states = inputs_embeds + position_embeds
 
+        # Only build explicit masks for real batched, mixed-length prefill
+        # calls (prompt_attention_mask/encoder_attention_mask supplied). The
+        # existing single-request call path passes neither, so self_attn_mask
+        # and cross_attn_mask stay None and DecoderLayer.prefill falls back to
+        # today's exact is_causal=True / unmasked behavior - zero change at n=1.
+        self_attn_mask = None
+        cross_attn_mask = None
+        if prompt_attention_mask is not None:
+            batch_size, full_seq_len = hidden_states.shape[0], hidden_states.shape[1]
+            audio_mask = torch.ones(
+                batch_size, audio_seq_len, dtype=torch.bool, device=hidden_states.device
+            )
+            valid = torch.cat([prompt_attention_mask.bool(), audio_mask], dim=1)
+            causal = torch.tril(
+                torch.ones(
+                    full_seq_len, full_seq_len, dtype=torch.bool, device=hidden_states.device
+                )
+            )
+            allowed = causal.unsqueeze(0) & valid.unsqueeze(1)
+            self_attn_mask = torch.zeros(
+                batch_size, 1, full_seq_len, full_seq_len,
+                dtype=hidden_states.dtype, device=hidden_states.device,
+            )
+            self_attn_mask.masked_fill_(~allowed.unsqueeze(1), float("-inf"))
+
+        if encoder_attention_mask is not None:
+            batch_size = encoder_hidden_states.shape[0]
+            enc_seq_len = encoder_hidden_states.shape[1]
+            cross_attn_mask = torch.zeros(
+                batch_size, 1, 1, enc_seq_len,
+                dtype=hidden_states.dtype, device=hidden_states.device,
+            )
+            cross_attn_mask.masked_fill_(
+                ~encoder_attention_mask.bool().unsqueeze(1).unsqueeze(1), float("-inf")
+            )
+
         model_kv_cache = []
         model_encoder_kv_cache = []
-
         for layer in range(num_decoder_layers):
             hidden_states, layer_kv_cache, layer_encoder_kv_cache = self.decoder_layers[
                 layer
             ].prefill(
                 hidden_states=hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
+                self_attn_mask=self_attn_mask,
+                cross_attn_mask=cross_attn_mask,
             )
             model_kv_cache.append(layer_kv_cache)
             model_encoder_kv_cache.append(layer_encoder_kv_cache)
-
         hidden_states = self.layer_norm(hidden_states)
         lm_logits = (
             self.lm_heads(hidden_states)
