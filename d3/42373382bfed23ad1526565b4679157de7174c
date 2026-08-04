@@ -1,0 +1,69 @@
+indic_mio_tts_server/server.py
+  s_1419714fb6029e::t_2b53d32e3564da 74-76,78-86
+  s_1419714fb6029e::t_b4084f9a7f1a10 1-73,77,87-144
+docs/services/indic-mio-tts.md
+  s_1419714fb6029e::t_8e4e44b47944a4 1-61
+indic_mio_tts_server/.env.example
+  s_1419714fb6029e::t_53047a187569c8 22-27
+  s_1419714fb6029e::t_c01b26cb674602 1-21
+voicera_frontend/app/(dashboard)/assistants/[id]/page.tsx
+  s_1419714fb6029e::t_9d06dea11bcd7d 87
+  s_1419714fb6029e::t_5d1aa1089640d7 116
+  s_1419714fb6029e::t_867a2e1d9007b7 1561,1619
+voicera_frontend/app/(dashboard)/assistants/page.tsx
+  s_1419714fb6029e::t_8f5bbace7bb633 1919,2001
+  s_1419714fb6029e::t_51f859fca35567 88
+deploy/nginx/nginx.conf
+  s_1419714fb6029e::t_6521ea0951becf 49-55
+indic_mio_tts_server/tts_engine.py
+  s_1419714fb6029e::t_9d7049e20e5ea4 1,4-15,19,22,39-40,50,52-54,74,94,96-100,105-149,161-164,169-171,176-196,200-220,223-224,231-233
+  s_1419714fb6029e::t_81b72cafa2c1aa 2-3,16-18,20-21,23-38,41-49,51,55-73,75-93,95,101-104,150-160,165-168,172-175,197-199,221-222,225-230,234-237
+indic_mio_tts_server/requirements.txt
+  s_1419714fb6029e::t_2abe672e5272af 1-9
+voice_2_voice_server/api/services.py
+  s_1419714fb6029e::t_233e209d130fd2 698-721
+  s_1419714fb6029e::t_112e6fac03e725 601-602
+  s_1419714fb6029e::t_dcba8f68713177 35
+indic_mio_tts_server/config.py
+  s_1419714fb6029e::t_9a168c2f8d5f15 71-85
+  s_1419714fb6029e::t_36d91e64904fd4 1-70,86-107,113-115
+  s_1419714fb6029e::t_dde4f00ed1f559 108-112
+indic_mio_tts_server/tests/ws_smoke.py
+  s_1419714fb6029e::t_af261d79b30b2d 1-59
+voicera_frontend/lib/languageModelSupport.ts
+  s_1419714fb6029e::t_97d5b9271be425 119-121,126
+indic_mio_tts_server/Dockerfile
+  s_1419714fb6029e::t_60465db3aee6e8 1-14
+voice_2_voice_server/.env.example
+  s_1419714fb6029e::t_6b97fee3028e18 66-71
+voice_2_voice_server/config/tts_mappings.py
+  s_1419714fb6029e::t_afb83518127fc3 165-178
+  s_1419714fb6029e::t_9a63e78cf9f1d5 162-164
+  s_1419714fb6029e::t_60d7276a255cb6 152-161
+indic_mio_tts_server/README.md
+  s_1419714fb6029e::t_fd8ddb8d4a7c77 1-53,72-74,77-90
+  s_1419714fb6029e::t_60674dec0b1f41 54-71,75-76
+deploy/compose/docker-compose.prod.yml
+  s_1419714fb6029e::t_13625cc52f4202 114-123,130-171
+  s_1419714fb6029e::t_6eb8f7b69242fe 124-129
+voicera_frontend/tts.json
+  s_1419714fb6029e::t_bac11fa3d534da 6-11,50-55,100-105,149-154,198-203,247-252,297-302,346-351,395-400,444-449,493-498,543-548,592-597,640-645,685-690,762-767,801-806,839-844,877-882,915-920,954-959,993-998,1032-1037
+voice_2_voice_server/services/indic_mio/tts.py
+  s_1419714fb6029e::t_28d52df823bbfc 1-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "d342373382bfed23ad1526565b4679157de7174c",
+  "prompts": {},
+  "sessions": {
+    "s_1419714fb6029e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88130f6c-d5ed-48ee-9a35-79c32cfaaed0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
