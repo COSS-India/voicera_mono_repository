@@ -61,7 +61,9 @@ def worker_main(
 
     from inference.runner import ParlerTTSModelRunner, TTSRequest  # noqa: PLC0415
 
-    runner = ParlerTTSModelRunner(checkpoint_path, play_steps=decode_every)
+    use_cuda_graph = os.environ.get("TTS_USE_CUDA_GRAPH", "1").strip().lower() not in ("0", "false", "no")
+    runner = ParlerTTSModelRunner(checkpoint_path, play_steps=decode_every, use_cuda_graph=use_cuda_graph)
+    print(f"[worker startup] use_cuda_graph={use_cuda_graph}", flush=True)
     pending_pids: set[str] = set()
     step_count = 0
     last_empty_cache = 0.0
@@ -71,6 +73,7 @@ def worker_main(
     with torch.no_grad():
         while True:
             # 1) Drain every new job waiting for THIS worker (continuous batching intake).
+            batch_jobs = []
             while True:
                 try:
                     job = job_q.get_nowait()
@@ -78,20 +81,26 @@ def worker_main(
                     break
                 if job is None:
                     return
-                pid, prompt, description = job
-                req = TTSRequest(prompt=prompt, description=description, pid=pid)
-                pending_pids.add(pid)
+                batch_jobs.append(job)
+
+            if batch_jobs:
+                reqs = []
+                for pid, prompt, description in batch_jobs:
+                    req = TTSRequest(prompt=prompt, description=description, pid=pid)
+                    pending_pids.add(pid)
+                    reqs.append(req)
                 try:
-                    runner.prefill(req)
+                    runner.prefill_batch(reqs)
                 except Exception as e:
                     traceback.print_exc()
-                    try:
-                        runner.free(req)
-                    except Exception:
-                        pass
-                    runner.running_requests.pop(pid, None)
-                    pending_pids.discard(pid)
-                    results_q.put((pid, "error", str(e)))
+                    for req in reqs:
+                        try:
+                            runner.free(req)
+                        except Exception:
+                            pass
+                        runner.running_requests.pop(req.pid, None)
+                        pending_pids.discard(req.pid)
+                        results_q.put((req.pid, "error", str(e)))
 
             # 2) One global step, batched over whatever this worker is running.
             if runner.running_requests:

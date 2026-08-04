@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import uuid
 from inference.modeling import ParlerTTS
@@ -46,7 +47,7 @@ class ParlerTTSModelRunner:
             num_layers=num_layers,
             type="dense",
             max_seq_len=768,
-            max_batch_size=24,
+            max_batch_size=80,
         )
         self.cross_attn_vmem = VirtualMemory(
             max_num_pages=1024,
@@ -56,7 +57,7 @@ class ParlerTTSModelRunner:
             num_layers=num_layers,
             type="dense",
             max_seq_len=128,
-            max_batch_size=24,
+            max_batch_size=80,
         )
         self.topk_processor = transformers.TopKLogitsWarper(top_k=50)
         self.num_codebooks = self.model.config["decoder"]["num_codebooks"]
@@ -82,6 +83,7 @@ class ParlerTTSModelRunner:
         self._audio_stride = max(0, hop * (play_steps - self.num_codebooks) // 6)
         self._dac_compiled = False
         self.use_cuda_graph = bool(use_cuda_graph) and device.type == "cuda"
+        self._step_log_last = 0.0
         self._cuda_graphs = {}
         self._cuda_graph = None
         self._cuda_graph_bs = None
@@ -172,7 +174,7 @@ class ParlerTTSModelRunner:
             self._session_peak_bs = 0
             self._invalidate_cuda_graph()
 
-        encoder_hidden_states, prompt_hidden_states = self.model.encode(
+        encoder_hidden_states, prompt_hidden_states, _, _ = self.model.encode(
             [request.prompt], [request.description]
         )
         decoder_input_ids = torch.full(
@@ -207,6 +209,116 @@ class ParlerTTSModelRunner:
         # running_requests is guaranteed to hold a dense-KV slot (pid_to_slot).
         self.running_requests[request.pid] = request
 
+    def prefill_batch(self, requests):
+        """Batched prefill for multiple newly-arrived requests in ONE real GPU
+        forward pass, instead of one sequential forward pass per request (the
+        actual bottleneck behind the concurrency ceiling - confirmed via
+        nvidia-smi dmon that neither compute nor memory bandwidth was
+        saturated at batch=64). Falls back to the original single-request
+        path unchanged when there's only one request, so n=1 numerics and
+        performance are byte-for-byte untouched.
+        """
+        if not requests:
+            return
+        if len(requests) == 1:
+            self.prefill(requests[0])
+            return
+        if len(self.running_requests) == 0:
+            # New generation wave — allow CUDA graph capture again.
+            self._cuda_graph_retired = False
+            self._session_peak_bs = 0
+            self._invalidate_cuda_graph()
+
+        batch_size = len(requests)
+        prompts = [r.prompt for r in requests]
+        descriptions = [r.description for r in requests]
+        (
+            encoder_hidden_states,
+            prompt_hidden_states,
+            desc_attention_mask,
+            prompt_attention_mask,
+        ) = self.model.encode(prompts, descriptions)
+
+        prompt_padded_len = prompt_hidden_states.shape[1]
+        real_prompt_lens = prompt_attention_mask.sum(dim=1).to(torch.int64)
+        pad_lens = prompt_padded_len - real_prompt_lens
+
+        decoder_input_ids = torch.full(
+            (batch_size * self.num_codebooks, 1),
+            self.bos_token_id,
+            dtype=torch.int32,
+            device=device,
+        )
+
+        full_len = prompt_padded_len + 1
+        batch_position_ids = torch.zeros(
+            batch_size, full_len, dtype=torch.int32, device=device
+        )
+        for i in range(batch_size):
+            real_len = int(real_prompt_lens[i].item())
+            pad_len = int(pad_lens[i].item())
+            batch_position_ids[i, pad_len:] = torch.arange(
+                real_len + 1, dtype=torch.int32, device=device
+            )
+
+        logits, model_kv_cache, model_encoder_kv_cache = self.model.prefill(
+            decoder_input_ids=decoder_input_ids,
+            decoder_position_ids=batch_position_ids,
+            encoder_hidden_states=encoder_hidden_states,
+            prompt_hidden_states=prompt_hidden_states,
+            encoder_attention_mask=desc_attention_mask,
+            prompt_attention_mask=prompt_attention_mask,
+        )
+
+        for i, req in enumerate(requests):
+            real_len = int(real_prompt_lens[i].item())
+            pad_len = int(pad_lens[i].item())
+            real_len_full = real_len + 1
+
+            # Trim left-padding: keep only the real prompt tokens + the first
+            # audio bos token, right-aligned in the padded batch sequence.
+            layer_kv_i = [
++                (
+                    k[i : i + 1, :, pad_len : pad_len + real_len_full, :].contiguous(),
+                    v[i : i + 1, :, pad_len : pad_len + real_len_full, :].contiguous(),
+                )
+                for (k, v) in model_kv_cache
+            ]
+            # Description tokenizer right-pads, so real tokens are already at
+            # the front - just trim the trailing padding.
+            desc_real_len = int(desc_attention_mask[i].sum().item())
+            layer_encoder_kv_i = [
+                (
+                    k[i : i + 1, :, :desc_real_len, :].contiguous(),
+                    v[i : i + 1, :, :desc_real_len, :].contiguous(),
+                )
+                for (k, v) in model_encoder_kv_cache
+            ]
+
+            self.self_attn_vmem.prefill(pid=req.pid, model_kv_cache=layer_kv_i)
+            self.cross_attn_vmem.prefill(
+                pid=req.pid, model_kv_cache=layer_encoder_kv_i
+            )
+
+            req_decoder_input_ids = decoder_input_ids[
+                i * self.num_codebooks : (i + 1) * self.num_codebooks
+            ]
+            req_decoder_position_ids = torch.arange(
+                real_len_full, dtype=torch.int32, device=device
+            ).unsqueeze(0)
+            req.decoder_input_ids.append(req_decoder_input_ids)
+            req.token_cache.append(req_decoder_input_ids)
+            req.decoder_position_ids.append(req_decoder_position_ids)
+
+            next_decoder_input_ids = self._sample_prefill(req, logits[i : i + 1])
+            next_decoder_position_ids = req_decoder_position_ids[:, -1:] + 1
+            req.decoder_input_ids.append(next_decoder_input_ids)
+            req.decoder_position_ids.append(next_decoder_position_ids)
+            req.token_cache.append(next_decoder_input_ids)
+
+            # Register only after prefill fully succeeds, matching the n=1 path.
+            self.running_requests[req.pid] = req
+
     def _sample_prefill(self, request, logits, sampling="multinomial"):
         if sampling == "argmax":
             sampled_tokens = logits.argmax(dim=-1)[0, :, -1:]
@@ -240,6 +352,9 @@ class ParlerTTSModelRunner:
             ],
             dim=0,
         )
+        _will_log = (time.monotonic() - self._step_log_last) > 2.0
+        if _will_log:
+            _step_t0 = time.monotonic()
         if self.use_cuda_graph:
             logits = self._decode_with_cuda_graph(
                 decoder_input_ids, decoder_position_ids
@@ -250,6 +365,16 @@ class ParlerTTSModelRunner:
                 decoder_position_ids=decoder_position_ids,
                 model_kv_cache_vmem=self.self_attn_vmem,
                 model_encoder_kv_cache_vmem=self.cross_attn_vmem,
+            )
+        if _will_log:
+            torch.cuda.synchronize()
+            _step_ms = (time.monotonic() - _step_t0) * 1000
+            self._step_log_last = time.monotonic()
+            print(
+                f'[tts_step2] bs={len(sorted_pids)} step_ms={_step_ms:.1f} '
+                f'cuda_graph={self.use_cuda_graph} graphs_cached={len(self._cuda_graphs)} '
+                f'hold_key={self._cg_hold_key} hold_steps={self._cg_hold_steps}',
+                flush=True,
             )
 
         next_decoder_position_ids = decoder_position_ids[:, -1:] + 1
