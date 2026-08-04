@@ -352,6 +352,7 @@ async def log_meeting(agent_id: str, form_data_dict: dict):
         is_busy = hangup_cause == "USER_BUSY" or call_status in {"busy", "no-answer", "failed"}
         start_time_utc = datetime.now(timezone.utc).isoformat()
         end_time_utc = start_time_utc if is_busy else ""
+        is_inbound = direction == "inbound"
 
         meeting_data = {
             "meeting_id": _resolve_call_identifier(form_data_dict),
@@ -359,7 +360,8 @@ async def log_meeting(agent_id: str, form_data_dict: dict):
             "org_id": org_id,
             "start_time_utc": start_time_utc,
             "end_time_utc": end_time_utc,
-            "inbound": direction == "inbound",
+            "inbound": is_inbound,
+            "call_type": "inbound" if is_inbound else "outbound",
             "from_number": form_data_dict.get("From", "unknown"),
             "to_number": form_data_dict.get("To", "unknown"),
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -542,6 +544,20 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
         start_info = data.get("start", {})
         call_sid = start_info.get("callSid") or start_info.get("callId", "unknown")
         stream_sid = start_info.get("streamSid") or start_info.get("streamId", "unknown")
+
+        org_id = agent_config.get("org_id")
+        start_time_utc = datetime.now(timezone.utc).isoformat()
+        await create_meeting_in_backend(
+            {
+                "meeting_id": call_sid,
+                "agent_type": agent_type,
+                "org_id": org_id,
+                "start_time_utc": start_time_utc,
+                "created_at": start_time_utc,
+                "call_type": "web",
+                "inbound": False,
+            }
+        )
 
         async def send_transcript(role: str, content: str, timestamp: Optional[str]):
             await websocket.send_text(

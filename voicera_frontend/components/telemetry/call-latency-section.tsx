@@ -31,6 +31,8 @@ import {
   CallLatencyDetailSkeleton,
   CallLatencyListSkeleton,
 } from "@/components/telemetry/telemetry-skeletons"
+import { getCallTypeLabel } from "@/lib/call-type"
+import { CallTypeBadge as HistoryCallTypeBadge } from "@/components/history/call-type-badge"
 import { cn } from "@/lib/utils"
 import {
   getMeeting,
@@ -97,7 +99,7 @@ function downloadCallLatencyCsv(meeting: Meeting, metrics: CallLatencyMetrics) {
   ]
   const summary = metrics.summary
   const callDate = formatCallDate(meeting)
-  const callType = meeting.inbound === true ? "Inbound" : "Outbound"
+  const callType = getCallTypeLabel(meeting)
   const dataRows = metrics.turns.map((turn) =>
     [
       meeting.meeting_id,
@@ -143,18 +145,8 @@ const LIST_COL_DATETIME = "min-w-0 flex-1 basis-0"
 const LIST_COL_DURATION = "w-14 shrink-0 text-right tabular-nums"
 const LIST_COL_TURNS = "w-11 shrink-0 text-right tabular-nums"
 
-function CallTypeBadge({ inbound }: { inbound?: boolean }) {
-  const isInbound = inbound === true
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold min-w-[84px]",
-        isInbound ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"
-      )}
-    >
-      {isInbound ? "Inbound" : "Outbound"}
-    </span>
-  )
+function CallTypeBadge({ meeting }: { meeting: Meeting }) {
+  return <HistoryCallTypeBadge meeting={meeting} />
 }
 
 /** Figma-style motion: ~400ms spatial ease-out; label fades in slightly after width starts */
@@ -587,7 +579,7 @@ export function CallLatencySection() {
                       )}
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <CallTypeBadge inbound={meeting.inbound} />
+                        <CallTypeBadge meeting={meeting} />
                         <span className="text-xs font-medium text-slate-900 tabular-nums shrink-0">
                           {turnCount} turns
                         </span>
@@ -620,7 +612,7 @@ export function CallLatencySection() {
                     )}
                   >
                     <div className={LIST_COL_CALL_TYPE}>
-                      <CallTypeBadge inbound={meeting.inbound} />
+                      <CallTypeBadge meeting={meeting} />
                     </div>
                     <div className={LIST_COL_ASSISTANT}>
                       <p className="text-sm font-medium text-slate-900 truncate">
