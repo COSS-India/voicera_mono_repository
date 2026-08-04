@@ -71,6 +71,7 @@ services:
     environment:
       - STT_NUM_WORKERS=4
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - TTS_USE_CUDA_GRAPH=0
     volumes:
       - hf_cache:/root/.cache/huggingface
       - ../../ai4bharat_stt_server/models:/app/models:ro
@@ -95,8 +96,9 @@ services:
         required: false
     environment:
       - HF_TOKEN_PATH=/run/secrets/hf_token
-      - TTS_NUM_WORKERS=4
+      - TTS_NUM_WORKERS=1
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - TTS_USE_CUDA_GRAPH=1
     secrets: [hf_token]
     volumes:
       - hf_cache:/root/.cache/huggingface
