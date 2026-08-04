@@ -334,7 +334,7 @@ export default function AssistantsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [agentSortOrder, setAgentSortOrder] = useState<
     "newest" | "oldest" | "active-first" | "inactive-first"
-  >("newest")
+  >("active-first")
   const [config, setConfig] = useState<AgentConfig>(defaultConfig)
   const [view, setView] = useState<"list" | "create">("list")
   const [createStep, setCreateStep] = useState(1)
