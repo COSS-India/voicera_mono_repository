@@ -1,0 +1,9 @@
+# Torch + CUDA come from the base image (nvcr.io/nvidia/pytorch); do not pin torch
+# here or it will fight the image's build. See Dockerfile.
+miocodec
+aiohttp>=3.9
+websockets>=12.0
+numpy
+scipy
+soundfile
+python-dotenv>=1.0.0

@@ -32,6 +32,7 @@ from services.kenpath_llm.llm import (
 )
 from services.ai4bharat.tts import IndicParlerRESTTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
+from services.indic_mio.tts import IndicMioRESTTTSService
 from services.bhashini.stt import BhashiniSTTService
 from services.bhashini.socketio_stt import BhashiniSocketIOSTTService
 from services.bhashini.bhili_stt import BhashiniBhiliSTTService
@@ -597,6 +598,8 @@ def create_tts_service(
         "openai": "OpenAI",
         "sarvam": "Sarvam",
         "ai4bharat": "AI4Bharat",
+        "indic-mio": "IndicMio",
+        "indic_mio": "IndicMio",
         "bhashini": "Bhashini",
         "elevenlabs": "ElevenLabs",
     }
@@ -692,7 +695,30 @@ def create_tts_service(
             )
         else:
             raise ServiceCreationError(f"Unknown ai4bharat TTS model: {model}. Expected 'indic-parler-tts'")
-    
+
+    elif provider == "IndicMio":
+        model = args.get("model") or tts_config.get("model") or "indic-mio"
+        if model == "indic-mio":
+            speaker = tts_config.get("speaker") or args.get("speaker")
+            description = (
+                tts_config.get("description")
+                or args.get("description")
+                or "A clear, natural voice with good audio quality."
+            )
+            emotion = args.get("emotion") or tts_config.get("emotion")
+            language_id = (
+                TTS_LANGUAGE_MAP[provider].get(language, language) if language else "hi"
+            )
+            return IndicMioRESTTTSService(
+                speaker=speaker,
+                description=description,
+                language_id=language_id,
+                emotion=emotion,
+                sample_rate=sample_rate,
+            )
+        else:
+            raise ServiceCreationError(f"Unknown Indic-Mio TTS model: {model}. Expected 'indic-mio'")
+
     elif provider == "Bhashini":
         speaker = tts_config.get("speaker") or args.get("speaker")
         description = tts_config.get("description") or args.get("description")

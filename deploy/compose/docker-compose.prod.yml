@@ -111,6 +111,64 @@ services:
               count: all
               capabilities: [gpu]
 
+  # Indic-Mio token generator (vLLM). Owns concurrency for SPRINGLab/Indic-Mio;
+  # caps itself at 0.5 GPU so the mio-tts codec decode fits on the same card.
+  vllm-mio:
+    image: vllm/vllm-openai:latest
+    restart: unless-stopped
+    command:
+      - "--model"
+      - "SPRINGLab/Indic-Mio"
+      - "--gpu-memory-utilization"
+      - "0.5"
+      # Indic-Mio needs ~1024 output tokens; a small context caps KV memory ->
+      # faster load, no OOM-on-load, and more concurrent sequences per GPU.
+      - "--max-model-len"
+      - "1024"
+      - "--dtype"
+      - "bfloat16"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8100"
+    ipc: host
+    shm_size: "8gb"
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    networks: [voicera_network]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Indic-Mio WS front (voicera contract) + MioCodec decode. Thin/async; no LLM.
+  mio-tts:
+    build: ../../indic_mio_tts_server
+    restart: unless-stopped
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    env_file:
+      - path: ../../indic_mio_tts_server/.env
+        required: false
+    environment:
+      - INDIC_MIO_VLLM_URL=http://vllm-mio:8100/v1
+    depends_on: [vllm-mio]
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    networks: [voicera_network]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
   frontend:
     build:
       context: ../../voicera_frontend

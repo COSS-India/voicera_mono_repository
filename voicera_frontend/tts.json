@@ -3,6 +3,12 @@
     "languages": {
       "English (United States)": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": true,
             "model": "aura-2",
@@ -41,6 +47,12 @@
       },
       "English (India)": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": true,
             "model": "aura-2",
@@ -85,6 +97,12 @@
       },
       "Hindi": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -128,6 +146,12 @@
       },
       "Bengali": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -171,6 +195,12 @@
       },
       "Tamil": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -214,6 +244,12 @@
       },
       "Telugu": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": [],
@@ -258,6 +294,12 @@
       },
       "Marathi": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -301,6 +343,12 @@
       },
       "Gujarati": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -344,6 +392,12 @@
       },
       "Kannada": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -387,6 +441,12 @@
       },
       "Malayalam": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -430,6 +490,12 @@
       },
       "Punjabi": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -474,6 +540,12 @@
       },
       "Odia": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -517,6 +589,12 @@
       },
       "Assamese": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -559,6 +637,12 @@
       },
       "Urdu": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -598,6 +682,12 @@
       },
       "Nepali": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -669,6 +759,12 @@
       },
       "Sanskrit": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -702,6 +798,12 @@
       },
       "Manipuri": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -734,6 +836,12 @@
       },
       "Bodo": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -766,6 +874,12 @@
       },
       "Dogri": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -798,6 +912,12 @@
       },
       "Konkani": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -831,6 +951,12 @@
       },
       "Maithili": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -864,6 +990,12 @@
       },
       "Santali": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []
@@ -897,6 +1029,12 @@
       },
       "Sindhi": {
         "models": {
+          "indic-mio": {
+            "available": true,
+            "model": "indic-mio",
+            "voices": [],
+            "recommended_voices": []
+          },
           "deepgram": {
             "available": false,
             "voices": []

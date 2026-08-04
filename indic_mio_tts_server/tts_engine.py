@@ -1,0 +1,237 @@
+"""Two-stage streaming Indic-Mio TTS engine.
+
+Stage 1 (token generation): a vLLM OpenAI-compatible server runs SPRINGLab/Indic-Mio
+(a Qwen3-0.6B fine-tune). We open a *streaming* chat completion; the model emits
+speech tokens as the literal strings "<|s_1234|>". vLLM owns all concurrency here
+(continuous batching + paged KV), so this process stays thin and I/O-bound.
+
+Stage 2 (codec decode): MioCodec turns the content-token indices into a waveform.
+To keep time-to-first-byte low we decode *incrementally* as tokens stream in,
+rather than waiting for the whole utterance. Each incremental decode runs over the
+full token prefix (full left context) but holds back a short look-ahead tail so
+emitted audio always had enough right context -> no flush-boundary artifacts.
+Decode is bounded by a semaphore and runs off the event loop.
+
+Set MIO_STREAM_DECODE=false to fall back to a single whole-utterance decode.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from typing import Any, AsyncGenerator
+
+import aiohttp
+import numpy as np
+
+from config import DEFAULT_SAMPLE_RATE, SPEECH_TOKEN_PATTERN, Config
+
+logger = logging.getLogger("indic_mio.engine")
+
+_TOKEN_RE = re.compile(SPEECH_TOKEN_PATTERN)
+
+
+class TTSGenerationError(RuntimeError):
+    """Raised when generation or decoding cannot produce audio."""
+
+
+def parse_speech_tokens(text: str) -> list[int]:
+    """Extract all MioCodec content-token indices from raw LLM output text."""
+    return [int(m) for m in _TOKEN_RE.findall(text)]
+
+
+class MioTTSEngine:
+    """Owns the vLLM HTTP client and the MioCodec model."""
+
+    def __init__(self, config: Config) -> None:
+        self._config = config
+        self._session: aiohttp.ClientSession | None = None
+        self._codec: Any = None
+        self._torch: Any = None
+        self._sample_rate: int = DEFAULT_SAMPLE_RATE
+        # Bound concurrent GPU decodes across all in-flight requests.
+        import asyncio  # local: avoid importing at module scope for test tooling
+
+        self._decode_sem = asyncio.Semaphore(max(1, config.decode_concurrency))
+
+    # ---- lifecycle -------------------------------------------------------
+
+    def load_codec(self) -> None:
+        """Load MioCodec onto the GPU. Blocking; call once at startup."""
+        import torch  # local import: only the server process needs CUDA
+
+        # The SPRINGLab card imports `MioCodec`; the generic MioTTS package ships
+        # `MioCodecModel`. Support whichever the installed wheel exposes.
+        try:
+            from miocodec import MioCodec as _CodecClass  # type: ignore
+        except ImportError:  # pragma: no cover - depends on installed wheel
+            from miocodec import MioCodecModel as _CodecClass  # type: ignore
+
+        logger.info("Loading MioCodec: %s", self._config.codec_model_id)
+        codec = _CodecClass.from_pretrained(self._config.codec_model_id)
+        codec = codec.eval().to(self._config.device)
+        self._codec = codec
+        self._torch = torch
+
+        sr = getattr(getattr(codec, "config", None), "sample_rate", None)
+        self._sample_rate = int(sr) if sr else DEFAULT_SAMPLE_RATE
+        logger.info("MioCodec ready (sample_rate=%d Hz)", self._sample_rate)
+
+    async def start(self) -> None:
+        timeout = aiohttp.ClientTimeout(total=None, connect=10, sock_read=self._config.llm_timeout)
+        connector = aiohttp.TCPConnector(limit=0, ttl_dns_cache=300)
+        self._session = aiohttp.ClientSession(connector=connector, timeout=timeout)
+
+    async def close(self) -> None:
+        if self._session:
+            await self._session.close()
+            self._session = None
+
+    @property
+    def sample_rate(self) -> int:
+        return self._sample_rate
+
+    # ---- public API ------------------------------------------------------
+
+    async def synthesize_stream(self, text: str) -> AsyncGenerator[np.ndarray, None]:
+        """Yield float32 mono PCM chunks as they are produced.
+
+        Raises TTSGenerationError before the first chunk if generation fails.
+        """
+        clean = text.strip()
+        if not clean:
+            raise TTSGenerationError("empty text")
+        if len(clean) > self._config.max_text_length:
+            raise TTSGenerationError(f"text too long (max {self._config.max_text_length} chars)")
+
+        cfg = self._config
+        margin = max(0, cfg.lookahead_tokens) * self._samples_per_token()
+
+        tokens: list[int] = []
+        decoded_at = 0          # token count at last decode
+        emitted_samples = 0     # samples already yielded
+        produced_any = False
+
+        async for tokens in self._stream_tokens(clean, tokens):
+            if not cfg.stream_decode:
+                continue
+            if len(tokens) - decoded_at < cfg.flush_tokens:
+                continue
+            decoded_at = len(tokens)
+            wav = await self._decode(tokens)
+            safe = wav.size - margin  # hold back the look-ahead tail
+            if safe > emitted_samples:
+                produced_any = True
+                yield wav[emitted_samples:safe]
+                emitted_samples = safe
+
+        # Final decode over the complete sequence; emit everything remaining
+        # (no hold-back at the true end of the utterance).
+        if not tokens:
+            raise TTSGenerationError("No speech tokens found in LLM output.")
+        wav = await self._decode(tokens)
+        if wav.size > emitted_samples:
+            produced_any = True
+            yield wav[emitted_samples:]
+
+        if not produced_any:
+            raise TTSGenerationError("decode produced no audio")
+
+    def _samples_per_token(self) -> int:
+        rate = max(1, self._config.token_rate_hz)
+        return max(1, self._sample_rate // rate)
+
+    # ---- stage 1: streaming token generation -----------------------------
+
+    async def _stream_tokens(
+        self, text: str, tokens: list[int]
+    ) -> AsyncGenerator[list[int], None]:
+        """Stream from vLLM, yielding the growing `tokens` list as new tokens arrive."""
+        if self._session is None:
+            raise TTSGenerationError("engine session not started")
+
+        cfg = self._config
+        payload = {
+            "model": cfg.llm_model,
+            "messages": [{"role": "user", "content": text}],
+            "temperature": cfg.temperature,
+            "top_p": cfg.top_p,
+            "max_tokens": cfg.max_tokens,
+            "repetition_penalty": cfg.repetition_penalty,
+            "stream": True,
+            # CRITICAL: "<|s_N|>" are special tokens. Without this vLLM strips
+            # them during detokenization and no audio is produced.
+            "skip_special_tokens": False,
+        }
+        url = f"{cfg.llm_base_url}/chat/completions"
+        headers = {"Authorization": f"Bearer {cfg.llm_api_key}"}
+
+        buffer = ""       # accumulated text not yet fully parsed
+        consumed = 0      # index in `buffer` up to which tokens are extracted
+
+        try:
+            async with self._session.post(url, json=payload, headers=headers) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    raise TTSGenerationError(f"vLLM returned {resp.status}: {body[:300]}")
+
+                async for raw in resp.content:
+                    line = raw.decode("utf-8", "ignore").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[len("data:"):].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        delta = json.loads(data)["choices"][0]["delta"].get("content")
+                    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                        continue
+                    if not delta:
+                        continue
+
+                    buffer += delta
+                    new, consumed = self._extract_new_tokens(buffer, consumed)
+                    if new:
+                        tokens.extend(new)
+                        yield tokens
+        except aiohttp.ClientError as e:
+            raise TTSGenerationError(f"vLLM request failed: {e}") from e
+
+        # Trailing parse in case the stream ended mid-buffer.
+        new, consumed = self._extract_new_tokens(buffer, consumed)
+        if new:
+            tokens.extend(new)
+            yield tokens
+
+    @staticmethod
+    def _extract_new_tokens(buffer: str, consumed: int) -> tuple[list[int], int]:
+        """Return tokens found after `consumed` and the new consumed index.
+
+        Only fully-closed "<|s_N|>" matches are taken; a token split across stream
+        chunks stays buffered until its closing "|>" arrives.
+        """
+        new: list[int] = []
+        last_end = consumed
+        for m in _TOKEN_RE.finditer(buffer, consumed):
+            new.append(int(m.group(1)))
+            last_end = m.end()
+        return new, last_end
+
+    # ---- stage 2: codec decode ------------------------------------------
+
+    async def _decode(self, tokens: list[int]) -> np.ndarray:
+        import asyncio
+
+        async with self._decode_sem:
+            return await asyncio.to_thread(self._decode_blocking, tokens)
+
+    def _decode_blocking(self, tokens: list[int]) -> np.ndarray:
+        torch = self._torch
+        # SPRINGLab card shape: content tokens as [1, 1, T] long tensor.
+        codes = torch.tensor(
+            [tokens], dtype=torch.long, device=self._config.device
+        ).unsqueeze(0)
+        with torch.inference_mode():
+            wav = self._codec.decode(codes)
+        arr = wav.detach().to("cpu", dtype=torch.float32).numpy()
+        return np.ascontiguousarray(arr.reshape(-1), dtype=np.float32)
