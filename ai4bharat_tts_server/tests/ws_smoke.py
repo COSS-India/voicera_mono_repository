@@ -11,7 +11,7 @@ import websockets
 from scipy.io import wavfile
 
 URI = "ws://127.0.0.1:8002"
-PAYLOAD = {"prompt": "भारत नी राजधानी दिल्ली छे अने भारत ना शेजार ना देश पाकिस्तान अने नेपाळ छे", "description": "Radha's voice is monotone."}
+PAYLOAD = {"prompt": "Hello मी वसुधा कृषी विभाग महाराष्ट्र शासन ची आपली डिजिटल शेती सहाय्यक हा कॉल प्रशिक्षण आणि गुणवत्ता तपासणीसाठी नोंदवला जात आहे आपली वैयक्तिक माहिती तृतीय पक्षासोबत शेअर केली जाणार नाही मी आपली कशी मदत करू", "description": "Radha's voice is monotone."}
 
 OUT_DIR = Path(__file__).resolve().parent / "files"
 
@@ -45,7 +45,7 @@ async def main():
         pcm = np.concatenate(chunks) if chunks else np.array([], dtype=np.float32)
         assert pcm.size > 0
 
-        out_path = OUT_DIR / f"{safe_filename_from_prompt(PAYLOAD['prompt'])}.wav"
+        out_path = OUT_DIR / f"output.wav"
         wavfile.write(out_path, sample_rate, pcm)
         print(f"ok -> {out_path} ({pcm.size} samples @ {sample_rate} Hz)")
 

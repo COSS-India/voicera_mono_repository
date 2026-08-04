@@ -39,16 +39,14 @@ def inference_worker(
 ) -> None:
     """
     Runs forever: drain new requests (prefill), then one decode step for the whole batch.
-    New jobs can arrive anytime; each iteration prefills everything pending before stepping.
 
-    audio_decode() runs every ``decode_every`` steps (same idea as test_parler_tts.py using 60),
-    and always on a step that evicts a request so DAC still sees final _pending_audio_decode.
+    audio_decode() every ``decode_every`` steps uses incremental DAC (short windows),
+    so cost stays bounded instead of re-decoding full histories.
     """
     pending_out: dict[str, queue.Queue] = {}
     step_count = 0
 
     while not stop_evt.is_set():
-        # 1) Prefill every new request waiting in the queue (continuous batching intake).
         while True:
             try:
                 job = prefill_q.get_nowait()
@@ -66,7 +64,6 @@ def inference_worker(
                 out_q.put(("error", str(e)))
                 pending_out.pop(req.pid, None)
 
-        # 2) One global step (batched over all running sequences), same as the test file.
         if runner.running_requests:
             pids_before = set(runner.running_requests.keys())
             runner.step()
