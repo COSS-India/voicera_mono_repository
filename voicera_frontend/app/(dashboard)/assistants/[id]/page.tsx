@@ -65,7 +65,6 @@ import {
   SpokenMessageInput,
   SpokenMessageTextarea,
 } from "@/components/assistants/spoken-message-field"
-import { sanitizeSpokenMessageInput } from "@/lib/spoken-message"
 import {
   type KenpathVariant,
   isBharatVistaarLanguageSupported,
@@ -572,7 +571,7 @@ export default function AgentDetailPage() {
 
           setSystemPrompt(agentData.agent_config?.system_prompt || "")
           setGreetingMessage(
-            sanitizeSpokenMessageInput(agentData.agent_config?.greeting_message || "")
+            agentData.agent_config?.greeting_message || ""
           )
           const loadedIgnoreBeforeGreeting =
             (agentData.agent_config as any)?.ignore_user_speech_before_greeting !== false
@@ -602,7 +601,7 @@ export default function AgentDetailPage() {
             (agentData.agent_config as any)?.hold_messages
           )
             ? (agentData.agent_config as any).hold_messages.map((m: unknown) =>
-                sanitizeSpokenMessageInput(String(m ?? ""))
+                String(m ?? "")
               )
             : []
           setHoldMessages(loadedHoldMessages)
@@ -862,7 +861,7 @@ export default function AgentDetailPage() {
         ? {
             interaction_mode: "non_conversational",
             ...languageConfigFields,
-            greeting_message: sanitizeSpokenMessageInput(greetingMessage || ""),
+            greeting_message: greetingMessage || "",
             tts_model: {
               name: ttsProvider || "",
               ...(ttsModel && { model: ttsModel }),
@@ -880,13 +879,13 @@ export default function AgentDetailPage() {
       ...languageConfigFields,
       interaction_mode: "conversational",
       system_prompt: systemPrompt || "",
-      greeting_message: sanitizeSpokenMessageInput(greetingMessage || ""),
+      greeting_message: greetingMessage || "",
       ignore_user_speech_before_greeting: ignoreUserSpeechBeforeGreeting,
       interruption_min_words: interruptionMinWords,
       user_silence_hangup_seconds: userSilenceHangupSeconds,
       call_timeout_seconds: callTimeoutSeconds,
       hold_messages: holdMessages
-        .map((m) => sanitizeSpokenMessageInput(m.trim()))
+        .map((m) => m.trim())
         .filter(Boolean),
       hold_message_timeout_seconds: holdMessageTimeoutSeconds,
       user_online_detection_enabled: userOnlineDetectionEnabled,
@@ -981,7 +980,7 @@ export default function AgentDetailPage() {
             ? {
                 interaction_mode: "non_conversational",
                 ...languageConfigFields,
-                greeting_message: sanitizeSpokenMessageInput(greetingMessage || ""),
+                greeting_message: greetingMessage || "",
                 tts_model: {
                   name: getProviderOfficialName(ttsProvider),
                   ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && {
@@ -1009,13 +1008,13 @@ export default function AgentDetailPage() {
                   interaction_mode: "conversational",
                   ...languageConfigFields,
                   system_prompt: systemPrompt,
-                  greeting_message: sanitizeSpokenMessageInput(greetingMessage || ""),
+                  greeting_message: greetingMessage || "",
           ignore_user_speech_before_greeting: ignoreUserSpeechBeforeGreeting,
           interruption_min_words: interruptionMinWords,
           user_silence_hangup_seconds: userSilenceHangupSeconds,
           call_timeout_seconds: callTimeoutSeconds,
           hold_messages: holdMessages
-        .map((m) => sanitizeSpokenMessageInput(m.trim()))
+        .map((m) => m.trim())
         .filter(Boolean),
           hold_message_timeout_seconds: holdMessageTimeoutSeconds,
           user_online_detection_enabled: userOnlineDetectionEnabled,
@@ -1772,7 +1771,7 @@ export default function AgentDetailPage() {
                       greeting={greetingMessage}
                       primaryLanguage={primaryLanguage}
                       onTranslated={(text) =>
-                        setGreetingMessage(sanitizeSpokenMessageInput(text))
+                        setGreetingMessage(text)
                       }
                     />
                   </div>

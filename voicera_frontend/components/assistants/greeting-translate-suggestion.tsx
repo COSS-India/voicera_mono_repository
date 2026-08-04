@@ -9,7 +9,6 @@ import {
   isChromeTranslationAvailable,
   translateText,
 } from "@/lib/chrome-translation"
-import { sanitizeSpokenMessageInput } from "@/lib/spoken-message"
 import {
   agentLanguageToBcp47,
   bcp47ToDisplayLanguage,
@@ -161,7 +160,7 @@ export function GreetingTranslateSuggestion({
 
           if (requestId !== detectionRequestIdRef.current) return
 
-          setPreviewTranslation(sanitizeSpokenMessageInput(translated))
+          setPreviewTranslation(translated)
           setPhase("ready")
         } catch (error) {
           console.error("Greeting translation preview failed:", error)
@@ -188,8 +187,8 @@ export function GreetingTranslateSuggestion({
   const handleApply = () => {
     if (!previewTranslation?.trim()) return
     setPreviousText(greeting)
-    onTranslated(sanitizeSpokenMessageInput(previewTranslation))
-    setSuccessGreeting(sanitizeSpokenMessageInput(previewTranslation))
+    onTranslated(previewTranslation)
+    setSuccessGreeting(previewTranslation)
     setPhase("done")
   }
 
@@ -202,7 +201,7 @@ export function GreetingTranslateSuggestion({
 
   const handleUndo = () => {
     if (previousText != null) {
-      onTranslated(sanitizeSpokenMessageInput(previousText))
+      onTranslated(previousText)
     }
     setPreviousText(null)
     setSuccessGreeting(null)

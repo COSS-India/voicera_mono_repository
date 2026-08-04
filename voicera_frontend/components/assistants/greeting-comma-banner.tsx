@@ -10,8 +10,8 @@ type GreetingCommaBannerProps = {
 
 const TIP_COPY = {
   greeting:
-    "Avoid commas and special characters in greeting messages — they can cause audio stutter or breaks during playback. Only letters, numbers, and spaces are allowed.",
-  hold: "Avoid commas and special characters in hold messages — they can cause audio stutter or breaks during playback. Only letters, numbers, and spaces are allowed.",
+    "Avoid commas and special characters in greeting messages when possible — they can cause audio stutter or breaks during playback.",
+  hold: "Avoid commas and special characters in hold messages when possible — they can cause audio stutter or breaks during playback.",
 } as const
 
 export function GreetingCommaBanner({

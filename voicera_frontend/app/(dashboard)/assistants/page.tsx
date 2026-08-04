@@ -32,7 +32,6 @@ import {
   SpokenMessageInput,
   SpokenMessageTextarea,
 } from "@/components/assistants/spoken-message-field"
-import { sanitizeSpokenMessageInput } from "@/lib/spoken-message"
 import {
   ChevronRight,
   ChevronLeft,
@@ -1053,24 +1052,20 @@ export default function AssistantsPage() {
           config.interactionMode === "non_conversational"
             ? {
                 interaction_mode: "non_conversational",
-                greeting_message: sanitizeSpokenMessageInput(
-                  config.greetingMessage ?? ""
-                ),
+                greeting_message: config.greetingMessage ?? "",
                 ...languageFields,
                 tts_model: ttsModel,
               }
             : {
                 interaction_mode: "conversational",
                 system_prompt: config.systemPrompt,
-                greeting_message: sanitizeSpokenMessageInput(
-                  config.greetingMessage ?? ""
-                ),
+                greeting_message: config.greetingMessage ?? "",
                 ignore_user_speech_before_greeting: config.ignoreUserSpeechBeforeGreeting,
                 interruption_min_words: config.interruptionMinWords,
                 user_silence_hangup_seconds: config.userSilenceHangupSeconds,
                 call_timeout_seconds: config.callTimeoutSeconds,
                 hold_messages: config.holdMessages
-                  .map((m) => sanitizeSpokenMessageInput(m.trim()))
+                  .map((m) => m.trim())
                   .filter(Boolean),
                 hold_message_timeout_seconds: config.holdMessageTimeoutSeconds,
                 user_online_detection_enabled: config.userOnlineDetectionEnabled,
@@ -2633,7 +2628,7 @@ export default function AssistantsPage() {
                         greeting={config.greetingMessage ?? ""}
                         primaryLanguage={primaryLanguage}
                         onTranslated={(text) =>
-                          updateConfig("greetingMessage", sanitizeSpokenMessageInput(text))
+                          updateConfig("greetingMessage", text)
                         }
                         className="mb-2"
                       />
