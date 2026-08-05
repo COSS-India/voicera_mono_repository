@@ -1,8 +1,8 @@
-# miocodec is a standard PyPI-torch project (hard-imports torchaudio). We base on
-# the official PyTorch runtime image so torch==2.5.1 (+CUDA) is ALREADY present and
-# is not re-downloaded — we only add the ABI-matched torchaudio and miocodec. This
-# keeps the image small (the NGC base's custom torch has no compatible torchaudio).
-FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+# miocodec requires Python >=3.12 and is a standard PyPI-torch project (hard-imports
+# torchaudio). The official PyTorch images ship Python 3.11, so we use python:3.12-slim
+# and install ABI-matched torch + torchaudio from the CUDA wheel index ourselves.
+# GPU is provided by the nvidia container runtime.
+FROM python:3.12-slim
 
 ENV PIP_NO_CACHE_DIR=1 \
     PYTHONUNBUFFERED=1
@@ -13,12 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# 1) torch + torchaudio (same version = ABI-matched) from the CUDA index FIRST, so
+#    the miocodec install below sees them satisfied and won't pull a mismatched wheel.
+RUN pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+
 COPY requirements.txt constraints.txt ./
-# torch is already in the base image; add only torchaudio (same version = ABI-matched)
-# from the CUDA wheel index, then miocodec + our deps. constraints.txt pins torch/
-# torchaudio so the miocodec install cannot swap them for a mismatched wheel.
-RUN pip install torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121 \
-    && pip install -r requirements.txt -c constraints.txt
+# constraints.txt re-pins torch/torchaudio so miocodec cannot replace them.
+RUN pip install -r requirements.txt -c constraints.txt
 
 COPY . .
 EXPOSE 8003
