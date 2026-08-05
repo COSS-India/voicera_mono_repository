@@ -1,0 +1,19 @@
+deploy/compose/docker-compose.prod.yml
+  s_c9b98a6043195e::t_09431d95082a86 127-129,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "0c388a42ce69a7ccd6489dac5fcd5aabae003923",
+  "prompts": {},
+  "sessions": {
+    "s_c9b98a6043195e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee82af6f-50ca-40a1-8e71-f3dd1d0b3957",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
