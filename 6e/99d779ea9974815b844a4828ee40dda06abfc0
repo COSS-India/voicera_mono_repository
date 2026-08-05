@@ -1,0 +1,23 @@
+indic_mio_tts_server/Dockerfile
+  s_c9b98a6043195e::t_346bdfd27be51c 18-21
+indic_mio_tts_server/constraints.txt
+  s_c9b98a6043195e::t_0980dde2a4e208 3-4
+deploy/compose/docker-compose.prod.yml
+  s_c9b98a6043195e::t_15e0a4051ee197 117-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "6e99d779ea9974815b844a4828ee40dda06abfc0",
+  "prompts": {},
+  "sessions": {
+    "s_c9b98a6043195e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee82af6f-50ca-40a1-8e71-f3dd1d0b3957",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
