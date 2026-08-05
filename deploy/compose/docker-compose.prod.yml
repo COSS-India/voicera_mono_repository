@@ -114,7 +114,10 @@ services:
   # Indic-Mio token generator (vLLM). Owns concurrency for SPRINGLab/Indic-Mio;
   # caps itself at 0.5 GPU so the mio-tts codec decode fits on the same card.
   vllm-mio:
-    image: vllm/vllm-openai:latest
+    # Pinned (not :latest) so the GPU gets a Blackwell-capable build. vLLM images
+    # >=0.8.5 ship CUDA 12.8 / sm_120 kernels the RTX PRO 6000 needs; an older
+    # cached :latest fails with "no kernel image is available for execution".
+    image: vllm/vllm-openai:v0.10.0
     restart: unless-stopped
     command:
       - "--model"

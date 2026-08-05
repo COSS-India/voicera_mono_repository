@@ -15,7 +15,10 @@ WORKDIR /app
 
 # 1) torch + torchaudio (same version = ABI-matched) from the CUDA index FIRST, so
 #    the miocodec install below sees them satisfied and won't pull a mismatched wheel.
-RUN pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+#    cu128 wheels (torch >=2.7) ship sm_120 kernels required by Blackwell GPUs
+#    (RTX PRO 6000). cu121 / torch 2.5.1 only go up to sm_90 and fail with
+#    "no kernel image is available for execution on the device".
+RUN pip install torch==2.7.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
 
 COPY requirements.txt constraints.txt ./
 # constraints.txt re-pins torch/torchaudio so miocodec cannot replace them.
