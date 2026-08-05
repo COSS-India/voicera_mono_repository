@@ -278,7 +278,7 @@ class ParlerTTSModelRunner:
             # Trim left-padding: keep only the real prompt tokens + the first
             # audio bos token, right-aligned in the padded batch sequence.
             layer_kv_i = [
-+                (
+                 (
                     k[i : i + 1, :, pad_len : pad_len + real_len_full, :].contiguous(),
                     v[i : i + 1, :, pad_len : pad_len + real_len_full, :].contiguous(),
                 )
