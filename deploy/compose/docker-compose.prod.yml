@@ -124,10 +124,11 @@ services:
       - "SPRINGLab/Indic-Mio"
       - "--gpu-memory-utilization"
       - "0.35"
-      # Indic-Mio needs ~1024 output tokens; a small context caps KV memory ->
-      # faster load, no OOM-on-load, and more concurrent sequences per GPU.
+      # Indic-Mio needs ~1024 OUTPUT tokens; max-model-len is prompt+completion
+      # combined, so 1024 overflows once the prompt is non-empty. 2048 leaves
+      # ~1024 for the text prompt on top of the 1024-token audio budget.
       - "--max-model-len"
-      - "1024"
+      - "2048"
       - "--dtype"
       - "bfloat16"
       - "--host"
