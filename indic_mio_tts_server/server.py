@@ -4,10 +4,10 @@ Speaks the exact same wire contract as the AI4Bharat (Parler) TTS server so the
 voice pipeline adapter is a near-verbatim copy:
 
 Client -> server, one JSON per utterance:
-    {"prompt": "...", "description": "...", "language": "..."}
-  Only "prompt" is required. "description"/"language" are accepted for contract
-  compatibility; Indic-Mio selects voice/script from the text itself, so they are
-  currently informational only.
+    {"prompt": "...", "voice": "...", "description": "...", "language": "..."}
+  Only "prompt" is required. "voice" is an optional preset voice id selecting the
+  speaker embedding (unknown/absent -> default voice). "description"/"language"
+  are accepted for contract compatibility and are informational only.
 
 Server -> client, in order:
   1. {"type":"meta","pid":...,"sample_rate":<SR>,"dtype":"float32","channels":1}
@@ -54,6 +54,9 @@ async def handle_client(websocket, engine: MioTTSEngine, config: Config) -> None
         prompt = msg["prompt"]
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
+        voice = msg.get("voice")
+        if voice is not None and not isinstance(voice, str):
+            raise TypeError("voice must be a string")
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         await _safe_send(websocket, json.dumps({"type": "error", "message": f"bad request: {e}"}))
         return
@@ -75,7 +78,7 @@ async def handle_client(websocket, engine: MioTTSEngine, config: Config) -> None
     # re-slicing each decoded chunk into modest fixed-size frames for the socket.
     frame = max(1, config.frame_samples)
     try:
-        async for chunk in engine.synthesize_stream(prompt):
+        async for chunk in engine.synthesize_stream(prompt, voice=voice):
             for start in range(0, chunk.size, frame):
                 part = chunk[start : start + frame]
                 if part.size == 0:

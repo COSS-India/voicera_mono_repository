@@ -6,8 +6,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": true,
@@ -50,8 +50,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": true,
@@ -100,8 +100,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -149,8 +149,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -198,8 +198,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -247,8 +247,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -297,8 +297,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -346,8 +346,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -395,8 +395,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -444,8 +444,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -493,8 +493,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -543,8 +543,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -592,8 +592,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -640,8 +640,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -685,8 +685,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -762,8 +762,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -801,8 +801,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -839,8 +839,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -877,8 +877,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -915,8 +915,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -954,8 +954,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -993,8 +993,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,
@@ -1032,8 +1032,8 @@
           "indic-mio": {
             "available": true,
             "model": "indic-mio",
-            "voices": [],
-            "recommended_voices": []
+            "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
+            "recommended_voices": ["Aditi", "Rahul"]
           },
           "deepgram": {
             "available": false,

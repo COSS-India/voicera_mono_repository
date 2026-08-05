@@ -48,7 +48,11 @@ class MioTTSEngine:
         self._session: aiohttp.ClientSession | None = None
         self._codec: Any = None
         self._torch: Any = None
-        self._global_embedding: Any = None  # cached speaker embedding for decode
+        self._global_embedding: Any = None  # legacy single-voice fallback embedding
+        # Preset voices: id -> speaker global_embedding. Populated from the voices
+        # bundle at load_codec(); empty when no bundle is present (legacy mode).
+        self._embeddings: dict[str, Any] = {}
+        self._default_voice: str | None = None
         self._sample_rate: int = DEFAULT_SAMPLE_RATE
         # Bound concurrent GPU decodes across all in-flight requests.
         import asyncio  # local: avoid importing at module scope for test tooling
@@ -72,10 +76,133 @@ class MioTTSEngine:
         self._sample_rate = int(sr) if sr else DEFAULT_SAMPLE_RATE
         logger.info("MioCodec ready (sample_rate=%d Hz)", self._sample_rate)
 
-        self._global_embedding = self._load_or_build_speaker_embedding()
-        logger.info(
-            "Speaker embedding ready (shape=%s)", tuple(self._global_embedding.shape)
+        # Preferred path: a bundle of preset voices. If none is present (no
+        # manifest / no usable ref clips) fall back to the single legacy voice so
+        # the server still works exactly as before.
+        self._embeddings = self._load_voice_embeddings()
+        if self._embeddings:
+            self._default_voice = self._resolve_default_voice()
+            logger.info(
+                "Preset voices ready: %s (default=%s)",
+                ", ".join(sorted(self._embeddings)),
+                self._default_voice,
+            )
+        else:
+            self._global_embedding = self._load_or_build_speaker_embedding()
+            logger.info(
+                "No preset voices; using legacy single embedding (shape=%s)",
+                tuple(self._global_embedding.shape),
+            )
+
+    # ---- preset voices ---------------------------------------------------
+
+    def _resolve_default_voice(self) -> str:
+        """Pick the default voice id from config, else manifest, else first."""
+        want = (self._config.default_voice or "").strip()
+        if want and want in self._embeddings:
+            return want
+        if want:
+            logger.warning("MIO_DEFAULT_VOICE=%r not in voices; ignoring", want)
+        if self._manifest_default and self._manifest_default in self._embeddings:
+            return self._manifest_default
+        return sorted(self._embeddings)[0]
+
+    def _load_voice_embeddings(self) -> dict:
+        """Build the {voice_id: global_embedding} map from the voices bundle.
+
+        Reads `<voices_dir>/manifest.json`; for each voice, reuses a cached
+        `<voices_cache_dir>/<id>.pt` if present, else derives it from the voice's
+        reference clip (`<voices_dir>/refs/<ref>`) and caches it. A voice whose
+        ref is missing/unreadable is skipped with a warning. Returns {} if the
+        manifest is absent or no voice could be built (-> legacy fallback).
+        """
+        import json
+        import os
+
+        self._manifest_default = ""
+        manifest_path = os.path.join(self._config.voices_dir, "manifest.json")
+        if not os.path.exists(manifest_path):
+            logger.info("No voices manifest at %s", manifest_path)
+            return {}
+
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as fh:
+                manifest = json.load(fh)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("Cannot read voices manifest %s: %s", manifest_path, e)
+            return {}
+
+        self._manifest_default = str(manifest.get("default", "") or "")
+        cache_dir = self._config.voices_cache_dir
+        refs_dir = os.path.join(self._config.voices_dir, "refs")
+
+        embeddings: dict = {}
+        for entry in manifest.get("voices", []):
+            name = str(entry.get("name", "") or "").strip()
+            if not name:
+                continue
+            cache_path = os.path.join(cache_dir, f"{name}.pt")
+            try:
+                if os.path.exists(cache_path):
+                    embeddings[name] = self._load_cached_embedding(cache_path)
+                    continue
+                ref_name = str(entry.get("ref", "") or "").strip()
+                ref_path = os.path.join(refs_dir, ref_name) if ref_name else ""
+                if not ref_path or not os.path.exists(ref_path):
+                    logger.warning("Voice %r: ref clip missing (%s); skipping", name, ref_path)
+                    continue
+                emb = self.encode_reference(ref_path)
+                self._save_cached_embedding(emb, cache_path)
+                embeddings[name] = emb
+            except Exception as e:  # noqa: BLE001 - one bad voice must not sink the rest
+                logger.warning("Voice %r: failed to build embedding: %s", name, e)
+        return embeddings
+
+    def _load_cached_embedding(self, path: str):
+        torch = self._torch
+        logger.info("Loading cached voice embedding: %s", path)
+        emb = torch.load(path, map_location=self._config.device)
+        return emb.to(device=self._config.device, dtype=torch.float32)
+
+    def _save_cached_embedding(self, emb, path: str) -> None:
+        import os
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        self._torch.save(emb.cpu(), path)
+        logger.info("Cached voice embedding -> %s", path)
+
+    def encode_reference(self, ref_path: str):
+        """Derive a speaker global_embedding from a local reference wav.
+
+        Shared by the preset-voice loader and the offline build script. The clip
+        is resampled to the codec sample rate and encoded once.
+        """
+        torch = self._torch
+        from miocodec.util import load_audio
+
+        logger.info("Encoding reference clip: %s", ref_path)
+        waveform = load_audio(ref_path, sample_rate=self._sample_rate)
+        waveform = waveform.to(device=self._config.device, dtype=torch.float32)
+        with torch.inference_mode():
+            feats = self._codec.encode(waveform, return_content=False, return_global=True)
+        return feats.global_embedding.detach().to(
+            device=self._config.device, dtype=torch.float32
         )
+
+    def _resolve_embedding(self, voice: str | None):
+        """Return the decode embedding for a requested voice id.
+
+        Preset mode: exact match -> that voice; unknown/None -> default voice.
+        Legacy mode (no bundle): always the single global embedding.
+        """
+        if self._embeddings:
+            key = (voice or "").strip()
+            if key and key in self._embeddings:
+                return self._embeddings[key]
+            if key:
+                logger.debug("Unknown voice %r; using default %s", key, self._default_voice)
+            return self._embeddings[self._default_voice]
+        return self._global_embedding
 
     def _load_or_build_speaker_embedding(self):
         """Return the cached speaker global_embedding, deriving it once if absent.
@@ -101,16 +228,11 @@ class MioTTSEngine:
             self._config.reference_file,
         )
         from huggingface_hub import hf_hub_download
-        from miocodec.util import load_audio
 
         ref_path = hf_hub_download(
             repo_id=self._config.reference_repo, filename=self._config.reference_file
         )
-        waveform = load_audio(ref_path, sample_rate=self._sample_rate)
-        waveform = waveform.to(device=device, dtype=torch.float32)
-        with torch.inference_mode():
-            feats = self._codec.encode(waveform, return_content=False, return_global=True)
-        emb = feats.global_embedding.detach().to(device=device, dtype=torch.float32)
+        emb = self.encode_reference(ref_path)
 
         if path:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -134,8 +256,13 @@ class MioTTSEngine:
 
     # ---- public API ------------------------------------------------------
 
-    async def synthesize_stream(self, text: str) -> AsyncGenerator[np.ndarray, None]:
+    async def synthesize_stream(
+        self, text: str, voice: str | None = None
+    ) -> AsyncGenerator[np.ndarray, None]:
         """Yield float32 mono PCM chunks as they are produced.
+
+        `voice` selects the speaker embedding (preset voice id); unknown/None ->
+        default voice, or the legacy single embedding if no voices bundle exists.
 
         Raises TTSGenerationError before the first chunk if generation fails.
         """
@@ -146,6 +273,7 @@ class MioTTSEngine:
             raise TTSGenerationError(f"text too long (max {self._config.max_text_length} chars)")
 
         cfg = self._config
+        embedding = self._resolve_embedding(voice)
         margin = max(0, cfg.lookahead_tokens) * self._samples_per_token()
 
         tokens: list[int] = []
@@ -159,7 +287,7 @@ class MioTTSEngine:
             if len(tokens) - decoded_at < cfg.flush_tokens:
                 continue
             decoded_at = len(tokens)
-            wav = await self._decode(tokens)
+            wav = await self._decode(tokens, embedding)
             safe = wav.size - margin  # hold back the look-ahead tail
             if safe > emitted_samples:
                 produced_any = True
@@ -170,7 +298,7 @@ class MioTTSEngine:
         # (no hold-back at the true end of the utterance).
         if not tokens:
             raise TTSGenerationError("No speech tokens found in LLM output.")
-        wav = await self._decode(tokens)
+        wav = await self._decode(tokens, embedding)
         if wav.size > emitted_samples:
             produced_any = True
             yield wav[emitted_samples:]
@@ -260,20 +388,20 @@ class MioTTSEngine:
 
     # ---- stage 2: codec decode ------------------------------------------
 
-    async def _decode(self, tokens: list[int]) -> np.ndarray:
+    async def _decode(self, tokens: list[int], embedding) -> np.ndarray:
         import asyncio
 
         async with self._decode_sem:
-            return await asyncio.to_thread(self._decode_blocking, tokens)
+            return await asyncio.to_thread(self._decode_blocking, tokens, embedding)
 
-    def _decode_blocking(self, tokens: list[int]) -> np.ndarray:
+    def _decode_blocking(self, tokens: list[int], embedding) -> np.ndarray:
         torch = self._torch
         # MioCodecModel.decode(global_embedding, content_token_indices):
         #   content_token_indices is 1D (seq_len,); global_embedding is (dim,).
         indices = torch.tensor(tokens, dtype=torch.long, device=self._config.device)
         with torch.inference_mode():
             wav = self._codec.decode(
-                self._global_embedding, content_token_indices=indices
+                embedding, content_token_indices=indices
             )
         arr = wav.detach().to("cpu", dtype=torch.float32).numpy()
         return np.ascontiguousarray(arr.reshape(-1), dtype=np.float32)

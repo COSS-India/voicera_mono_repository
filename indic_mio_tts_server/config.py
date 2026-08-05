@@ -9,6 +9,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+# Directory of this file; used to locate the shipped `voices/` bundle (manifest +
+# reference clips) relative to the code rather than a hard-coded container path.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
 # Speech tokens are emitted by the LLM as the literal strings "<|s_1234|>".
 # The captured integer IS the MioCodec content-token index (i.e. it already has
 # the LLM vocab offset removed). This mirrors the official MioTTS-Inference
@@ -67,9 +71,25 @@ class Config:
     # MioCodec.decode() requires a speaker `global_embedding`. We derive one ONCE
     # from an Indic-Mio reference sample (encode -> global_embedding) and cache it;
     # every decode reuses it. Runtime decode never needs the reference again.
+    # This is the LEGACY single-voice fallback: it is used only when no preset
+    # voices bundle is present (voices_dir has no manifest / no usable refs).
     speaker_embed_path: str = "/root/.cache/huggingface/indic_mio_default_speaker.pt"
     reference_repo: str = "SPRINGLab/Indic-Mio"
     reference_file: str = "samples/sample1.wav"
+
+    # --- preset voices ----------------------------------------------------
+    # Multiple selectable speaker embeddings. `voices_dir` holds a manifest.json
+    # ({"default": name, "voices": [{"name","gender","ref"}...]}) and a refs/
+    # subdir of reference wavs. Each voice's embedding is derived once from its
+    # ref clip and cached under voices_cache_dir (persisted in the HF volume), so
+    # only the first boot pays the encode cost. A per-request "voice" id selects
+    # the embedding at decode time; unknown/absent -> default_voice; if the whole
+    # bundle is missing, the engine falls back to the legacy single embedding.
+    voices_dir: str = os.path.join(_HERE, "voices")
+    voices_cache_dir: str = "/root/.cache/huggingface/indic_mio_voices"
+    # Default voice id when a request omits one / asks for an unknown voice.
+    # Empty -> use the manifest's "default", else the first listed voice.
+    default_voice: str = ""
 
     # Bound concurrent GPU decodes so many in-flight WS requests cannot thrash
     # VRAM. vLLM already batches the (heavier) token-gen stage server-side.
@@ -114,6 +134,9 @@ class Config:
             speaker_embed_path=_env("MIO_SPEAKER_EMBED_PATH", cls.speaker_embed_path),
             reference_repo=_env("MIO_REFERENCE_REPO", cls.reference_repo),
             reference_file=_env("MIO_REFERENCE_FILE", cls.reference_file),
+            voices_dir=_env("MIO_VOICES_DIR", cls.voices_dir),
+            voices_cache_dir=_env("MIO_VOICES_CACHE_DIR", cls.voices_cache_dir),
+            default_voice=_env("MIO_DEFAULT_VOICE", cls.default_voice),
             decode_concurrency=_env_int("MIO_DECODE_CONCURRENCY", cls.decode_concurrency),
             stream_decode=_env("MIO_STREAM_DECODE", str(cls.stream_decode)).lower()
             in ("1", "true", "yes"),

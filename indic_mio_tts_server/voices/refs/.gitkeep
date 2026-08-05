@@ -1,0 +1,3 @@
+# Reference clips live here, one wav per voice in ../manifest.json (aditi.wav, ...).
+# Populate with scripts/fetch_rasa_refs.py or by dropping your own vetted clips,
+# then rebuild the mio-tts image. See ../README.md.

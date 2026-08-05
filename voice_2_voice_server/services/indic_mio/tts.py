@@ -2,8 +2,9 @@
 
 Mirrors services/ai4bharat/tts.py (IndicParlerRESTTTSService): same WebSocket
 contract (meta / float32 PCM / done), same float32->int16 + gain conversion. The
-Indic-Mio server picks voice/script from the text, so `speaker`/`description` are
-accepted for parity but not required. An optional `emotion` maps to the model's
+`speaker` field carries the preset voice id and is forwarded to the server as
+"voice" (selects the speaker embedding); unknown/empty -> the server's default
+voice. `description` is informational. An optional `emotion` maps to the model's
 sentence-end tag (e.g. "<happy>").
 """
 import asyncio
@@ -151,6 +152,7 @@ class IndicMioRESTTTSService(TTSService):
                     json.dumps(
                         {
                             "prompt": self._prompt_for_server(text),
+                            "voice": self._speaker,
                             "description": self._description,
                             "language": self._language_id,
                         }
