@@ -1,0 +1,58 @@
+indic_mio_tts_server/tts_engine.py
+  s_c9b98a6043195e::t_0172c4f10f2864 51-55
+  s_c9b98a6043195e::t_07fdecbef2869b 79-189,192-205
+  s_c9b98a6043195e::t_2c66597954a762 259-261,264-266,276
+  s_c9b98a6043195e::t_fc1105805524ac 206
+  s_c9b98a6043195e::t_a97eed90d33afd 391,395,397,404
+  s_c9b98a6043195e::t_c772d32ae8da46 290
+  s_c9b98a6043195e::t_c7cf9742355c81 235
+  s_c9b98a6043195e::t_391ae522c4d6b6 301
+voicera_frontend/tts.json
+  s_c9b98a6043195e::t_61fd321c166cea 9-10,53-54,103-104,152-153,201-202,250-251,300-301,349-350,398-399,447-448,496-497,546-547,595-596,643-644,688-689,765-766,804-805,842-843,880-881,918-919,957-958,996-997,1035-1036
+indic_mio_tts_server/server.py
+  s_c9b98a6043195e::t_a954319ce6d046 81
+  s_c9b98a6043195e::t_41a0cc4ab2af90 7-10
+  s_c9b98a6043195e::t_366f387633bf96 57-59
+indic_mio_tts_server/scripts/fetch_rasa_by_filename.py
+  s_c9b98a6043195e::t_ba02bb1891ad05 1-2,7-9,11-12,14,17-19,21-42,45-50,54-55,58-59,61-62,65-68,74-81,83,85,87,90-92,95-99,112,151-156
+  s_c9b98a6043195e::t_711425b4e2a06b 3-6,10,13,15-16,20,43-44,51-53,56-57,60,63-64,69-73,82,84,86,88-89,93-94,100-111,113-150
+indic_mio_tts_server/config.py
+  s_c9b98a6043195e::t_cb6b0bc492c1c9 74-75,80-92
+  s_c9b98a6043195e::t_17411d659307d8 12-15
+  s_c9b98a6043195e::t_1f825d2d33fb3c 93
+  s_c9b98a6043195e::t_e93270f14fcf5b 137-139
+indic_mio_tts_server/scripts/fetch_rasa_refs.py
+  s_c9b98a6043195e::t_6de3944b07bfca 1-5,18-19,21-22,24-27,29-37,39-40,43-46,50,52-53,57-58,63-65,78-84,86-93,95,97,99,101-103,105-117,119-120,122,124,138,167-169,171-176
+  s_c9b98a6043195e::t_c7708d1abd7766 41-42
+  s_c9b98a6043195e::t_c155afb0f6be49 6-17,20,23,28,38,47-49,51,54-56,59-62,66-77,85,94,96,98,100,104,118,121,123,125-137,139-166,170
+indic_mio_tts_server/scripts/build_voices.py
+  s_c9b98a6043195e::t_3a0a317559a9f0 1-58
+indic_mio_tts_server/voices/NOTICE
+  s_c9b98a6043195e::t_718461a3e5eff8 1-12
+indic_mio_tts_server/voices/manifest.json
+  s_c9b98a6043195e::t_680caeb998cf25 1-6,8-10
+  s_c9b98a6043195e::t_545a357ff72812 7
+voice_2_voice_server/services/indic_mio/tts.py
+  s_c9b98a6043195e::t_5ebde20041e00f 155
+  s_c9b98a6043195e::t_bc15d5631cd26a 5-7
+indic_mio_tts_server/voices/refs/.gitkeep
+  s_c9b98a6043195e::t_879cb9a46ef671 1-3
+indic_mio_tts_server/voices/README.md
+  s_c9b98a6043195e::t_c68002ecd41c31 1-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "4c5842177ca00a790e7017f00f73db70f299ba71",
+  "prompts": {},
+  "sessions": {
+    "s_c9b98a6043195e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee82af6f-50ca-40a1-8e71-f3dd1d0b3957",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
