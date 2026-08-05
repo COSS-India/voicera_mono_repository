@@ -157,6 +157,9 @@ services:
         required: false
     environment:
       - INDIC_MIO_VLLM_URL=http://vllm-mio:8100/v1
+      # Persist the one-time SSL encoder bundle (used to derive the speaker
+      # embedding on first boot) + the cached embedding in the shared HF volume.
+      - TORCH_HOME=/root/.cache/huggingface/torch
     depends_on: [vllm-mio]
     volumes:
       - hf_cache:/root/.cache/huggingface

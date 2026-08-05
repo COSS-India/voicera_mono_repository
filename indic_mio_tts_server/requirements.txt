@@ -1,6 +1,7 @@
-# Torch + CUDA come from the base image (nvcr.io/nvidia/pytorch); do not pin torch
-# here or it will fight the image's build. See Dockerfile.
+# torch + torchaudio are installed separately from the CUDA wheel index in the
+# Dockerfile (and pinned via constraints.txt). Do not add them here.
 git+https://github.com/Aratako/MioCodec
+huggingface_hub
 aiohttp>=3.9
 websockets>=12.0
 numpy

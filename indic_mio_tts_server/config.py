@@ -64,6 +64,13 @@ class Config:
     codec_model_id: str = "Aratako/MioCodec-25Hz-24kHz"
     device: str = "cuda"
 
+    # MioCodec.decode() requires a speaker `global_embedding`. We derive one ONCE
+    # from an Indic-Mio reference sample (encode -> global_embedding) and cache it;
+    # every decode reuses it. Runtime decode never needs the reference again.
+    speaker_embed_path: str = "/root/.cache/huggingface/indic_mio_default_speaker.pt"
+    reference_repo: str = "SPRINGLab/Indic-Mio"
+    reference_file: str = "samples/sample1.wav"
+
     # Bound concurrent GPU decodes so many in-flight WS requests cannot thrash
     # VRAM. vLLM already batches the (heavier) token-gen stage server-side.
     decode_concurrency: int = 2
@@ -104,6 +111,9 @@ class Config:
             repetition_penalty=_env_float("MIO_REPETITION_PENALTY", cls.repetition_penalty),
             codec_model_id=_env("MIO_CODEC_MODEL_ID", cls.codec_model_id),
             device=_env("MIO_DEVICE", cls.device),
+            speaker_embed_path=_env("MIO_SPEAKER_EMBED_PATH", cls.speaker_embed_path),
+            reference_repo=_env("MIO_REFERENCE_REPO", cls.reference_repo),
+            reference_file=_env("MIO_REFERENCE_FILE", cls.reference_file),
             decode_concurrency=_env_int("MIO_DECODE_CONCURRENCY", cls.decode_concurrency),
             stream_decode=_env("MIO_STREAM_DECODE", str(cls.stream_decode)).lower()
             in ("1", "true", "yes"),

@@ -48,6 +48,7 @@ class MioTTSEngine:
         self._session: aiohttp.ClientSession | None = None
         self._codec: Any = None
         self._torch: Any = None
+        self._global_embedding: Any = None  # cached speaker embedding for decode
         self._sample_rate: int = DEFAULT_SAMPLE_RATE
         # Bound concurrent GPU decodes across all in-flight requests.
         import asyncio  # local: avoid importing at module scope for test tooling
@@ -57,18 +58,12 @@ class MioTTSEngine:
     # ---- lifecycle -------------------------------------------------------
 
     def load_codec(self) -> None:
-        """Load MioCodec onto the GPU. Blocking; call once at startup."""
+        """Load MioCodec + the speaker embedding onto the GPU. Blocking; call once."""
         import torch  # local import: only the server process needs CUDA
-
-        # The SPRINGLab card imports `MioCodec`; the generic MioTTS package ships
-        # `MioCodecModel`. Support whichever the installed wheel exposes.
-        try:
-            from miocodec import MioCodec as _CodecClass  # type: ignore
-        except ImportError:  # pragma: no cover - depends on installed wheel
-            from miocodec import MioCodecModel as _CodecClass  # type: ignore
+        from miocodec import MioCodecModel
 
         logger.info("Loading MioCodec: %s", self._config.codec_model_id)
-        codec = _CodecClass.from_pretrained(self._config.codec_model_id)
+        codec = MioCodecModel.from_pretrained(self._config.codec_model_id)
         codec = codec.eval().to(self._config.device)
         self._codec = codec
         self._torch = torch
@@ -76,6 +71,52 @@ class MioTTSEngine:
         sr = getattr(getattr(codec, "config", None), "sample_rate", None)
         self._sample_rate = int(sr) if sr else DEFAULT_SAMPLE_RATE
         logger.info("MioCodec ready (sample_rate=%d Hz)", self._sample_rate)
+
+        self._global_embedding = self._load_or_build_speaker_embedding()
+        logger.info(
+            "Speaker embedding ready (shape=%s)", tuple(self._global_embedding.shape)
+        )
+
+    def _load_or_build_speaker_embedding(self):
+        """Return the cached speaker global_embedding, deriving it once if absent.
+
+        MioCodec.decode() requires a global_embedding (speaker). We encode one
+        Indic-Mio reference sample a single time and cache the vector to disk, so
+        subsequent boots (and every request) reuse it without touching the encoder.
+        """
+        import os
+
+        torch = self._torch
+        path = self._config.speaker_embed_path
+        device = self._config.device
+
+        if path and os.path.exists(path):
+            logger.info("Loading cached speaker embedding: %s", path)
+            emb = torch.load(path, map_location=device)
+            return emb.to(device=device, dtype=torch.float32)
+
+        logger.info(
+            "No cached speaker embedding; deriving from %s:%s",
+            self._config.reference_repo,
+            self._config.reference_file,
+        )
+        from huggingface_hub import hf_hub_download
+        from miocodec.util import load_audio
+
+        ref_path = hf_hub_download(
+            repo_id=self._config.reference_repo, filename=self._config.reference_file
+        )
+        waveform = load_audio(ref_path, sample_rate=self._sample_rate)
+        waveform = waveform.to(device=device, dtype=torch.float32)
+        with torch.inference_mode():
+            feats = self._codec.encode(waveform, return_content=False, return_global=True)
+        emb = feats.global_embedding.detach().to(device=device, dtype=torch.float32)
+
+        if path:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            torch.save(emb.cpu(), path)
+            logger.info("Cached speaker embedding -> %s", path)
+        return emb
 
     async def start(self) -> None:
         timeout = aiohttp.ClientTimeout(total=None, connect=10, sock_read=self._config.llm_timeout)
@@ -227,11 +268,12 @@ class MioTTSEngine:
 
     def _decode_blocking(self, tokens: list[int]) -> np.ndarray:
         torch = self._torch
-        # SPRINGLab card shape: content tokens as [1, 1, T] long tensor.
-        codes = torch.tensor(
-            [tokens], dtype=torch.long, device=self._config.device
-        ).unsqueeze(0)
+        # MioCodecModel.decode(global_embedding, content_token_indices):
+        #   content_token_indices is 1D (seq_len,); global_embedding is (dim,).
+        indices = torch.tensor(tokens, dtype=torch.long, device=self._config.device)
         with torch.inference_mode():
-            wav = self._codec.decode(codes)
+            wav = self._codec.decode(
+                self._global_embedding, content_token_indices=indices
+            )
         arr = wav.detach().to("cpu", dtype=torch.float32).numpy()
         return np.ascontiguousarray(arr.reshape(-1), dtype=np.float32)

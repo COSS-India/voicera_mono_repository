@@ -75,16 +75,29 @@ All env-driven — see `.env.example` and `config.py`. Key ones:
 `INDIC_MIO_VLLM_URL`, `MIO_LLM_MODEL`, `MIO_CODEC_MODEL_ID`, `MIO_DECODE_CONCURRENCY`,
 `MIO_STREAM_DECODE`, `MIO_FLUSH_TOKENS`, `MIO_LOOKAHEAD_TOKENS`.
 
+## Speaker embedding (required by the codec)
+
+`MioCodecModel.decode(global_embedding, content_token_indices)` requires a speaker
+`global_embedding` — the LLM only produces speaker-independent content tokens. On
+first boot the engine downloads one Indic-Mio reference sample
+(`MIO_REFERENCE_REPO`/`MIO_REFERENCE_FILE`), encodes it once to a `global_embedding`,
+and caches the vector at `MIO_SPEAKER_EMBED_PATH` (in the shared HF volume). Every
+decode reuses it; the encoder/reference is never touched again. To use a different
+default voice, delete the cached `.pt` (or point `MIO_SPEAKER_EMBED_PATH` at another
+precomputed embedding) and restart.
+
+## Environment
+
+miocodec is a **PyPI-torch** project (hard-imports `torchaudio`). The image uses
+plain `torch==2.5.1 + torchaudio==2.5.1` (CUDA wheels), **not** the NGC PyTorch
+base — that base's custom torch has no ABI-compatible torchaudio. GPU comes from the
+nvidia container runtime.
+
 ## Deploy-time seams to confirm on first boot
 
-- **`miocodec` decode API.** The SPRINGLab card uses `MioCodec.decode(codes[1,1,T])`
-  with no speaker embedding (baked-in default voice). The generic MioTTS package
-  instead ships `MioCodecModel.decode(global_embedding=, content_token_indices=)`.
-  `tts_engine.load_codec()` imports whichever class the installed wheel exposes;
-  `_decode_blocking()` implements the SPRINGLab signature. If your wheel is the
-  `MioCodecModel` variant, adjust `_decode_blocking` to pass a `global_embedding`
-  (a preset speaker embedding or reference-audio encode).
 - **`skip_special_tokens: false`** is sent to vLLM — required, else the `<|s_N|>`
   speech tokens are stripped and no audio is produced.
-- **Sample rate.** The card is inconsistent (44 kHz prose vs `25Hz-24kHz` codec
-  name); the server reports `codec.config.sample_rate`, falling back to 44100.
+- **Sample rate** is read from `codec.config.sample_rate` (the `25Hz-24kHz` codec
+  is 24 kHz), reported in the `meta` frame; the pipeline resamples as needed.
+- **First boot is slower**: it downloads the codec, the reference sample, and the
+  SSL encoder bundle (for the one-time embedding). All cached in the HF volume.

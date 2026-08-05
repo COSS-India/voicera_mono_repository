@@ -1,26 +1,26 @@
-# Same CUDA/torch base as the AI4Bharat TTS server so MioCodec's torch ops match
-# the driver stack already validated in this cluster.
-FROM nvcr.io/nvidia/pytorch:25.06-py3
+# miocodec is a standard PyPI-torch project: it hard-imports torchaudio at load
+# (SSL feature extractor) and uses it in the mel path. The NGC PyTorch image ships
+# a custom torch build with no ABI-compatible torchaudio, so we use plain PyPI
+# torch + torchaudio (ABI-matched, CUDA wheels) instead — the environment miocodec
+# is actually built for. GPU is provided by the nvidia container runtime at runtime.
+FROM python:3.11-slim
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git libsndfile1 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements.txt .
-# torch ships in the base image (custom NVIDIA build 2.8.0a0).  No official
-# torchaudio wheel is ABI-compatible with it (undefined symbol errors).
-#
-# torchaudio is only imported by miocodec's SSLFeatureExtractor (the *encoder*
-# path).  We only use MioCodec.decode() (tokens → audio), so torchaudio is
-# never called at runtime.  Strategy:
-#   1. Install miocodec's other runtime deps (not torch/torchaudio).
-#   2. Install miocodec itself with --no-deps.
-#   3. Patch ssl_extractor.py to make the torchaudio import a soft try/except
-#      so the module loads without it.
-RUN grep -vE '^\s*(torch|git\+)' requirements.txt > /tmp/req.txt && \
-    pip3 install --no-cache-dir -r /tmp/req.txt && \
-    pip3 install --no-cache-dir jsonargparse safetensors transformers huggingface_hub && \
-    pip3 install --no-cache-dir --no-deps git+https://github.com/Aratako/MioCodec && \
-    SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))") && \
-    sed -i 's/^import torchaudio$/try:\n    import torchaudio\nexcept (ImportError, OSError):\n    torchaudio = None  # decode-only; encoder not used/' \
-        "$SITE/miocodec/module/ssl_extractor.py"
+
+# 1) Pin torch + torchaudio (same version = ABI-matched) from the CUDA index FIRST,
+#    so the miocodec install below sees them already satisfied and does not pull a
+#    mismatched CPU wheel. constraints.txt re-pins them for the second install too.
+RUN pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+
+COPY requirements.txt constraints.txt ./
+RUN pip install -r requirements.txt -c constraints.txt
 
 COPY . .
 EXPOSE 8003
