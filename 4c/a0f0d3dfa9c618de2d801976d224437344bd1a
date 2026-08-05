@@ -1,0 +1,19 @@
+indic_mio_tts_server/Dockerfile
+  s_1419714fb6029e::t_407ac581eb1311 1-5,17-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "4ca0f0d3dfa9c618de2d801976d224437344bd1a",
+  "prompts": {},
+  "sessions": {
+    "s_1419714fb6029e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88130f6c-d5ed-48ee-9a35-79c32cfaaed0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
