@@ -1,0 +1,38 @@
+docs/services/indic-mio-tts-integration-plan.md
+  s_1419714fb6029e::t_0d95e01c56afa6 3
+  s_1419714fb6029e::t_0e89e89f106f22 2,4-265
+  s_1419714fb6029e::t_eb34f29e71fe4e 1
+indic_mio_tts_server/tts_engine.py
+  s_1419714fb6029e::t_f327c91aa36e17 271-273,275-277
+  s_1419714fb6029e::t_4ea3de1c2d7633 51,61,63,66,75-119
+  s_1419714fb6029e::t_f6a46bc519b204 120
+indic_mio_tts_server/README.md
+  s_1419714fb6029e::t_71b6275a5ee2c4 78-95,100-103
+indic_mio_tts_server/Dockerfile
+  s_1419714fb6029e::t_5c4b738ce27c53 1-13,16-23
+indic_mio_tts_server/constraints.txt
+  s_1419714fb6029e::t_e0273060b268af 1-4
+deploy/compose/docker-compose.prod.yml
+  s_1419714fb6029e::t_a1537dfdda20dc 160-162
+indic_mio_tts_server/requirements.txt
+  s_1419714fb6029e::t_ba3964ee6c1a7d 1-2,4
+indic_mio_tts_server/config.py
+  s_1419714fb6029e::t_f3a590cd103217 114-116
+  s_1419714fb6029e::t_ea34d88209c324 67-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "143dce76af620e6ce8440dd00210f2a126df8cf2",
+  "prompts": {},
+  "sessions": {
+    "s_1419714fb6029e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88130f6c-d5ed-48ee-9a35-79c32cfaaed0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
