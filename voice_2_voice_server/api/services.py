@@ -598,8 +598,7 @@ def create_tts_service(
         "openai": "OpenAI",
         "sarvam": "Sarvam",
         "ai4bharat": "AI4Bharat",
-        "indic-mio": "IndicMio",
-        "indic_mio": "IndicMio",
+        "springlab": "SpringLab",
         "bhashini": "Bhashini",
         "elevenlabs": "ElevenLabs",
     }
@@ -696,7 +695,7 @@ def create_tts_service(
         else:
             raise ServiceCreationError(f"Unknown ai4bharat TTS model: {model}. Expected 'indic-parler-tts'")
 
-    elif provider == "IndicMio":
+    elif provider == "SpringLab":
         model = args.get("model") or tts_config.get("model") or "indic-mio"
         if model == "indic-mio":
             speaker = tts_config.get("speaker") or args.get("speaker")

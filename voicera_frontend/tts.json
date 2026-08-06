@@ -3,7 +3,7 @@
     "languages": {
       "English (United States)": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -47,7 +47,7 @@
       },
       "English (India)": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -97,7 +97,7 @@
       },
       "Hindi": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -146,7 +146,7 @@
       },
       "Bengali": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -195,7 +195,7 @@
       },
       "Tamil": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -244,7 +244,7 @@
       },
       "Telugu": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -294,7 +294,7 @@
       },
       "Marathi": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -343,7 +343,7 @@
       },
       "Gujarati": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -392,7 +392,7 @@
       },
       "Kannada": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -441,7 +441,7 @@
       },
       "Malayalam": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -490,7 +490,7 @@
       },
       "Punjabi": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -540,7 +540,7 @@
       },
       "Odia": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -589,7 +589,7 @@
       },
       "Assamese": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -637,7 +637,7 @@
       },
       "Urdu": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -682,7 +682,7 @@
       },
       "Nepali": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -759,7 +759,7 @@
       },
       "Sanskrit": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -798,7 +798,7 @@
       },
       "Manipuri": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -836,7 +836,7 @@
       },
       "Bodo": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -874,7 +874,7 @@
       },
       "Dogri": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -912,7 +912,7 @@
       },
       "Konkani": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -951,7 +951,7 @@
       },
       "Maithili": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -990,7 +990,7 @@
       },
       "Santali": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],
@@ -1029,7 +1029,7 @@
       },
       "Sindhi": {
         "models": {
-          "indic-mio": {
+          "springlab": {
             "available": true,
             "model": "indic-mio",
             "voices": ["Aditi", "Meera", "Ananya", "Rahul", "Arjun"],

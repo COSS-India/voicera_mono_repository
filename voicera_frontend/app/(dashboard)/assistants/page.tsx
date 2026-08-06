@@ -85,7 +85,7 @@ const getProviderOfficialName = (providerId: string): string => {
     sarvam: "Sarvam",
     smallest: "Smallest",
     ai4bharat: "AI4Bharat",
-    "indic-mio": "IndicMio",
+    "springlab": "SpringLab",
     bhashini: "Bhashini",
     cartesia: "Cartesia",
     openai: "OpenAI",
@@ -1916,7 +1916,7 @@ export default function AssistantsPage() {
                                 .map((provider) => {
                                   const isSupported = supportedSTTProviders.has(provider.id)
                                   // AI4Bharat is on-prem, always available (no API key needed)
-                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini" || provider.id === "indic-mio"
+                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini" || provider.id === "springlab"
                                   // Check if provider has integration (API key configured)
                                   const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                                   // Determine availability status
@@ -1998,7 +1998,7 @@ export default function AssistantsPage() {
                                 .map((provider) => {
                                   const isSupported = supportedTTSProviders.has(provider.id)
                                   // AI4Bharat is on-prem, always available (no API key needed)
-                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini" || provider.id === "indic-mio"
+                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini" || provider.id === "springlab"
                                   // Check if provider has integration (API key configured)
                                   const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
                                   // Determine availability status

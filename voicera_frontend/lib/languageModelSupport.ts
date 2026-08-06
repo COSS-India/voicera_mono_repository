@@ -118,7 +118,7 @@ export function languageSwitchingStackEligible(
 ): boolean {
   const ttsEligible =
     (ttsProvider === "ai4bharat" && ttsModel === "indic-parler-tts") ||
-    (ttsProvider === "indic-mio" && ttsModel === "indic-mio")
+    (ttsProvider === "springlab" && ttsModel === "indic-mio")
   return (
     llmProvider === "openai" &&
     sttProvider === "ai4bharat" &&

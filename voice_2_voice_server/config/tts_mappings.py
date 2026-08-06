@@ -162,7 +162,7 @@ TTS_LANGUAGE_MAP = {
         "Santali": "sat",
         "Sindhi": "sd",
     },
-    "IndicMio": {
+    "SpringLab": {
         "English": "en",
         "English (India)": "en",
         "English (United States)": "en",
