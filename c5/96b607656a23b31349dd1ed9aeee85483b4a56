@@ -1,0 +1,35 @@
+voicera_frontend/app/(dashboard)/assistants/[id]/page.tsx
+  s_8a76ddaef93217::t_d949f3f795d39d 87
+  s_8a76ddaef93217::t_9f23f10f9b41e3 1561,1619
+  s_8a76ddaef93217::t_57a677ca4526f3 116
+voicera_frontend/app/(dashboard)/assistants/page.tsx
+  s_8a76ddaef93217::t_4eafe6058b8b91 1919,2001
+  s_8a76ddaef93217::t_0eee53fa90dc12 88
+voicera_frontend/tts.json
+  s_8a76ddaef93217::t_d2cee3f1e331cb 6,50,100,149,198,247,297,346,395,444,493,543,592,640,685,762,801,839,877,915,954,993,1032
+voice_2_voice_server/api/services.py
+  s_8a76ddaef93217::t_dc82d5a6bc89d1 601
+  s_8a76ddaef93217::t_a491ab4eac110a 698
+voice_2_voice_server/config/tts_mappings.py
+  s_8a76ddaef93217::t_bdea7b95af7af1 165
+voicera_frontend/lib/languageModelSupport.ts
+  s_8a76ddaef93217::t_08bd611d0256c6 121
+voicera_backend/scripts/migrate_indicmio_to_springlab.py
+  s_8a76ddaef93217::t_1ce269c0a28ddd 1-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "c596b607656a23b31349dd1ed9aeee85483b4a56",
+  "prompts": {},
+  "sessions": {
+    "s_8a76ddaef93217": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "02e13220-5b36-4500-939b-a2e2171e53be",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
