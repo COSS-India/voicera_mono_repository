@@ -1,0 +1,20 @@
+ai4bharat_stt_server/SCALABILITY_OPS_ISSUES.md
+  s_edae71ed09de38::t_288c1c77cca259 57
+  s_edae71ed09de38::t_6aa0bfecc445ac 230-260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "6c79d2d3c3f7436a572a761487f056ba9ef79b40",
+  "prompts": {},
+  "sessions": {
+    "s_edae71ed09de38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e49bd136-5fd8-4b34-922c-22c622fa214a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
