@@ -1,0 +1,56 @@
+ai4bharat_stt_server/SCALABILITY_OPS_ISSUES.md
+  s_edae71ed09de38::t_3ddb4c55459a50 1-19,21-121,139-182,186-188,228-237
+  s_edae71ed09de38::t_a209504f7fc64e 189-219,225-227
+  s_edae71ed09de38::t_b5efd08a858bb9 20
+  s_edae71ed09de38::t_195d2f1f0206c0 122-138
+  s_edae71ed09de38::t_6053ae2041a5e8 183-185
+  s_edae71ed09de38::t_54c5385148ae4f 220-224
+ai4bharat_stt_server/requirements.txt
+  s_edae71ed09de38::t_ce4df2e5d46193 7-9
+ai4bharat_stt_server/.env.example
+  s_edae71ed09de38::t_ace736d9ac39f8 6-17,25-52
+deploy/nginx/nginx.conf
+  s_edae71ed09de38::t_5adfea86a7b094 74-98
+  s_edae71ed09de38::t_6af2941124104a 46
+  s_edae71ed09de38::t_1da8fcc3ae4c22 4-18,24-25
+  s_edae71ed09de38::t_6e333d05f419b3 111
+  s_edae71ed09de38::t_0c0d8fce9afe42 26
+ai4bharat_stt_server/server.py
+  s_edae71ed09de38::t_44288f3ee08d27 363
+  s_edae71ed09de38::t_15bf447a23aaf2 407,415-421
+  s_edae71ed09de38::t_30990484f3876b 373-374
+  s_edae71ed09de38::t_0b4ef69dec7673 3,8,13-14,38,41-57,60-84,93-107,167-188,191-193,195-254,257-261,265-267,269-270,273,276-284,287,290,321-362,364,366-371,375-402,404-406,408-409,411-414,422-471,473-474,476-477,480-491,497-498,504-505,509-511,513-515,518-535,537-538,540,542,545,547-561,567,573-602,605-606,616-617,620-632,634-635,640-641,646-650,654-720,729
+voice_2_voice_server/services/ai4bharat/stt.py
+  s_edae71ed09de38::t_d158b39fd566df 153-159,162
+  s_edae71ed09de38::t_c328116b9a3629 206-208,219-238,240-248,250
+  s_edae71ed09de38::t_c42ad86247b9bd 253-261,267,269
+  s_edae71ed09de38::t_ccbb76ff0af53b 152,160-161
+  s_edae71ed09de38::t_a881f82fac4dae 262-266
+deploy/compose/docker-compose.prod.yml
+  s_edae71ed09de38::t_06c8135f56cb1b 79-89
+ai4bharat_stt_server/Dockerfile
+  s_edae71ed09de38::t_4c66eea2a0292b 18-22
+ai4bharat_stt_server/test_server_contracts.py
+  s_edae71ed09de38::t_2b9ee0801b8fae 1-102,107-123,127-138,141-146,149-186,189-200,203-211,214-228,231-243,246-279
+  s_edae71ed09de38::t_2a1eec31585cb5 103-106,124-126,139-140,147-148,187-188,201-202,212-213,229-230,244-245
+docs/services/ai4bharat-stt.md
+  s_edae71ed09de38::t_32b41f0a98166b 58-59
+  s_edae71ed09de38::t_c9e5cd03f7157b 122
+  s_edae71ed09de38::t_13b4fd3e9b03cd 41-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "1425f37588d69e07a6839e191b6ab9c2b64b1a87",
+  "prompts": {},
+  "sessions": {
+    "s_edae71ed09de38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e49bd136-5fd8-4b34-922c-22c622fa214a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
