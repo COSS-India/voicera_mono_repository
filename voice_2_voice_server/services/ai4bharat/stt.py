@@ -149,6 +149,17 @@ class IndicConformerRESTSTTService(STTService):
         )
         self._target_sample_rate = 16000
         self._interim_interval_ms = int(os.getenv("AI4BHARAT_INTERIM_MS", "600"))
+        # Interims re-transcribe the whole growing segment, so a fixed interval
+        # makes STT cost O(n^2) in utterance length: a 12 s utterance costs
+        # ~126 audio-seconds of GPU work. Requiring the buffer to grow by
+        # AI4BHARAT_INTERIM_GROWTH before the next interim cuts that to ~50 s.
+        # AI4BHARAT_INTERIM_MAX_S caps the resulting gap so long utterances keep
+        # getting fresh partials and the last interim still covers nearly the
+        # whole segment -- the "promote latest interim when the final comes back
+        # empty" fallback below depends on that coverage.
+        # Set AI4BHARAT_INTERIM_GROWTH=0 for the old fixed-interval behaviour.
+        self._interim_growth = float(os.getenv("AI4BHARAT_INTERIM_GROWTH", "0.5"))
+        self._interim_max_s = float(os.getenv("AI4BHARAT_INTERIM_MAX_S", "2.0"))
 
         self._session: Optional[aiohttp.ClientSession] = None
         self._resampler = create_stream_resampler()
@@ -192,6 +203,9 @@ class IndicConformerRESTSTTService(STTService):
         if not audio_buffer or len(audio_buffer) < 3200:
             return ""
 
+        # Every failure path below returns "", which is indistinguishable from
+        # "the user said nothing" downstream -- so each one must log its own
+        # cause, or STT overload looks exactly like silence.
         try:
             audio_b64 = base64.b64encode(audio_buffer).decode("utf-8")
             async with self._session.post(
@@ -202,14 +216,57 @@ class IndicConformerRESTSTTService(STTService):
                 if response.status == 200:
                     data = await response.json()
                     return str(data.get("text", "")).strip()
-                logger.error("AI4Bharat transcription request failed: {}", response.status)
+                if response.status == 503:
+                    logger.warning(
+                        "AI4Bharat STT shed the request (503: queue full / not ready / "
+                        "worker unavailable) | audio={:.1f}s",
+                        len(audio_buffer) / (self._target_sample_rate * 2),
+                    )
+                elif response.status == 429:
+                    logger.warning("AI4Bharat STT rate-limited the request (429)")
+                elif response.status == 504:
+                    logger.error("AI4Bharat STT inference timed out server-side (504)")
+                elif response.status in (400, 413):
+                    logger.error(
+                        "AI4Bharat STT rejected the payload ({}): {}",
+                        response.status,
+                        (await response.text())[:200],
+                    )
+                else:
+                    logger.error(
+                        "AI4Bharat transcription request failed: {}", response.status
+                    )
                 return ""
+        except asyncio.TimeoutError:
+            logger.warning(
+                "AI4Bharat transcription timed out client-side after 10s | audio={:.1f}s",
+                len(audio_buffer) / (self._target_sample_rate * 2),
+            )
+            return ""
+        except aiohttp.ClientError as exc:
+            logger.error("AI4Bharat transcription transport error ({}): {}", type(exc).__name__, exc)
+            return ""
         except Exception as exc:
-            logger.error("AI4Bharat transcription error: {}", exc)
+            logger.error("AI4Bharat transcription error ({}): {}", type(exc).__name__, exc)
             return ""
 
+    def _interim_min_bytes(self) -> int:
+        """New audio required before the next interim.
+
+        Scales with the segment already buffered, because each interim
+        re-transcribes the whole segment from the start.
+        """
+        base = int(self._target_sample_rate * self._interim_interval_ms / 1000) * 2
+        if self._interim_growth <= 0:
+            return base
+        scaled = max(base, int(len(self._segment_buffer) * self._interim_growth))
+        if self._interim_max_s > 0:
+            ceiling = int(self._target_sample_rate * self._interim_max_s) * 2
+            scaled = min(scaled, max(base, ceiling))
+        return scaled
+
     async def _maybe_emit_interim(self) -> None:
-        min_bytes = int(self._target_sample_rate * self._interim_interval_ms / 1000) * 2
+        min_bytes = self._interim_min_bytes()
         if self._bytes_since_last_interim < min_bytes:
             return
         if self._transcribe_lock.locked():

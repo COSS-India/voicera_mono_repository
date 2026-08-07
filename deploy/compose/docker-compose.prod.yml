@@ -76,6 +76,17 @@ services:
       - hf_cache:/root/.cache/huggingface
       - ../../ai4bharat_stt_server/models:/app/models:ro
     networks: [voicera_network]
+    # /health returns 503 until the checkpoint is loaded AND the batch worker
+    # heartbeat is fresh, so a wedged worker shows up as `unhealthy` in `dcp ps`
+    # and gets recycled. urllib, not curl: curl is not in the CUDA base image.
+    # voice_server is deliberately NOT gated on this -- STT is an optional
+    # provider and a failed load must not block cloud-STT agents from starting.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5)"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
     deploy:
       resources:
         reservations:

@@ -4,11 +4,6 @@ torch
 numpy
 uvicorn
 transformers
-torchaudio 
-onnx 
-onnxruntime 
-onnxruntime-gpu
-pyarr
-dotenv
-
+torchaudio
+python-dotenv
 loguru>=0.7.3

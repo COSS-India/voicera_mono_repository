@@ -15,4 +15,9 @@ RUN pip3 install --no-cache-dir --break-system-packages "/opt/nemo[asr]"
 
 COPY . .
 EXPOSE 8001
+
+# /health is 503 until the checkpoint is loaded and the batch worker is beating.
+HEALTHCHECK --interval=20s --timeout=10s --retries=3 --start-period=300s \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5)"
+
 CMD ["python3", "server.py"]

@@ -38,6 +38,15 @@ FastAPI process with an internal request queue feeding a batched NeMo inference 
 | `BHILI_ENABLE` | `"yes"` / `"no"` |
 | `HF_TOKEN` | Optional; if the checkpoint is gated on HuggingFace |
 | `PORT` | Server port (default `8001`) |
+| `STT_NUM_WORKERS` | uvicorn workers (default `4`). Each loads its **own** model copy and runs its own batcher, so N workers divide batching efficiency by N |
+| `STT_MAX_BATCH_SIZE` / `STT_BATCH_TIMEOUT_MS` / `STT_QUEUE_MAXSIZE` | Batcher tuning (defaults `16` / `100` / `256`) |
+| `STT_MAX_AUDIO_SECONDS` | Largest accepted request (default `60`); larger payloads get `413` |
+| `STT_REQUEST_DEADLINE_S` | Queued requests older than this are dropped un-inferred (default `10`, matching the voice server's client timeout) so overload sheds instead of amplifying |
+| `STT_WORKER_STALL_SECONDS` | `/health` reports `degraded` + `503` if a batch-worker heartbeat is older than this (default `60`) |
+| `STT_IDLE_EMPTY_CACHE_SECONDS` | Idle seconds before releasing cached CUDA memory (default `60`) |
+| `STT_MATMUL_PRECISION` | `high` (default) enables TF32 matmuls on Ampere+; `highest` forces strict fp32 |
+
+Full tunable list and the open scalability/ops backlog: `ai4bharat_stt_server/SCALABILITY_OPS_ISSUES.md`.
 
 Checkpoint files are deployment-specific and are referenced by **on-disk path**, not HuggingFace model IDs.
 
@@ -46,7 +55,8 @@ Checkpoint files are deployment-specific and are referenced by **on-disk path**,
 | Endpoint | Method | Body | Response |
 |----------|--------|------|----------|
 | `/` | GET | - | Status |
-| `/health` | GET | - | Health |
+| `/health` | GET | - | Health. **200 only when ready**; 503 while `loading` (checkpoint not yet loaded) or `degraded` (batch-worker heartbeat stale) |
+| `/metrics` | GET | - | Prometheus text format: request/batch counters, failures, stale drops, queue depth, worker liveness, audio vs inference seconds (RTFx) |
 | `/transcribe` | POST | `{ "audio_b64": string, "language_id": string }` (default `hi`) | `{ "text": string }` |
 | `/transcribe/bhili` | POST | Same body | `{ "text": string }` (Bhili checkpoint) |
 
@@ -109,7 +119,7 @@ Until measured values are published, size GPUs with your hosting partner using a
 cd ai4bharat_stt_server
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python server.py --port 8001
+PORT=8001 python3 server.py
 ```
 
 Monorepo: `make start-voice-only-services` (includes the optional AI4Bharat servers and the Voice Server).
