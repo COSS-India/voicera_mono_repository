@@ -11,7 +11,7 @@ export function buildMeetingsParams(
   dateRange: DateRange,
   dateSortOrder: "latest" | "oldest",
   durationSortOrder: "longest" | "shortest" | null,
-  options?: { limit?: number; forExport?: boolean }
+  options?: { limit?: number; forExport?: boolean; has_latency_metrics?: boolean; search?: string }
 ): MeetingsPageParams {
   const params: MeetingsPageParams = {
     page: currentPage,
@@ -19,6 +19,8 @@ export function buildMeetingsParams(
     forExport: options?.forExport,
     date_sort_order: dateSortOrder,
     duration_sort_order: durationSortOrder,
+    has_latency_metrics: options?.has_latency_metrics,
+    search: options?.search,
   }
 
   if (dateRange.from) {
@@ -40,9 +42,17 @@ export function buildMeetingsParams(
       case "call_status":
         params.call_status = filter.value
         break
-      case "call_type":
-        params.inbound = filter.value.toLowerCase() === "inbound"
+      case "call_type": {
+        const value = filter.value.toLowerCase()
+        if (value === "web" || value === "web call" || value === "web calls") {
+          params.call_type = "web"
+        } else if (value === "inbound") {
+          params.call_type = "inbound"
+        } else if (value === "outbound") {
+          params.call_type = "outbound"
+        }
         break
+      }
       case "from_number":
         params.from_number = filter.value
         break

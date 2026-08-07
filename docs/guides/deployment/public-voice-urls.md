@@ -19,9 +19,8 @@ The name is a legacy from an early deployment hostname (`johnaic.com`). New docu
 | Variable | Where set | Meaning |
 |----------|-----------|---------|
 | `JOHNAIC_SERVER_URL` | voice server `.env` | Public HTTPS base, e.g. `https://voice.example.gov.in` |
-| `JOHNAIC_WEBSOCKET_URL` | voice server `.env` | Public WSS base, e.g. `wss://voice.example.gov.in` |
-| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | frontend `.env.local` | Same HTTPS base; the dashboard uses it to build `/answer?agent_id=...` |
-| `NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL` | frontend `.env.local` (optional) | Explicit WSS for **Test on Browser**; derived from the HTTPS base if absent |
+| `JOHNAIC_WEBSOCKET_URL` | voice server `.env` | Public WSS base for telephony audio streams, e.g. `wss://voice.example.gov.in` |
+| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | frontend `.env.local` | Voice server base for answer URLs and **Test on Browser**; WebSocket URL is derived (`http`→`ws`, `https`→`wss`) in `lib/johnaic-config.ts` |
 
 The voice server itself listens on port `7860` inside the container. The public URL points at your reverse proxy, which terminates TLS and forwards to `7860`.
 
@@ -33,13 +32,13 @@ The voice server itself listens on port `7860` inside the container. The public 
 | Plivo answer webhook | `{JOHNAIC_SERVER_URL}/plivo/answer?agent_id={uuid}` |
 | Audio WebSocket (Vobiz) | `{JOHNAIC_WEBSOCKET_URL}/agent/{agent_id}` |
 | Audio WebSocket (Plivo) | `{JOHNAIC_WEBSOCKET_URL}/plivo/agent/{agent_id}` |
-| Browser test | `wss://.../agent/{agent_id}` |
+| Browser test | `{ws-base}/browser/agent/{agent_id}` where `ws-base` is derived from `NEXT_PUBLIC_JOHNAIC_SERVER_URL` |
 
 Code references:
 
 - `voice_2_voice_server/api/server.py`
 - `voicera_frontend/app/(dashboard)/assistants/page.tsx`
-- `voicera_frontend/components/assistants/test-browser-dialog.tsx`
+- `voicera_frontend/lib/johnaic-config.ts` — browser WebSocket URL from `NEXT_PUBLIC_JOHNAIC_SERVER_URL`
 
 ## Requirements
 
@@ -56,7 +55,6 @@ JOHNAIC_WEBSOCKET_URL=wss://voice.example.gov.in
 
 # voicera_frontend/.env.local
 NEXT_PUBLIC_JOHNAIC_SERVER_URL=https://voice.example.gov.in
-NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL=wss://voice.example.gov.in
 ```
 
 The nginx snippet in [Production deployment](production.md) terminates TLS for `voice.example.gov.in` and forwards both HTTP and WebSocket traffic to the voice server container.

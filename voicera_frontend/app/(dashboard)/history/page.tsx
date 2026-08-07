@@ -27,8 +27,12 @@ import {
   useMeetingsQuery,
   useMeetingFilterOptionsQuery,
 } from "@/lib/queries/meetings"
-import { maskPhoneLastDigits } from "@/lib/mask-phone"
+import { displayCallPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
+import { getCallTypeLabel, resolveCallType } from "@/lib/call-type"
+import { CallTypeBadge } from "@/components/history/call-type-badge"
 import { MeetingDetailSheet } from "@/components/history/meeting-detail-sheet"
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   Calendar as CalendarIcon,
   SlidersHorizontal,
@@ -83,6 +87,7 @@ function HistoryPageContent() {
 
   // Client-side mount state to prevent hydration mismatch
   const [mounted, setMounted] = useState(false)
+  const isMobile = useIsMobile()
 
   // Initialize filters from URL on mount
   useEffect(() => {
@@ -284,7 +289,7 @@ function HistoryPageContent() {
       "Agent Name": meeting.agent_type || "-",
       "To Number": meeting.to_number || "-",
       "From Number": meeting.from_number || "-",
-      "Call Type": meeting.inbound ? "Inbound" : "Outbound",
+      "Call Type": getCallTypeLabel(meeting),
       "Called On": formatDate(meeting.start_time_utc || meeting.created_at),
       "Call Status": meeting.call_busy
         ? "Busy"
@@ -414,7 +419,7 @@ function HistoryPageContent() {
           "Agent Name": meeting.agent_type || "-",
           "To Number": meeting.to_number || "-",
           "From Number": meeting.from_number || "-",
-          "Call Type": meeting.inbound ? "Inbound" : "Outbound",
+          "Call Type": getCallTypeLabel(meeting),
           "Called On": formatDate(meeting.start_time_utc || meeting.created_at),
           Transcript: transcriptText,
         }
@@ -519,15 +524,16 @@ function HistoryPageContent() {
   return (
     <div className="flex flex-col h-screen bg-slate-50/50">
       {/* Header */}
-      <header className="flex h-14 items-center gap-4 border-b border-slate-200 bg-white px-5 lg:px-8 sticky top-0 z-10">
-        <h1 className="text-xl font-semibold text-slate-900">History</h1>
+      <header className="flex h-14 items-center gap-3 border-b border-slate-200 bg-white page-shell-x sticky top-0 z-10 shrink-0">
+        <SidebarTrigger className="h-9 w-9 shrink-0" />
+        <h1 className="text-lg sm:text-xl font-semibold text-slate-900 truncate">History</h1>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto min-w-0">
         {/* Action Bar */}
-        <div className="flex items-center justify-between px-5 lg:px-8 py-4 bg-white border-b border-slate-200">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between page-shell-x page-shell-y bg-white border-b border-slate-200">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
             {/* Date Range Button */}
             {mounted && (
               <Popover open={dateRangeOpen} onOpenChange={setDateRangeOpen}>
@@ -558,7 +564,7 @@ function HistoryPageContent() {
                         setDateRangeOpen(false)
                       }
                     }}
-                    numberOfMonths={2}
+                    numberOfMonths={mounted && isMobile ? 1 : 2}
                     initialFocus
                   />
                   {dateRange.from && (
@@ -629,7 +635,7 @@ function HistoryPageContent() {
                       </div>
                     ) : addingFilter === 'call_type' ? (
                       <div className="space-y-1">
-                        {['Inbound', 'Outbound'].map(type => (
+                        {['Inbound', 'Outbound', 'Web'].map(type => (
                           <button
                             key={type}
                             onClick={() => addFilter('call_type', type)}
@@ -724,7 +730,7 @@ function HistoryPageContent() {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 self-end sm:self-auto">
             {dataUpdatedAt > 0 && (
               <span className="text-xs text-slate-500 whitespace-nowrap">
                 Last updated{" "}
@@ -781,7 +787,7 @@ function HistoryPageContent() {
 
         {/* Active Filters */}
         {(activeFilters.length > 0 || dateRange.from || dateRange.to) && (
-          <div className="flex flex-wrap items-center gap-2 px-5 lg:px-8 py-3 bg-white border-b border-slate-200">
+          <div className="flex flex-wrap items-center gap-2 page-shell-x py-3 bg-white border-b border-slate-200">
             <span className="text-sm text-slate-500">Active filters:</span>
             {(dateRange.from || dateRange.to) && (
               <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1">
@@ -831,10 +837,12 @@ function HistoryPageContent() {
         )}
 
         {/* Data Table */}
-        <div className="px-5 lg:px-8 py-4">
+        <div className="page-shell-x page-shell-y pb-6">
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            {/* Desktop table */}
+            <div className="hidden md:block table-scroll">
             {/* Table Header */}
-            <div className="grid grid-cols-8 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-600">
+            <div className="grid grid-cols-8 gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-600 min-w-[900px]">
               <div className="flex items-center gap-2">
                 Call Type
                 {mounted && (
@@ -856,7 +864,7 @@ function HistoryPageContent() {
                           </button>
                         </div>
                         <div className="space-y-1">
-                          {['Inbound', 'Outbound'].map(type => (
+                          {['Inbound', 'Outbound', 'Web'].map(type => (
                             <button
                               key={type}
                               onClick={() => {
@@ -1119,6 +1127,7 @@ function HistoryPageContent() {
             </div>
 
             {/* Table Body */}
+            <div className="min-w-[900px]">
             {isError && (
               <div className="text-center py-12 text-red-600 text-sm">
                 Failed to load calls. Please try again.
@@ -1157,62 +1166,27 @@ function HistoryPageContent() {
                     }`}
                   >
                     <div>
-                      <span
-                        className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold ${
-                          meeting.inbound
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-blue-50 text-blue-700"
-                        }`}
-                        style={{
-                          minWidth: '84px',
-                          justifyContent: 'center',
-                          letterSpacing: '0.03em',
-                          transition: 'background 0.15s, color 0.15s',
-                        }}
-                        aria-label={meeting.inbound ? "Inbound Call" : "Outbound Call"}
-                        title={meeting.inbound ? "Inbound Call" : "Outbound Call"}
-                      >
-                        {meeting.inbound ? (
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 20 20"
-                            width="16"
-                            height="16"
-                            fill="#059669"
-                            aria-hidden="true"
-                            className="mr-1"
-                            style={{ opacity: 0.95, verticalAlign: "middle" }}
-                          >
-                            <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5V5c0 1.149.15 2.263.43 3.326a13.022 13.022 0 0 0 9.244 9.244c1.063.28 2.177.43 3.326.43h1.5a1.5 1.5 0 0 0 1.5-1.5v-1.148a1.5 1.5 0 0 0-1.175-1.465l-3.223-.716a1.5 1.5 0 0 0-1.767 1.052l-.267.933c-.117.41-.555.643-.95.48a11.542 11.542 0 0 1-6.254-6.254c-.163-.395.07-.833.48-.95l.933-.267a1.5 1.5 0 0 0 1.052-1.767l-.716-3.223A1.5 1.5 0 0 0 4.648 2H3.5Zm13.22.22a.75.75 0 1 1 1.06 1.06L14.56 6.5h2.69a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 1 1.5 0v2.69l3.22-3.22Z"/>
-                          </svg>
-                        ) : (
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 20 20"
-                            width="16"
-                            height="16"
-                            fill="#2563eb"
-                            aria-hidden="true"
-                            className="mr-1"
-                            style={{ opacity: 0.95, verticalAlign: "middle" }}
-                          >
-                            <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5V5c0 1.149.15 2.263.43 3.326a13.022 13.022 0 0 0 9.244 9.244c1.063.28 2.177.43 3.326.43h1.5a1.5 1.5 0 0 0 1.5-1.5v-1.148a1.5 1.5 0 0 0-1.175-1.465l-3.223-.716a1.5 1.5 0 0 0-1.767 1.052l-.267.933c-.117.41-.555.643-.95.48a11.542 11.542 0 0 1-6.254-6.254c-.163-.395.07-.833.48-.95l.933-.267a1.5 1.5 0 0 0 1.052-1.767l-.716-3.223A1.5 1.5 0 0 0 4.648 2H3.5Zm13 2.56l-3.22 3.22a.75.75 0 1 1-1.06-1.06l3.22-3.22h-2.69a.75.75 0 0 1 0-1.5h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V4.56Z"/>
-                          </svg>
-                        )}
-                        {meeting.inbound ? "Inbound" : "Outbound"}
-                      </span>
+                      <CallTypeBadge meeting={meeting} />
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-slate-900">{meeting.agent_type || "-"}</span>
                     </div>
                     <div className="text-sm">
-                      <div className="text-slate-900">{meeting.to_number || "-"}</div>
+                      <div className="text-slate-900">
+                        {displayCallPhoneNumber(
+                          meeting.to_number,
+                          meeting.inbound ?? true,
+                          "to"
+                        )}
+                      </div>
                     </div>
                     <div className="text-sm">
                       <div className="text-slate-900">
-                        {meeting.from_number
-                          ? maskPhoneLastDigits(meeting.from_number)
-                          : "-"}
+                        {displayCallPhoneNumber(
+                          meeting.from_number,
+                          meeting.inbound ?? true,
+                          "from"
+                        )}
                       </div>
                     </div>
                     <div>
@@ -1271,10 +1245,116 @@ function HistoryPageContent() {
                 )
               })
             )}
-          </div>
+            </div>
+            </div>
+
+            {/* Mobile call cards */}
+            <div className="md:hidden divide-y divide-slate-100">
+            {isError && (
+              <div className="text-center py-12 text-red-600 text-sm px-4">
+                Failed to load calls. Please try again.
+              </div>
+            )}
+            {!isError && isLoading ? (
+              <div className="px-4 py-12 text-center text-slate-500">
+                Loading calls...
+              </div>
+            ) : !isError && paginatedMeetings.length === 0 ? (
+              <div className="px-4 py-12 text-center text-slate-500">
+                {activeFilters.length > 0
+                  ? "No calls match your filters"
+                  : "No calls found"}
+              </div>
+            ) : (
+              paginatedMeetings.map((meeting) => {
+                const callStatus = meeting.call_busy
+                  ? "Busy"
+                  : meeting.end_time_utc
+                    ? "Completed"
+                    : "In Progress"
+                const statusColors = {
+                  Busy: "bg-red-50 text-red-700",
+                  Completed: "bg-green-50 text-green-700",
+                  "In Progress": "bg-orange-50 text-orange-700",
+                }
+                const isBusy = meeting.call_busy
+
+                return (
+                  <button
+                    key={meeting.meeting_id}
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => {
+                      if (!isBusy) handleMeetingClick(meeting)
+                    }}
+                    className={`w-full text-left px-4 py-4 space-y-3 transition-colors ${
+                      isBusy
+                        ? "opacity-60 cursor-default"
+                        : "hover:bg-slate-50 active:bg-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <CallTypeBadge meeting={meeting} className="px-2.5 py-1 shrink-0" />
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium shrink-0 ${statusColors[callStatus as keyof typeof statusColors]}`}
+                      >
+                        {callStatus}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {meeting.agent_type || "—"}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {formatDate(meeting.start_time_utc || meeting.created_at)}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-slate-500 block mb-0.5">To</span>
+                        <span className="text-slate-900 font-mono">
+                          {displayCallPhoneNumber(
+                            meeting.to_number,
+                            meeting.inbound ?? true,
+                            "to"
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block mb-0.5">From</span>
+                        <span className="text-slate-900 font-mono">
+                          {displayCallPhoneNumber(
+                            meeting.from_number,
+                            meeting.inbound ?? true,
+                            "from"
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <span className="text-sm text-slate-700">
+                        {meeting.call_busy
+                          ? "Duration N/A"
+                          : formatDuration(
+                              meeting.duration,
+                              meeting.start_time_utc,
+                              meeting.end_time_utc
+                            )}
+                      </span>
+                      {!isBusy && (
+                        <span className="text-xs font-medium text-slate-900 underline-offset-2">
+                          View details →
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })
+            )}
+            </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-center gap-4 mt-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mt-4 px-4 pb-4 sm:px-5">
             <Button
               variant="outline"
               size="icon"
@@ -1284,7 +1364,7 @@ function HistoryPageContent() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm text-slate-600">
+            <span className="text-sm text-slate-600 text-center">
               {totalMeetings === 0
                 ? "No calls"
                 : `Showing ${(currentPage - 1) * MEETINGS_PAGE_SIZE + 1} to ${Math.min(currentPage * MEETINGS_PAGE_SIZE, totalMeetings)} of ${totalMeetings} calls`}
@@ -1300,6 +1380,7 @@ function HistoryPageContent() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+        </div>
         </div>
       </main>
 

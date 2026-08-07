@@ -12,11 +12,14 @@ const PAGINATION_PARAMS = [
   "from_number",
   "to_number",
   "inbound",
+  "call_type",
   "call_status",
   "date_from",
   "date_to",
   "date_sort_order",
   "duration_sort_order",
+  "has_latency_metrics",
+  "search",
 ] as const
 
 function normalizeMeeting(meeting: Record<string, unknown>) {

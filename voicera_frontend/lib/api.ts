@@ -208,26 +208,25 @@ export async function updateAgent(agentId: string, agentData: CreateAgentRequest
 }
 
 /**
- * Delete an agent
+ * Delete an agent by agent_type (display name).
  */
 export async function deleteAgent(
-  agentId: string,
-  options?: { agentType?: string }
+  agentType: string
 ): Promise<{ status: string; message: string }> {
-  const trimmedAgentType = options?.agentType?.trim() || ""
-  const hasAgentType = trimmedAgentType.length > 0
-  const response = hasAgentType
-    ? await fetchApiRoute(`/api/agents?agent_type=${encodeURIComponent(trimmedAgentType)}`, {
-        method: "DELETE",
-      })
-    : await fetchApiRoute(`/api/agents/${encodeURIComponent(agentId)}`, {
-        method: "DELETE",
-      })
-  
+  const trimmedAgentType = agentType.trim()
+  if (!trimmedAgentType) {
+    throw new Error("Agent type is required")
+  }
+
+  const response = await fetchApiRoute(
+    `/api/agents?agent_type=${encodeURIComponent(trimmedAgentType)}`,
+    { method: "DELETE" }
+  )
+
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response, "Failed to delete agent"))
   }
-  
+
   return response.json()
 }
 
@@ -336,6 +335,19 @@ export interface User {
   is_owner?: boolean
 }
 
+export interface UserJoinEligibility {
+  exists: boolean
+  can_join: boolean
+  reason:
+    | "new_user"
+    | "no_org"
+    | "solo_owner"
+    | "already_in_org"
+    | "member_of_other_org"
+  org_id?: string
+  is_member?: boolean
+}
+
 export interface LoginResponse {
   access_token: string
   token_type: string
@@ -382,6 +394,9 @@ export interface AgentConfig {
   user_online_detection_closing_message?: string
   session_timeout_minutes?: number
   language: string
+  languages?: string[]
+  secondary_languages?: string[]
+  secondary_language?: string
   knowledge_base_enabled?: boolean
   knowledge_document_ids?: string[]
   knowledge_top_k?: number
@@ -466,11 +481,14 @@ export interface MeetingsPageParams {
   from_number?: string
   to_number?: string
   inbound?: boolean
+  call_type?: string
   call_status?: string
   date_from?: string
   date_to?: string
   date_sort_order?: "latest" | "oldest"
   duration_sort_order?: "longest" | "shortest" | null
+  has_latency_metrics?: boolean
+  search?: string
 }
 
 export interface PaginatedMeetings {
@@ -495,6 +513,7 @@ function buildMeetingsQueryString(params: MeetingsPageParams): string {
   if (params.from_number) q.set("from_number", params.from_number)
   if (params.to_number) q.set("to_number", params.to_number)
   if (params.inbound !== undefined) q.set("inbound", String(params.inbound))
+  if (params.call_type) q.set("call_type", params.call_type)
   if (params.call_status) q.set("call_status", params.call_status)
   if (params.date_from) q.set("date_from", params.date_from)
   if (params.date_to) q.set("date_to", params.date_to)
@@ -502,6 +521,8 @@ function buildMeetingsQueryString(params: MeetingsPageParams): string {
   if (params.duration_sort_order) {
     q.set("duration_sort_order", params.duration_sort_order)
   }
+  if (params.has_latency_metrics) q.set("has_latency_metrics", "true")
+  if (params.search) q.set("search", params.search)
   return q.toString()
 }
 
@@ -835,6 +856,7 @@ export interface Meeting {
   agent_category?: string
   agent_config?: Record<string, any>
   inbound?: boolean
+  call_type?: string
   from_number?: string
   to_number?: string
   created_at?: string
@@ -1606,6 +1628,31 @@ export async function transferOwnership(
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.detail || error.error || "Failed to transfer ownership")
+  }
+
+  return response.json()
+}
+
+/**
+ * Check if an email can join an organization via invite link (public endpoint).
+ */
+export async function checkUserJoinEligibility(
+  email: string,
+  orgId?: string
+): Promise<UserJoinEligibility> {
+  const query = orgId ? `?org_id=${encodeURIComponent(orgId)}` : ""
+  const response = await fetch(
+    `/api/v1/users/check/${encodeURIComponent(email)}${query}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  )
+
+  if (!response.ok) {
+    throw new Error("Failed to check email eligibility")
   }
 
   return response.json()

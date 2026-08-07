@@ -9,9 +9,11 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { CallTypeBadge } from "@/components/history/call-type-badge"
+import { resolveCallType } from "@/lib/call-type"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { type Meeting, type MeetingDetails } from "@/lib/api"
-import { maskPhoneLastDigits } from "@/lib/mask-phone"
+import { displayCallPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
 import {
   ChevronLeft,
   Link2,
@@ -23,8 +25,6 @@ import {
   Bot,
   User,
   Copy,
-  PhoneIncoming,
-  PhoneOutgoing,
   Loader2,
   Check,
   Hash,
@@ -40,61 +40,11 @@ import { getAuthToken } from "@/lib/api"
 import { useWavesurfer } from "@wavesurfer/react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Separator } from "@radix-ui/react-separator"
-
-/** Chrome built-in Translator / Language Detector (not in all TS libs yet). */
-type ChromeAvailability = "available" | "downloadable" | "downloading" | "unavailable"
-
-type ChromeTranslator = {
-  translate: (input: string) => Promise<string>
-  destroy?: () => void
-}
-
-type ChromeLanguageDetector = {
-  detect: (
-    input: string
-  ) => Promise<Array<{ detectedLanguage: string; confidence: number }>>
-  destroy?: () => void
-}
-
-type ChromeTranslatorCtor = {
-  availability: (options: {
-    sourceLanguage: string
-    targetLanguage: string
-  }) => Promise<ChromeAvailability>
-  create: (options: {
-    sourceLanguage: string
-    targetLanguage: string
-    monitor?: (m: {
-      addEventListener: (
-        type: "downloadprogress",
-        listener: (e: { loaded: number }) => void
-      ) => void
-    }) => void
-  }) => Promise<ChromeTranslator>
-}
-
-type ChromeLanguageDetectorCtor = {
-  availability: () => Promise<ChromeAvailability>
-  create: (options?: {
-    monitor?: (m: {
-      addEventListener: (
-        type: "downloadprogress",
-        listener: (e: { loaded: number }) => void
-      ) => void
-    }) => void
-  }) => Promise<ChromeLanguageDetector>
-}
-
-function getChromeTranslatorAPI(): ChromeTranslatorCtor | null {
-  const api = (globalThis as { Translator?: ChromeTranslatorCtor }).Translator
-  return api ?? null
-}
-
-function getChromeLanguageDetectorAPI(): ChromeLanguageDetectorCtor | null {
-  const api = (globalThis as { LanguageDetector?: ChromeLanguageDetectorCtor })
-    .LanguageDetector
-  return api ?? null
-}
+import {
+  detectTextLanguage,
+  getChromeTranslatorAPI,
+} from "@/lib/chrome-translation"
+import { agentLanguageToBcp47 } from "@/lib/greeting-message"
 
 interface MeetingDetailSheetProps {
   open: boolean
@@ -391,7 +341,6 @@ export function MeetingDetailSheet({
     }
 
     const TranslatorAPI = getChromeTranslatorAPI()
-    const LanguageDetectorAPI = getChromeLanguageDetectorAPI()
     if (!TranslatorAPI) {
       setTranslateError(
         "Translation is not available in this browser."
@@ -410,23 +359,10 @@ export function MeetingDetailSheet({
         .slice(0, 2000)
 
       let sourceLanguage = "auto"
-      if (LanguageDetectorAPI && sample.trim()) {
-        const detectorAvailability = await LanguageDetectorAPI.availability()
-        if (detectorAvailability !== "unavailable") {
-          const detector = await LanguageDetectorAPI.create({
-            monitor(m) {
-              m.addEventListener("downloadprogress", () => {})
-            },
-          })
-          try {
-            const detections = await detector.detect(sample)
-            const top = detections?.[0]
-            if (top?.detectedLanguage && top.detectedLanguage !== "und") {
-              sourceLanguage = top.detectedLanguage
-            }
-          } finally {
-            detector.destroy?.()
-          }
+      if (sample.trim()) {
+        const detected = await detectTextLanguage(sample)
+        if (detected?.language) {
+          sourceLanguage = detected.language
         }
       }
 
@@ -436,17 +372,8 @@ export function MeetingDetailSheet({
           (meeting as { language?: string } | null)?.language ||
             (meetingDetails as { language?: string } | null)?.language ||
             ""
-        ).toLowerCase()
-        const nameToCode: Record<string, string> = {
-          hindi: "hi",
-          marathi: "mr",
-          tamil: "ta",
-          telugu: "te",
-          kannada: "kn",
-          bengali: "bn",
-          english: "en",
-        }
-        sourceLanguage = nameToCode[langName] || "hi"
+        )
+        sourceLanguage = agentLanguageToBcp47(langName) || "hi"
       }
 
       if (sourceLanguage === "en") {
@@ -547,8 +474,17 @@ export function MeetingDetailSheet({
   }
 
   const downloadTranscript = () => {
-    if (!meetingDetails?.transcript_content) return
-    const blob = new Blob([meetingDetails.transcript_content], { type: "text/plain" })
+    if (transcriptMessages.length === 0) return
+
+    const text = transcriptMessages
+      .map((message) => {
+        const role = message.role || "unknown"
+        const timestamp = message.timestamp ? `[${message.timestamp}] ` : ""
+        return `${timestamp}${role}: ${message.content}`
+      })
+      .join("\n")
+
+    const blob = new Blob([text], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -557,15 +493,23 @@ export function MeetingDetailSheet({
     URL.revokeObjectURL(url)
   }
 
-  // Get agent name or fallback to from_number
+  const callType = meeting ? resolveCallType(meeting) : "outbound"
+  const isInbound = callType === "inbound"
+  const isWebCall = callType === "web"
+  const customerNumber = isWebCall
+    ? null
+    : isInbound
+      ? meeting?.from_number
+      : meeting?.to_number
+
   const agentName = useMemo(() => {
     return (
       meeting?.agent_type ||
-      (meeting?.from_number
-        ? `Call with ${maskPhoneLastDigits(meeting.from_number)}`
+      (customerNumber
+        ? `Call with ${maskPhoneLastDigits(customerNumber)}`
         : "Call")
     )
-  }, [meeting?.agent_type, meeting?.from_number])
+  }, [meeting?.agent_type, customerNumber])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -744,22 +688,7 @@ export function MeetingDetailSheet({
             {/* METADATA STRIP - Single row, scannable */}
             <div className="px-5 py-3 bg-white border-b border-slate-200 flex items-center gap-3 flex-wrap">
               <span className="text-xs text-slate-500">{formattedDate}</span>
-              <Badge 
-                variant="outline" 
-                className="bg-slate-100 text-slate-700 border-slate-200"
-              >
-                {meeting.inbound ? (
-                  <>
-                    <PhoneIncoming className="h-3 w-3" />
-                    <span>Inbound</span>
-                  </>
-                ) : (
-                  <>
-                    <PhoneOutgoing className="h-3 w-3" />
-                    <span>Outbound</span>
-                  </>
-                )}
-              </Badge>
+              <CallTypeBadge meeting={meeting} className="bg-transparent border border-slate-200" />
               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">
                 {meeting.call_busy ? "Busy" : (meeting.end_time_utc ? "Completed" : "In Progress")}
               </Badge>
@@ -844,7 +773,7 @@ export function MeetingDetailSheet({
                       size="sm"
                       onClick={downloadTranscript}
                       className="h-8 px-2.5 text-slate-600 hover:text-slate-900"
-                      disabled={!meetingDetails?.transcript_content}
+                      disabled={!hasTranscript}
                     >
                       <Download className="h-4 w-4 mr-1.5" />
                       <span className="text-xs whitespace-nowrap">Export</span>
@@ -981,16 +910,22 @@ export function MeetingDetailSheet({
                       </div>
                     )}
 
-                    {/* Caller Number Row */}
-                    {meeting.from_number && (
+                    {/* Customer phone row (caller on inbound, callee on outbound) */}
+                    {customerNumber && (
                       <div className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
                         <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
                           <Phone className="h-4 w-4 text-blue-600" />
                         </div>
                         <div>
-                          <div className="text-xs text-slate-500 font-medium">Caller</div>
+                          <div className="text-xs text-slate-500 font-medium">
+                            {isInbound ? "Caller" : "Called"}
+                          </div>
                           <div className="text-sm text-slate-900 font-mono">
-                            {maskPhoneLastDigits(meeting.from_number)}
+                            {displayCallPhoneNumber(
+                              customerNumber,
+                              isInbound,
+                              isInbound ? "from" : "to"
+                            )}
                           </div>
                         </div>
                       </div>

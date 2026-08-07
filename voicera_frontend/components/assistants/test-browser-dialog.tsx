@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Orb, type AgentState as OrbAgentState } from "@/components/ui/orb"
 import type { Agent } from "@/lib/api"
+import { getBrowserAgentWebSocketUrl } from "@/lib/johnaic-config"
 import { Loader2, Mic, MicOff, PhoneOff, Radio } from "lucide-react"
 
 interface TestBrowserDialogProps {
@@ -93,21 +94,6 @@ function downsampleTo16k(input: Float32Array, inputRate: number): Float32Array {
   }
 
   return result
-}
-
-function getBrowserWsUrl(agentId: string): string {
-  const explicitWsBase = process.env.NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL
-  const serverBase = process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL
-
-  let wsBase = explicitWsBase || ""
-  if (!wsBase && serverBase) {
-    wsBase = serverBase.replace(/^http:\/\//i, "ws://").replace(/^https:\/\//i, "wss://")
-  }
-  if (!wsBase) {
-    wsBase = "ws://localhost:7860"
-  }
-
-  return `${wsBase.replace(/\/$/, "")}/browser/agent/${encodeURIComponent(agentId)}`
 }
 
 export function TestBrowserDialog({
@@ -234,7 +220,7 @@ export function TestBrowserDialog({
       audioContextRef.current = ctx
       await ctx.resume()
 
-      const ws = new WebSocket(getBrowserWsUrl(agent.agent_id))
+      const ws = new WebSocket(getBrowserAgentWebSocketUrl(agent.agent_id))
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -313,7 +299,7 @@ export function TestBrowserDialog({
       }
 
       ws.onerror = () => {
-        setError("WebSocket connection failed")
+        setError("Failed to connect to server")
       }
 
       ws.onclose = () => {

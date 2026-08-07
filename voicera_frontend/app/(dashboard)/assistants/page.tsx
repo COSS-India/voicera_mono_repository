@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
 import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { isValidAgentName, sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
 import { agentsQueryKey, useAgentsQuery } from "@/lib/queries/agents"
+import { requireJohnaicServerUrl } from "@/lib/johnaic-config"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,23 +20,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { TestCallSheet } from "@/components/assistants/test-call-sheet"
 import { TestBrowserDialog } from "@/components/assistants/test-browser-dialog"
 import { AgentCard } from "@/components/assistants/agent-card"
 import { CreateNewAgentCard } from "@/components/assistants/create-new-agent-card"
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
+import { GreetingCommaBanner } from "@/components/assistants/greeting-comma-banner"
+import { GreetingTranslateSuggestion } from "@/components/assistants/greeting-translate-suggestion"
+import {
+  SpokenMessageInput,
+  SpokenMessageTextarea,
+} from "@/components/assistants/spoken-message-field"
 import {
   ChevronRight,
   ChevronLeft,
@@ -48,7 +45,6 @@ import {
   Settings,
   Volume2,
   CheckCircle2,
-  Languages,
   Mic,
   Loader2,
   Check,
@@ -61,6 +57,15 @@ import {
 // Import JSON data
 import sttData from "@/stt.json"
 import { displayLanguageName } from "@/lib/languageLabels"
+import {
+  buildLanguageConfigFields,
+  getActiveLanguages,
+  getIntersectedSTTModels,
+  getIntersectedSTTProviders,
+  getIntersectedTTSModels,
+  getIntersectedTTSProviders,
+  hasMultipleLanguages,
+} from "@/lib/languageModelSupport"
 import {
   type KenpathVariant,
   isBharatVistaarLanguageSupported,
@@ -253,7 +258,7 @@ interface AgentConfig {
   knowledgeTopK: number
   temperature: number
   maxTokens: number
-  language: string
+  selectedLanguages: string[]
   sttProvider: string
   sttModel: string
   keywords: string
@@ -297,7 +302,7 @@ const defaultConfig: AgentConfig = {
   knowledgeTopK: 3,
   temperature: 0.2,
   maxTokens: 450,
-  language: "Hindi",
+  selectedLanguages: ["Hindi"],
   sttProvider: "ai4bharat",
   sttModel: "indic-conformer-stt",
   keywords: "",
@@ -329,7 +334,7 @@ export default function AssistantsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [agentSortOrder, setAgentSortOrder] = useState<
     "newest" | "oldest" | "active-first" | "inactive-first"
-  >("newest")
+  >("active-first")
   const [config, setConfig] = useState<AgentConfig>(defaultConfig)
   const [view, setView] = useState<"list" | "create">("list")
   const [createStep, setCreateStep] = useState(1)
@@ -340,6 +345,7 @@ export default function AssistantsPage() {
   const [isTestBrowserDialogOpen, setIsTestBrowserDialogOpen] = useState(false)
   const [selectedAgentForTest, setSelectedAgentForTest] = useState<Agent | null>(null)
   const [showDeleteSuccessToast, setShowDeleteSuccessToast] = useState(false)
+  const [deletingAgentType, setDeletingAgentType] = useState<string | null>(null)
   const [integratedProviders, setIntegratedProviders] = useState<Set<string>>(new Set())
   const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
@@ -576,77 +582,42 @@ export default function AssistantsPage() {
     return result
   }, [])
 
-  // Get supported STT providers for selected language
-  const supportedSTTProviders = useMemo(() => {
-    if (!config.language) return new Set<string>()
-    const langData =
-      sttData.stt.languages[config.language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
+  // Languages used for STT/TTS intersection (primary + optional secondary)
+  const activeLanguages = useMemo(
+    () => getActiveLanguages(config.selectedLanguages),
+    [config.selectedLanguages]
+  )
+  const primaryLanguage = activeLanguages[0] || ""
 
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, models]) => Array.isArray(models) && models.length > 0)
-        .map(([provider]) => provider)
-    )
-  }, [config.language])
+  // Get supported STT providers for all selected languages (intersection)
+  const supportedSTTProviders = useMemo(
+    () => getIntersectedSTTProviders(activeLanguages),
+    [activeLanguages]
+  )
 
-  // Get supported STT models for selected provider
-  const supportedSTTModels = useMemo(() => {
-    if (!config.language || !config.sttProvider) return new Set<string>()
-    const langData =
-      sttData.stt.languages[config.language as keyof typeof sttData.stt.languages]
-    if (!langData) return new Set<string>()
+  // Get supported STT models for selected provider across all selected languages
+  const supportedSTTModels = useMemo(
+    () => getIntersectedSTTModels(activeLanguages, config.sttProvider),
+    [activeLanguages, config.sttProvider]
+  )
 
-    const models = langData.models[config.sttProvider as keyof typeof langData.models]
-    return new Set(Array.isArray(models) ? models : [])
-  }, [config.language, config.sttProvider])
+  // Get supported TTS providers for all selected languages (intersection)
+  const supportedTTSProviders = useMemo(
+    () => getIntersectedTTSProviders(activeLanguages),
+    [activeLanguages]
+  )
 
-  // Get supported TTS providers for selected language
-  const supportedTTSProviders = useMemo(() => {
-    if (!config.language) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
+  // Get supported TTS models for selected provider across all selected languages
+  const supportedTTSModels = useMemo(
+    () => getIntersectedTTSModels(activeLanguages, config.ttsProvider),
+    [activeLanguages, config.ttsProvider]
+  )
 
-    return new Set(
-      Object.entries(langData.models)
-        .filter(([, data]) => {
-          const modelData = data as { available?: boolean }
-          return modelData.available === true
-        })
-        .map(([provider]) => provider)
-    )
-  }, [config.language])
-
-  // Get supported TTS models for selected provider
-  const supportedTTSModels = useMemo(() => {
-    if (!config.language || !config.ttsProvider) return new Set<string>()
-    const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
-    if (!langData) return new Set<string>()
-
-    const providerData = langData.models[config.ttsProvider as keyof typeof langData.models] as {
-      model?: string
-      models?: string[]
-      available?: boolean
-    }
-    if (!providerData || !providerData.available) return new Set<string>()
-
-    const models: string[] = []
-    if (providerData.models && Array.isArray(providerData.models)) {
-      models.push(...providerData.models)
-    }
-    if (providerData.model) {
-      models.push(providerData.model)
-    }
-    return new Set(models)
-  }, [config.language, config.ttsProvider])
-
-  // Get available TTS voices for selected provider/model
+  // Get available TTS voices for primary language + selected provider/model
   const availableTTSVoices = useMemo(() => {
-    if (!config.language || !config.ttsProvider) return []
+    if (!primaryLanguage || !config.ttsProvider) return []
     const langData =
-      ttsData.tts.languages[config.language as keyof typeof ttsData.tts.languages]
+      ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
     if (!langData) return []
 
     const providerData = langData.models[config.ttsProvider as keyof typeof langData.models] as {
@@ -658,7 +629,54 @@ export default function AssistantsPage() {
       return providerData.voices
     }
     return []
-  }, [config.language, config.ttsProvider])
+  }, [primaryLanguage, config.ttsProvider])
+
+  // Clear STT/TTS selections when they fall outside the intersected language support
+  useEffect(() => {
+    if (activeLanguages.length === 0) return
+
+    setConfig((prev) => {
+      let changed = false
+      const next = { ...prev }
+
+      if (prev.sttModel && !supportedSTTModels.has(prev.sttModel)) {
+        next.sttModel = ""
+        changed = true
+      }
+      if (prev.sttProvider && !supportedSTTProviders.has(prev.sttProvider)) {
+        next.sttProvider = ""
+        next.sttModel = ""
+        changed = true
+      }
+      if (prev.ttsModel && !supportedTTSModels.has(prev.ttsModel)) {
+        next.ttsModel = ""
+        changed = true
+      }
+      if (prev.ttsProvider && !supportedTTSProviders.has(prev.ttsProvider)) {
+        next.ttsProvider = ""
+        next.ttsModel = ""
+        next.ttsVoice = ""
+        changed = true
+      }
+      if (
+        prev.ttsVoice &&
+        availableTTSVoices.length > 0 &&
+        !availableTTSVoices.includes(prev.ttsVoice)
+      ) {
+        next.ttsVoice = ""
+        changed = true
+      }
+
+      return changed ? next : prev
+    })
+  }, [
+    activeLanguages,
+    supportedSTTModels,
+    supportedSTTProviders,
+    supportedTTSModels,
+    supportedTTSProviders,
+    availableTTSVoices,
+  ])
 
   // Get LLM models for selected provider
   const availableLLMModels = useMemo(() => {
@@ -708,6 +726,8 @@ export default function AssistantsPage() {
       return
     }
 
+    setDeletingAgentType(agent.agent_type)
+
     try {
       // Step 1: Detach phone number if agent has one
       if (agent.phone_number) {
@@ -756,11 +776,10 @@ export default function AssistantsPage() {
       }
 
       // Step 3: Delete the agent
-      const agentId = agent.id || agent._id || agent.agent_type
-      if (!agentId) {
-        throw new Error("Agent ID is missing")
+      if (!agent.agent_type) {
+        throw new Error("Agent type is missing")
       }
-      await deleteAgent(agentId, { agentType: agent.agent_type })
+      await deleteAgent(agent.agent_type)
 
       await queryClient.invalidateQueries({
         queryKey: agentsQueryKey(user.org_id),
@@ -774,7 +793,66 @@ export default function AssistantsPage() {
     } catch (error) {
       console.error("Failed to delete agent:", error)
       alert(error instanceof Error ? error.message : "Failed to delete agent")
+      throw error
+    } finally {
+      setDeletingAgentType(null)
     }
+  }
+
+  // Reset STT/TTS when language selection changes; auto-pick ai4bharat when applicable
+  const applyLanguageAudioDefaults = (
+    updated: AgentConfig,
+    primaryLanguage: string
+  ) => {
+    updated.sttProvider = ""
+    updated.sttModel = ""
+    updated.ttsProvider = ""
+    updated.ttsModel = ""
+    updated.ttsVoice = ""
+
+    if (
+      primaryLanguage &&
+      primaryLanguage !== "English (United States)" &&
+      primaryLanguage !== "English (India)"
+    ) {
+      const sttLangData =
+        sttData.stt.languages[primaryLanguage as keyof typeof sttData.stt.languages]
+      if (
+        sttLangData?.models?.ai4bharat &&
+        Array.isArray(sttLangData.models.ai4bharat) &&
+        sttLangData.models.ai4bharat.length > 0
+      ) {
+        updated.sttProvider = "ai4bharat"
+        updated.sttModel = sttLangData.models.ai4bharat[0]
+      }
+
+      const ttsLangData =
+        ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
+      const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as
+        | { available?: boolean; model?: string; voices?: string[] }
+        | undefined
+      if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
+        updated.ttsProvider = "ai4bharat"
+        updated.ttsModel = ttsAi4bharatData.model
+        if (
+          ttsAi4bharatData.voices &&
+          Array.isArray(ttsAi4bharatData.voices) &&
+          ttsAi4bharatData.voices.length > 0
+        ) {
+          updated.ttsVoice = ttsAi4bharatData.voices[0]
+        }
+      }
+    }
+  }
+
+  const setSelectedLanguages = (languages: string[]) => {
+    setConfig((prev) => {
+      const updated = { ...prev, selectedLanguages: languages }
+      if (languages[0]) {
+        applyLanguageAudioDefaults(updated, languages[0])
+      }
+      return updated
+    })
   }
 
   // Update config helper
@@ -784,34 +862,10 @@ export default function AssistantsPage() {
   ) => {
     setConfig((prev) => {
       const updated = { ...prev, [key]: value }
-      if (key === "language") {
-        const newLanguage = value as string
-        updated.sttProvider = ""
-        updated.sttModel = ""
-        updated.ttsProvider = ""
-        updated.ttsModel = ""
-        updated.ttsVoice = ""
-        
-        // Auto-select ai4bharat for languages other than English (United States) and English (India)
-        if (newLanguage && newLanguage !== "English (United States)" && newLanguage !== "English (India)") {
-          // Check if ai4bharat is available for STT
-          const sttLangData = sttData.stt.languages[newLanguage as keyof typeof sttData.stt.languages]
-          if (sttLangData?.models?.ai4bharat && Array.isArray(sttLangData.models.ai4bharat) && sttLangData.models.ai4bharat.length > 0) {
-            updated.sttProvider = "ai4bharat"
-            updated.sttModel = sttLangData.models.ai4bharat[0] // Use first available model
-          }
-          
-          // Check if ai4bharat is available for TTS
-          const ttsLangData = ttsData.tts.languages[newLanguage as keyof typeof ttsData.tts.languages]
-          const ttsAi4bharatData = ttsLangData?.models?.ai4bharat as { available?: boolean; model?: string; voices?: string[] } | undefined
-          if (ttsAi4bharatData?.available && ttsAi4bharatData.model) {
-            updated.ttsProvider = "ai4bharat"
-            updated.ttsModel = ttsAi4bharatData.model
-            // Set first voice if available
-            if (ttsAi4bharatData.voices && Array.isArray(ttsAi4bharatData.voices) && ttsAi4bharatData.voices.length > 0) {
-              updated.ttsVoice = ttsAi4bharatData.voices[0]
-            }
-          }
+      if (key === "selectedLanguages") {
+        const languages = value as string[]
+        if (languages[0]) {
+          applyLanguageAudioDefaults(updated, languages[0])
         }
       }
       if (key === "sttProvider") {
@@ -837,10 +891,11 @@ export default function AssistantsPage() {
         const variant = value as KenpathVariant
         if (
           updated.llmProvider === "kenpath" &&
-          updated.language &&
-          !isBharatVistaarLanguageSupported(variant, updated.language)
+          updated.selectedLanguages.some(
+            (lang) => !isBharatVistaarLanguageSupported(variant, lang)
+          )
         ) {
-          updated.language = ""
+          updated.selectedLanguages = []
           updated.sttProvider = ""
           updated.sttModel = ""
           updated.ttsProvider = ""
@@ -887,10 +942,16 @@ export default function AssistantsPage() {
     setIsCreatingAgent(true)
 
     try {
-      // Generate agent_id from agent_type: replace spaces with underscores and convert to lowercase
-      const agentId = config.name.replace(/\s+/g, '_').toLowerCase()
+      const trimmedName = config.name.trim()
+      const nameError = validateAgentName(trimmedName)
+      if (nameError) {
+        alert(nameError)
+        return
+      }
 
-      const languageName = config.language // Already the name, no lookup needed
+      const agentId = slugifyAgentId(trimmedName)
+
+      const languageFields = buildLanguageConfigFields(config.selectedLanguages)
 
       // Build LLM model object with official provider name
       const llmModel: {
@@ -960,7 +1021,7 @@ export default function AssistantsPage() {
       let plivoAnswerUrl: string | undefined
       
       if (config.telephonyProvider === "Vobiz") {
-        vobizAnswerUrl = `${process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL}/answer?agent_id=${agentId}`
+        vobizAnswerUrl = `${requireJohnaicServerUrl()}/answer?agent_id=${agentId}`
         console.log(" answer url", vobizAnswerUrl)
         
         // // Create Vobiz application
@@ -973,7 +1034,7 @@ export default function AssistantsPage() {
         }
       }
       if (config.telephonyProvider === "Plivo") {
-        plivoAnswerUrl = `${process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL}/plivo/answer?agent_id=${agentId}`
+        plivoAnswerUrl = `${requireJohnaicServerUrl()}/plivo/answer?agent_id=${agentId}`
         const plivoAppResponse = await createPlivoApplication(config.name, plivoAnswerUrl)
         if (plivoAppResponse.status === "success" && plivoAppResponse.app_id) {
           plivoAppId = plivoAppResponse.app_id
@@ -985,25 +1046,27 @@ export default function AssistantsPage() {
       const agentData: CreateAgentRequest = {
         org_id: user.org_id,
         agent_category: "voicera_telephony",
-        agent_type: config.name,
+        agent_type: trimmedName,
         agent_id: agentId,
         agent_config:
           config.interactionMode === "non_conversational"
             ? {
                 interaction_mode: "non_conversational",
-                greeting_message: config.greetingMessage,
-                language: languageName,
+                greeting_message: config.greetingMessage ?? "",
+                ...languageFields,
                 tts_model: ttsModel,
               }
             : {
                 interaction_mode: "conversational",
                 system_prompt: config.systemPrompt,
-                greeting_message: config.greetingMessage,
+                greeting_message: config.greetingMessage ?? "",
                 ignore_user_speech_before_greeting: config.ignoreUserSpeechBeforeGreeting,
                 interruption_min_words: config.interruptionMinWords,
                 user_silence_hangup_seconds: config.userSilenceHangupSeconds,
                 call_timeout_seconds: config.callTimeoutSeconds,
-                hold_messages: config.holdMessages.map((m) => m.trim()).filter(Boolean),
+                hold_messages: config.holdMessages
+                  .map((m) => m.trim())
+                  .filter(Boolean),
                 hold_message_timeout_seconds: config.holdMessageTimeoutSeconds,
                 user_online_detection_enabled: config.userOnlineDetectionEnabled,
                 user_online_detection_message: config.userOnlineDetectionMessage.trim(),
@@ -1011,7 +1074,7 @@ export default function AssistantsPage() {
                 user_online_detection_repeats: config.userOnlineDetectionRepeats,
                 user_online_detection_closing_message:
                   config.userOnlineDetectionClosingMessage.trim(),
-                language: languageName,
+                ...languageFields,
                 knowledge_base_enabled: config.llmProvider === "openai" ? config.knowledgeEnabled : false,
                 knowledge_document_ids:
                   config.llmProvider === "openai" && config.knowledgeEnabled
@@ -1072,9 +1135,9 @@ export default function AssistantsPage() {
         return config.interactionMode !== null
       case "agent":
         if (config.interactionMode === "non_conversational") {
-          return (config.name?.length ?? 0) > 0 && (config.greetingMessage?.trim().length ?? 0) > 0
+          return isValidAgentName(config.name) && (config.greetingMessage?.trim().length ?? 0) > 0
         }
-        return (config.name?.length ?? 0) > 0 && config.systemPrompt.length > 0
+        return isValidAgentName(config.name) && config.systemPrompt.length > 0
       case "llm":
         if (config.llmProvider === "kenpath") {
           return !!config.llmProvider
@@ -1086,7 +1149,7 @@ export default function AssistantsPage() {
       case "audio":
         if (config.interactionMode === "non_conversational") {
           return !!(
-            config.language &&
+            primaryLanguage &&
             config.ttsProvider &&
             config.ttsModel &&
             config.ttsVoice &&
@@ -1094,7 +1157,7 @@ export default function AssistantsPage() {
           )
         }
         return !!(
-          config.language &&
+          primaryLanguage &&
           config.sttProvider &&
           config.sttModel &&
           config.ttsProvider &&
@@ -1143,29 +1206,31 @@ export default function AssistantsPage() {
   return (
     <div className="flex flex-col h-screen bg-slate-50/50">
       {/* Header */}
-      <header className="flex h-14 items-center gap-4 border-b border-slate-200 bg-white px-5 lg:px-8 sticky top-0 z-10">
-          <nav className="flex items-center gap-1.5 text-sm">
-            <span className="text-slate-500">Dashboard</span>
-          <ChevronRight className="h-4 w-4 text-slate-400" />
-            <span className="text-slate-900 font-medium">Agents</span>
+      <header className="flex h-14 items-center gap-3 border-b border-slate-200 bg-white page-shell-x sticky top-0 z-10 shrink-0">
+        <SidebarTrigger className="h-9 w-9 shrink-0" />
+          <nav className="flex items-center gap-1.5 text-sm min-w-0">
+            <span className="text-slate-500 hidden sm:inline">Dashboard</span>
+          <ChevronRight className="h-4 w-4 text-slate-400 hidden sm:inline" />
+            <span className="text-slate-900 font-medium truncate">Agents</span>
         </nav>
       </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto p-6 lg:p-8">
+        <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
           {/* Greeting Section */}
-          <div className="flex items-start justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-semibold text-slate-900 mb-1">Hi {user?.name}</h1>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 mb-1 truncate">Hi {user?.name}</h1>
               <p className="text-slate-500">Let&apos;s get your agents inline.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full sm:w-auto">
               {dataUpdatedAt > 0 && (
-                <span className="text-xs text-slate-500 whitespace-nowrap">
+                <span className="text-xs text-slate-500 whitespace-nowrap order-last sm:order-first w-full sm:w-auto text-center sm:text-left">
                   Last updated{" "}
                   {formatDistanceToNow(dataUpdatedAt, { addSuffix: true })}
                 </span>
               )}
+              <div className="flex items-center gap-3 w-full sm:w-auto">
               <Button
                 type="button"
                 variant="outline"
@@ -1189,7 +1254,7 @@ export default function AssistantsPage() {
               >
                 <SelectTrigger
                   aria-label="Sort agents"
-                  className="h-10 w-[180px] rounded-lg border-slate-200 bg-white text-sm focus:ring-1 focus:ring-slate-200"
+                  className="h-10 w-full sm:w-[180px] rounded-lg border-slate-200 bg-white text-sm focus:ring-1 focus:ring-slate-200"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -1200,14 +1265,15 @@ export default function AssistantsPage() {
                   <SelectItem value="inactive-first">Inactive first</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="relative">
+              </div>
+              <div className="relative w-full sm:w-auto sm:min-w-[16rem]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
               type="text"
                   placeholder="Search Assistant"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-10 pl-9 pr-4 w-64 rounded-lg border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                  className="h-10 pl-9 pr-4 w-full rounded-lg border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
             />
               </div>
             </div>
@@ -1258,6 +1324,7 @@ export default function AssistantsPage() {
                 onTestBrowser={handleTestBrowser}
                 onViewHistory={handleViewHistory}
                 onDelete={handleDelete}
+                isDeleting={deletingAgentType === agent.agent_type}
               />
             ))}
           </div>
@@ -1282,7 +1349,7 @@ export default function AssistantsPage() {
 
         {/* Delete Success Toast */}
         {showDeleteSuccessToast && (
-          <div className="fixed top-20 right-6 z-50 animate-in slide-in-from-top-5 fade-in-0 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px]">
+          <div className="mobile-toast animate-in slide-in-from-top-5 fade-in-0 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
             <p className="font-medium">Agent deleted successfully</p>
           </div>
@@ -1295,38 +1362,39 @@ export default function AssistantsPage() {
   return (
     <div className="flex flex-col h-screen bg-slate-50/50">
       {/* Header with Progress */}
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 sticky top-0 z-10">
-        <div className="flex items-center gap-4">
+      <header className="flex h-auto min-h-14 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 bg-white px-4 sm:px-6 sticky top-0 z-10 py-3 sm:py-0">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <SidebarTrigger className="h-9 w-9 shrink-0" />
           <Button
             variant="ghost"
             size="sm"
             onClick={handleBackToList}
-            className="h-8 px-3 text-slate-600 hover:bg-slate-100 gap-1.5"
+            className="h-8 px-3 text-slate-600 hover:bg-slate-100 gap-1.5 shrink-0"
           >
             <ChevronLeft className="h-4 w-4" />
-            Back
+            <span className="sr-only sm:not-sr-only sm:inline">Back</span>
           </Button>
-          <Separator orientation="vertical" className="h-5" />
-          <h1 className="text-sm font-semibold text-slate-900">Create Telephony Agent</h1>
+          <Separator orientation="vertical" className="h-5 hidden sm:block" />
+          <h1 className="text-sm font-semibold text-slate-900 truncate">Create Telephony Agent</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500">Progress</span>
-          <div className="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+        <div className="flex items-center gap-3 w-full sm:w-auto sm:shrink-0">
+          <span className="text-xs text-slate-500 shrink-0">Progress</span>
+          <div className="flex-1 sm:w-32 h-1 bg-slate-200 rounded-full overflow-hidden min-w-[5rem]">
             <div
               className="h-full bg-slate-900 rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <span className="text-xs font-medium text-slate-700">{Math.round(progressPercent)}%</span>
+          <span className="text-xs font-medium text-slate-700 shrink-0">{Math.round(progressPercent)}%</span>
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Row - Progress Stepper */}
-        <aside className="bg-white border-b border-slate-100 p-3 sm:p-4">
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">Setup Progress</h3>
-          <div className="flex gap-2 overflow-x-auto pb-1 justify-center">
+        <aside className="bg-white border-b border-slate-100 p-2 sm:p-3">
+          <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 text-center">Setup Progress</h3>
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 justify-center">
             {activeWizardSteps.map((step) => {
               const Icon = step.icon
               const isActive = createStep === step.id
@@ -1338,7 +1406,7 @@ export default function AssistantsPage() {
                   key={step.id}
                   onClick={() => isAccessible && setCreateStep(step.id)}
                   disabled={!isAccessible}
-                  className={`shrink-0 min-w-[140px] sm:min-w-[160px] flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-all duration-150 ${
+                  className={`shrink-0 min-w-[128px] sm:min-w-[148px] flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-left transition-all duration-150 ${
                     isActive
                       ? "bg-slate-100"
                       : isAccessible
@@ -1347,7 +1415,7 @@ export default function AssistantsPage() {
                 }`}
               >
                 <div
-                  className={`h-8 w-8 rounded-md flex items-center justify-center transition-all duration-150 shrink-0 ${
+                  className={`h-7 w-7 rounded-md flex items-center justify-center transition-all duration-150 shrink-0 ${
                     isActive
                       ? "bg-slate-900 text-white"
                       : isCompleted
@@ -1355,20 +1423,20 @@ export default function AssistantsPage() {
                       : "bg-slate-100 text-slate-400"
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-3.5 w-3.5" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p
-                    className={`text-sm font-medium leading-tight truncate ${
+                    className={`text-[13px] font-medium leading-tight truncate ${
                       isActive ? "text-slate-900" : isCompleted ? "text-slate-700" : "text-slate-500"
                     }`}
                   >
                     {step.title}
                   </p>
-                  <p className="text-[11px] text-slate-400 truncate">{step.subtitle}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{step.subtitle}</p>
                 </div>
                 {isCompleted && (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
                 )}
               </button>
               )
@@ -1460,12 +1528,12 @@ export default function AssistantsPage() {
                     <label className="text-base font-bold text-slate-900">Agent Name</label>
                     <Input
                       value={config.name}
-                      onChange={(e) => updateConfig("name", e.target.value)}
+                      onChange={(e) => updateConfig("name", sanitizeAgentNameInput(e.target.value))}
                       placeholder="Enter agent name"
                       className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                     />
                     <p className="text-sm text-slate-500">
-                      Give your agent a unique name to identify it.
+                      Use letters, numbers, underscores, or hyphens only. No spaces.
                     </p>
                   </div>
 
@@ -1477,24 +1545,25 @@ export default function AssistantsPage() {
                         : "Agent Welcome Message"}
                     </label>
                     {config.interactionMode === "non_conversational" ? (
-                      <Textarea
-                        value={config.greetingMessage}
-                        onChange={(e) => updateConfig("greetingMessage", e.target.value)}
-                        placeholder="Your payment is due tomorrow. Please pay to avoid late fees."
+                      <SpokenMessageTextarea
+                        value={config.greetingMessage ?? ""}
+                        onChange={(value) => updateConfig("greetingMessage", value)}
+                        placeholder="Your payment is due tomorrow Please pay to avoid late fees"
                         className="min-h-[120px] rounded-lg border-slate-200 bg-white resize-none text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                     ) : (
-                      <Input
-                        value={config.greetingMessage}
-                        onChange={(e) => updateConfig("greetingMessage", e.target.value)}
-                        placeholder="Hello from EkStep"
+                      <SpokenMessageInput
+                        value={config.greetingMessage ?? ""}
+                        onChange={(value) => updateConfig("greetingMessage", value)}
+                        placeholder="Hello"
                         className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                     )}
+                    <GreetingCommaBanner context="greeting" />
                     <p className="text-sm text-slate-500">
                       {config.interactionMode === "non_conversational"
                         ? "This message will be spoken on the call and the call will end when finished."
-                        : `This will be the initial message from the agent. You can use variables here using {"{variable_name}"}`}
+                        : "This will be the initial message from the agent."}
                     </p>
                     {config.interactionMode !== "non_conversational" && (
                     <div className="flex items-center justify-between gap-4 pt-2">
@@ -1820,71 +1889,22 @@ export default function AssistantsPage() {
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-8">
                   {/* Language Selection */}
-                  <div className="space-y-3">
-                    <label className="text-base font-bold text-slate-900">Language: </label>
-                    <Popover open={languageOpen} onOpenChange={setLanguageOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={languageOpen}
-                          className="w-full max-w-md h-12 justify-between rounded-lg border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Languages className="h-4 w-4 text-blue-500" />
-                            {config.language
-                              ? displayLanguageName(config.language)
-                              : "Select language..."}
-                          </div>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[400px] p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Search languages..." />
-                          <CommandList>
-                            <CommandEmpty>No language found.</CommandEmpty>
-                            <CommandGroup heading="Languages">
-                              {allLanguages.map((lang) => {
-                                const bharatBlocked =
-                                  config.llmProvider === "kenpath" &&
-                                  !isBharatVistaarLanguageSupported(
-                                    config.kenpathVariant,
-                                    lang.code
-                                  )
-                                return (
-                                <CommandItem
-                                  key={lang.code}
-                                  value={`${lang.code} ${lang.name}`}
-                                  disabled={bharatBlocked}
-                                  onSelect={() => {
-                                    if (bharatBlocked) return
-                                    updateConfig("language", lang.code)
-                                    setLanguageOpen(false)
-                                  }}
-                                  className="py-2.5"
-                                >
-                                  <span
-                                    className={`font-medium ${bharatBlocked ? "text-slate-400" : ""}`}
-                                  >
-                                    {lang.name}
-                                  </span>
-                                  {bharatBlocked && (
-                                    <span className="ml-2 text-xs text-slate-400">
-                                      (not supported)
-                                    </span>
-                                  )}
-                                </CommandItem>
-                                )
-                              })}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                  <LanguageSelectionSection
+                    selectedLanguages={config.selectedLanguages}
+                    allLanguages={allLanguages}
+                    llmProvider={config.llmProvider}
+                    kenpathVariant={config.kenpathVariant}
+                    sttProvider={config.sttProvider}
+                    sttModel={config.sttModel}
+                    ttsProvider={config.ttsProvider}
+                    ttsModel={config.ttsModel}
+                    open={languageOpen}
+                    onOpenChange={setLanguageOpen}
+                    onLanguagesChange={setSelectedLanguages}
+                  />
 
                   {/* STT Settings */}
-                  {config.language && config.interactionMode !== "non_conversational" && (
+                  {activeLanguages.length > 0 && config.interactionMode !== "non_conversational" && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select transcriber</label>
                       <div className="grid grid-cols-2 gap-4">
@@ -1966,10 +1986,10 @@ export default function AssistantsPage() {
                   )}
 
                   {/* TTS Settings */}
-                  {config.language && (
+                  {activeLanguages.length > 0 && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select synthesizer</label>
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Provider</label>
                           <Select value={config.ttsProvider} onValueChange={(v) => updateConfig("ttsProvider", v)}>
@@ -2080,7 +2100,7 @@ export default function AssistantsPage() {
                             <SelectTrigger className="min-h-[48px] py-3 px-4 rounded-lg border-slate-200 bg-white font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all text-left [&>span]:whitespace-normal [&>span]:line-clamp-2 [&>span]:text-left">
                               <SelectValue placeholder="Select a voice description to customize voice characteristics" className="whitespace-normal" />
                             </SelectTrigger>
-                            <SelectContent className="rounded-lg max-h-[300px] w-[600px]">
+                            <SelectContent className="rounded-lg max-h-[300px] w-[min(600px,calc(100vw-2rem))]">
                               {descriptionsData.map((item, index) => (
                                 <SelectItem key={index} value={item.description} className="py-3 px-3">
                                   <span className="text-sm leading-relaxed block whitespace-normal">{item.description}</span>
@@ -2097,7 +2117,7 @@ export default function AssistantsPage() {
                   )}
 
                   {/* Voice Settings */}
-                  {config.language && config.ttsProvider && (
+                  {activeLanguages.length > 0 && config.ttsProvider && (
                     <div className="space-y-5 pt-6 border-t border-slate-100">
                       <div className="flex items-center gap-2">
                         <div className="h-7 w-7 rounded bg-slate-100 flex items-center justify-center">
@@ -2115,7 +2135,7 @@ export default function AssistantsPage() {
                       )}
 
                       {config.ttsProvider === "gcp" && (
-                        <div className="grid grid-cols-3 gap-6 bg-slate-50 rounded-lg p-5 border border-slate-100">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 bg-slate-50 rounded-lg p-4 sm:p-5 border border-slate-100">
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
                               <label className="text-sm font-medium text-slate-700">Speaking Rate</label>
@@ -2487,18 +2507,19 @@ export default function AssistantsPage() {
                       Played while waiting for a Kenpath LLM response. Leave empty to disable.
                       Messages rotate on each delay.
                     </p>
+                    <GreetingCommaBanner context="hold" />
 
                     <div className="space-y-3">
                       {config.holdMessages.map((message, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <Input
+                          <SpokenMessageInput
                             value={message}
-                            onChange={(e) => {
+                            onChange={(value) => {
                               const next = [...config.holdMessages]
-                              next[index] = e.target.value
+                              next[index] = value
                               updateConfig("holdMessages", next)
                             }}
-                            placeholder="e.g. Please wait, I am looking up the information"
+                            placeholder="e.g. Please wait I am looking up the information"
                             className="flex-1"
                           />
                           <Button
@@ -2603,6 +2624,14 @@ export default function AssistantsPage() {
                         </span>{" "}
                         {config.greetingMessage || "—"}
                       </p>
+                      <GreetingTranslateSuggestion
+                        greeting={config.greetingMessage ?? ""}
+                        primaryLanguage={primaryLanguage}
+                        onTranslated={(text) =>
+                          updateConfig("greetingMessage", text)
+                        }
+                        className="mb-2"
+                      />
                       {config.interactionMode !== "non_conversational" && (
                         <>
                           <p className="text-sm text-slate-600 mb-1">
@@ -2660,7 +2689,14 @@ export default function AssistantsPage() {
                     <div>
                       <p className="text-sm font-bold text-slate-900 mb-2">Audio Configuration</p>
                       <p className="text-sm font-medium text-slate-700">
-                        {config.language ? displayLanguageName(config.language) : "—"}
+                        {activeLanguages.length > 0
+                          ? activeLanguages.map((l) => displayLanguageName(l)).join(", ")
+                          : "—"}
+                        {hasMultipleLanguages(activeLanguages) && (
+                          <span className="ml-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                            Switching
+                          </span>
+                        )}
                       </p>
                       {config.interactionMode !== "non_conversational" && (
                         <p className="text-sm text-slate-500 mt-1">
@@ -2757,7 +2793,7 @@ export default function AssistantsPage() {
 
       {/* Delete Success Toast */}
       {showDeleteSuccessToast && (
-        <div className="fixed top-20 right-6 z-50 animate-in slide-in-from-top-5 fade-in-0 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px]">
+        <div className="mobile-toast animate-in slide-in-from-top-5 fade-in-0 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
           <CheckCircle2 className="h-5 w-5 text-red-600 shrink-0" />
           <p className="font-medium">Agent deleted successfully</p>
         </div>

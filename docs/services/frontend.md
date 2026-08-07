@@ -20,12 +20,12 @@ Default port: **3000**.
 
 ## Architecture
 
-Next.js (App Router) with server components for protected pages. Client components handle the WebSocket audio test. Browser calls hit `NEXT_PUBLIC_API_URL`; server-side routes inside Next can use the Docker-internal `API_URL` to reach the Backend.
+Next.js (App Router) with server components for protected pages. Client components handle the WebSocket audio test. The browser calls relative `/api/*` routes on the Frontend; those Next.js route handlers proxy to the Backend at `http://localhost:8000` (hardcoded in `lib/api-config.ts`, overridable via `API_URL` in Docker).
 
 ```mermaid
 flowchart LR
   U[Operator browser] --> FE[Frontend\n:3000]
-  FE -- NEXT_PUBLIC_API_URL --> BE[Backend :8000]
+  FE -- "/api/*" proxy --> BE[Backend :8000]
   FE -- VOICE_SERVER_URL (server) --> VS[Voice Server :7860]
   U -- WSS test --> VS
 ```
@@ -36,23 +36,19 @@ Copy `voicera_frontend/.env.example` to `.env.local`. Variables:
 
 | Variable | Where | Purpose |
 |----------|-------|---------|
-| `NEXT_PUBLIC_API_URL` | Client + server | Backend base URL used in the browser (default `http://localhost:8000`) |
-| `API_URL` | Server routes only | Docker-internal Backend URL (e.g. `http://backend:8000`) |
-| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | Client | Public HTTPS base for Vobiz / Plivo answer URLs and browser test |
-| `NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL` | Client | `wss://` base for **Test on Browser**; falls back from the server URL |
+| `NEXT_PUBLIC_JOHNAIC_SERVER_URL` | Client | Voice server base for Vobiz / Plivo answer URLs and **Test on Browser** (`http`→`ws`, `https`→`wss`) |
 | `VOICE_SERVER_URL` | Server routes only | Outbound call proxy / telemetry (default `http://localhost:7860`) |
+| `API_URL` | Docker Compose only | Override backend proxy target (e.g. `http://backend:8000`); local dev uses hardcoded `http://localhost:8000` |
 
 Example `.env.local`:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_JOHNAIC_SERVER_URL=https://your-public-voice-host
-NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL=wss://your-public-voice-host
 VOICE_SERVER_URL=http://localhost:7860
 ```
 
 {% hint style="warning" %}
-`NEXT_PUBLIC_JOHNAIC_SERVER_URL` and `NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL` must be reachable from the operator's browser and from the telephony provider. See [guides/deployment/public-voice-urls.md](../guides/deployment/public-voice-urls.md).
+`NEXT_PUBLIC_JOHNAIC_SERVER_URL` must be reachable from the operator's browser and from the telephony provider. See [guides/deployment/public-voice-urls.md](../guides/deployment/public-voice-urls.md).
 {% endhint %}
 
 ## Endpoints / API surface
@@ -122,7 +118,7 @@ npm run start
 ## Troubleshooting
 
 - [troubleshooting/common-issues.md](../troubleshooting/common-issues.md)
-- "Test on Browser" silent or fails to connect — verify `NEXT_PUBLIC_JOHNAIC_WEBSOCKET_URL` is reachable and uses `wss://` in production.
+- "Test on Browser" silent or fails to connect — verify `NEXT_PUBLIC_JOHNAIC_SERVER_URL` is reachable; use `https://` in production so the client connects via `wss://`.
 
 ## Next steps
 

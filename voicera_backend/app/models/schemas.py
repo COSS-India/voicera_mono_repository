@@ -101,6 +101,7 @@ class MeetingCreate(BaseModel):
     start_time_utc: Optional[str] = None
     end_time_utc: Optional[str] = None
     inbound: Optional[bool] = None
+    call_type: Optional[str] = None
     from_number: Optional[str] = None
     to_number: Optional[str] = None
     created_at: Optional[str] = None
@@ -117,6 +118,7 @@ class MeetingResponse(BaseModel):
     agent_category: Optional[str] = None
     agent_config: Optional[Dict[str, Any]] = None
     inbound: Optional[bool] = None
+    call_type: Optional[str] = None
     from_number: Optional[str] = None
     to_number: Optional[str] = None
     created_at: Optional[str] = None
@@ -213,6 +215,7 @@ class CallRecordingCreate(BaseModel):
     end_time_utc: Optional[str] = None
     org_id: Optional[str] = None
     latency_metrics: Optional[Dict[str, Any]] = None
+    call_type: Optional[str] = None
 
 class CallRecordingResponse(BaseModel):
     """Schema for call recording response."""

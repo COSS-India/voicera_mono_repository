@@ -1,13 +1,14 @@
 """
 Meeting service for handling meeting-related database operations.
 """
+import logging
+import re
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from app.database import get_database
 from app.models.schemas import MeetingCreate
 from app.services.agent_service import fetch_agent_config
-import logging
-import re
+from app.utils.call_type import call_type_filter, normalize_call_type, resolve_call_type
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ def setup_meeting_id(meeting_data: MeetingCreate) -> Dict[str, Any]:
             meeting_data.end_time_utc is not None and
             meeting_data.start_time_utc is None and
             meeting_data.inbound is None and
+            meeting_data.call_type is None and
             meeting_data.from_number is None and
             meeting_data.to_number is None
         )
@@ -73,8 +75,12 @@ def setup_meeting_id(meeting_data: MeetingCreate) -> Dict[str, Any]:
             logger.info(f"Setting call_busy={meeting_data.call_busy} for meeting {meeting_data.meeting_id}")
         
         if not is_update_only:
+            if meeting_data.call_type is not None:
+                meeting_doc["call_type"] = normalize_call_type(meeting_data.call_type)
             if meeting_data.inbound is not None:
                 meeting_doc["inbound"] = meeting_data.inbound
+                if "call_type" not in meeting_doc and meeting_data.call_type is None:
+                    meeting_doc["call_type"] = "inbound" if meeting_data.inbound else "outbound"
             if meeting_data.from_number:
                 meeting_doc["from_number"] = meeting_data.from_number
             if meeting_data.to_number:
@@ -141,9 +147,12 @@ def _build_meetings_query(
     from_number: Optional[str] = None,
     to_number: Optional[str] = None,
     inbound: Optional[bool] = None,
+    call_type: Optional[str] = None,
     call_status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    has_latency_metrics: Optional[bool] = None,
+    search: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build MongoDB query mirroring History tab client filters."""
     conditions: List[Dict[str, Any]] = [{"org_id": org_id}]
@@ -154,8 +163,22 @@ def _build_meetings_query(
         conditions.append({"from_number": from_number})
     if to_number:
         conditions.append({"to_number": to_number})
-    if inbound is not None:
+    if call_type:
+        type_clause = call_type_filter(call_type)
+        if type_clause:
+            conditions.append(type_clause)
+    elif inbound is not None:
         conditions.append({"inbound": inbound})
+        if inbound is False:
+            conditions.append({"meeting_id": {"$not": {"$regex": r"^browser-"}}})
+            conditions.append({
+                "$or": [
+                    {"call_type": {"$exists": False}},
+                    {"call_type": None},
+                    {"call_type": ""},
+                    {"call_type": "outbound"},
+                ]
+            })
 
     if call_status:
         status_lower = call_status.strip().lower()
@@ -192,6 +215,28 @@ def _build_meetings_query(
         if expr_parts:
             conditions.append({"$expr": {"$and": expr_parts}})
 
+    if has_latency_metrics:
+        conditions.append({"latency_metrics.turns.0": {"$exists": True}})
+
+    if search:
+        term = search.strip()
+        if term:
+            regex = {"$regex": re.escape(term), "$options": "i"}
+            search_clauses: List[Dict[str, Any]] = [
+                {"meeting_id": regex},
+                {"agent_type": regex},
+                {"from_number": regex},
+                {"to_number": regex},
+            ]
+            term_lower = term.lower()
+            if term_lower == "inbound":
+                search_clauses.append(call_type_filter("inbound"))
+            elif term_lower == "outbound":
+                search_clauses.append(call_type_filter("outbound"))
+            elif term_lower in ("web", "web call", "web calls"):
+                search_clauses.append(call_type_filter("web"))
+            conditions.append({"$or": search_clauses})
+
     if len(conditions) == 1:
         return conditions[0]
     return {"$and": conditions}
@@ -218,11 +263,14 @@ def fetch_meetings_paginated(
     from_number: Optional[str] = None,
     to_number: Optional[str] = None,
     inbound: Optional[bool] = None,
+    call_type: Optional[str] = None,
     call_status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     date_sort_order: str = "latest",
     duration_sort_order: Optional[str] = None,
+    has_latency_metrics: Optional[bool] = None,
+    search: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Fetch a page of meetings for an org with filters and sort applied server-side.
@@ -236,9 +284,12 @@ def fetch_meetings_paginated(
             from_number=from_number,
             to_number=to_number,
             inbound=inbound,
+            call_type=call_type,
             call_status=call_status,
             date_from=date_from,
             date_to=date_to,
+            has_latency_metrics=has_latency_metrics,
+            search=search,
         )
         total = meeting_table.count_documents(query)
         skip = (page - 1) * limit

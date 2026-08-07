@@ -1,6 +1,15 @@
 "use client"
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,18 +18,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardPortal,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card"
-import {
   PhoneCall,
   Monitor,
   Clock,
   MoreVertical,
   Settings,
   Trash2,
+  Loader2,
 } from "lucide-react"
 import type { Agent } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -34,6 +38,7 @@ interface AgentCardProps {
   onTestBrowser: (agent: Agent) => void
   onViewHistory: (agent: Agent) => void
   onDelete?: (agent: Agent) => void
+  isDeleting?: boolean
   callCount?: number
 }
 
@@ -46,21 +51,27 @@ export function AgentCard({
   onTestBrowser,
   onViewHistory,
   onDelete,
+  isDeleting = false,
   callCount = 0,
 }: AgentCardProps) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
   const isAlertAgent = agent.agent_config?.interaction_mode === "non_conversational"
-  const fullPromptText = isAlertAgent
-    ? (agent.agent_config?.greeting_message ?? "").trim()
-    : (agent.agent_config?.system_prompt ?? "").trim()
 
   const isConnected = Boolean(agent?.phone_number)
 
-  const handleDeleteClick = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (onDelete) {
+  const openDeleteDialog = () => {
+    setShowDeleteDialog(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!onDelete) return
+    try {
       await onDelete(agent)
+      setShowDeleteDialog(false)
+    } catch {
+      // Keep dialog open so the user can retry or cancel.
     }
   }
 
@@ -98,76 +109,8 @@ export function AgentCard({
     </div>
   )
 
-  const hoverZone = (
-    <>
-      <div>
-        <div className="flex flex-wrap items-start gap-2">
-          <h3 className="text-[17px] font-medium leading-snug text-slate-900 break-words">
-            {displayName}
-          </h3>
-          {isAlertAgent && (
-            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-              Alert
-            </span>
-          )}
-        </div>
-        <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-slate-500">
-          {description}
-        </p>
-      </div>
-
-      <div className="mt-4">
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium"
-          style={{
-            backgroundColor: isConnected ? "#EAF3DE" : "#FCEBEB",
-            color: isConnected ? "#3B6D11" : "#A32D2D",
-          }}
-          onClick={(e) => {
-            e.stopPropagation()
-            window.location.assign("/numbers")
-          }}
-          title="Manage numbers"
-        >
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ backgroundColor: isConnected ? "#3B6D11" : "#A32D2D" }}
-          />
-          {isConnected ? agent.phone_number : "Not linked"}
-        </button>
-        {callCount > 0 && (
-          <span className="ml-2 inline-flex h-8 items-center rounded-full bg-slate-100 px-2.5 text-[13px] font-medium text-slate-700">
-            {callCount.toLocaleString()} Calls
-          </span>
-        )}
-      </div>
-
-      <div className="my-4 border-t-[0.5px] border-slate-200" />
-    </>
-  )
-
-  const hoverZoneBody = fullPromptText ? (
-    <HoverCard openDelay={200} closeDelay={100}>
-      <HoverCardTrigger asChild>
-        <div className="mt-4 space-y-4 outline-none">{hoverZone}</div>
-      </HoverCardTrigger>
-      <HoverCardPortal>
-        <HoverCardContent side="top" className="max-w-md max-h-80 overflow-y-auto p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#5F5E5A]">
-            {isAlertAgent ? "Alert message" : "System prompt"}
-          </p>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
-            {fullPromptText}
-          </p>
-        </HoverCardContent>
-      </HoverCardPortal>
-    </HoverCard>
-  ) : (
-    <div className="mt-4 space-y-4">{hoverZone}</div>
-  )
-
   return (
+    <>
     <div
       onClick={handleCardClick}
       className="group cursor-pointer rounded-xl border-[0.5px] border-slate-200 bg-white p-[18px] transition-all duration-150 hover:-translate-y-[2px] hover:border-slate-300"
@@ -196,8 +139,13 @@ export function AgentCard({
                 onClick={(e) => e.stopPropagation()}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full border-[0.5px] border-slate-300 bg-transparent text-slate-600 transition-colors hover:bg-slate-50"
                 title="More options"
+                disabled={isDeleting}
               >
-                <MoreVertical className="h-4 w-4" />
+                {isDeleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MoreVertical className="h-4 w-4" />
+                )}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
@@ -213,8 +161,11 @@ export function AgentCard({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={handleDeleteClick}
+                onSelect={() => {
+                  setTimeout(() => openDeleteDialog(), 0)
+                }}
                 className="cursor-pointer text-red-600 focus:bg-red-50 focus:text-red-600"
+                disabled={isDeleting}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete Agent
@@ -224,7 +175,52 @@ export function AgentCard({
         </div>
       </div>
 
-      {hoverZoneBody}
+      <div className="mt-4 space-y-4">
+        <div>
+          <div className="flex flex-wrap items-start gap-2">
+            <h3 className="text-[17px] font-medium leading-snug text-slate-900 break-words">
+              {displayName}
+            </h3>
+            {isAlertAgent && (
+              <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                Alert
+              </span>
+            )}
+          </div>
+          <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-slate-500">
+            {description}
+          </p>
+        </div>
+
+        <div className="mt-4">
+          <button
+            type="button"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium"
+            style={{
+              backgroundColor: isConnected ? "#EAF3DE" : "#FCEBEB",
+              color: isConnected ? "#3B6D11" : "#A32D2D",
+            }}
+            onClick={(e) => {
+              e.stopPropagation()
+              window.location.assign("/numbers")
+            }}
+            title="Manage numbers"
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: isConnected ? "#3B6D11" : "#A32D2D" }}
+            />
+            {isConnected ? agent.phone_number : "Not linked"}
+          </button>
+          {callCount > 0 && (
+            <span className="ml-2 inline-flex h-8 items-center rounded-full bg-slate-100 px-2.5 text-[13px] font-medium text-slate-700">
+              {callCount.toLocaleString()} Calls
+            </span>
+          )}
+        </div>
+
+        <div className="my-4 border-t-[0.5px] border-slate-200" />
+      </div>
 
       <div className="grid grid-cols-2 gap-2">
         <Button
@@ -273,5 +269,52 @@ export function AgentCard({
         </Button>
       </div>
     </div>
+
+    <Dialog
+      open={showDeleteDialog}
+      onOpenChange={(open) => {
+        if (!isDeleting) {
+          setShowDeleteDialog(open)
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete agent?</DialogTitle>
+          <DialogDescription className="pt-2">
+            Are you sure you want to delete{" "}
+            <span className="font-medium text-slate-700">&quot;{displayName}&quot;</span>?
+            This will remove the agent and unlink any attached phone number. This action cannot be
+            undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-1 w-full">
+          <Button
+            variant="outline"
+            onClick={() => setShowDeleteDialog(false)}
+            disabled={isDeleting}
+            className="flex-1 sm:flex-none"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleConfirmDelete}
+            disabled={isDeleting}
+            className="flex-1 sm:flex-none"
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              "Yes"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

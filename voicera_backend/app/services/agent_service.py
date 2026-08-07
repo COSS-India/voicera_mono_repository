@@ -6,11 +6,25 @@ from datetime import datetime
 from app.database import get_database
 from app.models.schemas import AgentConfigCreate, AgentConfigUpdate
 import logging
+import re
 import string
 
 logger = logging.getLogger(__name__)
 
 VALID_INTERACTION_MODES = {"conversational", "non_conversational"}
+_AGENT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+_AGENT_NAME_ERROR = (
+    "Agent name may only contain letters, numbers, underscores, and hyphens (no spaces)"
+)
+
+
+def _validate_agent_type_name(agent_type: str) -> Optional[str]:
+    normalized = (agent_type or "").strip()
+    if not normalized:
+        return "Agent name cannot be empty"
+    if not _AGENT_NAME_PATTERN.match(normalized):
+        return _AGENT_NAME_ERROR
+    return None
 
 
 def _get_interaction_mode(agent_config: Dict[str, Any]) -> str:
@@ -30,6 +44,69 @@ def _validate_agent_config_for_mode(agent_config: Dict[str, Any]) -> Optional[st
     return None
 
 
+def _normalize_agent_language_fields(agent_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep one primary ``language`` and optional ``secondary_languages`` in sync."""
+    config = dict(agent_config or {})
+
+    primary = ""
+    secondaries: List[str] = []
+
+    languages_list = config.get("languages")
+    secondary_languages_list = config.get("secondary_languages")
+
+    if isinstance(languages_list, list) and languages_list:
+        deduped: List[str] = []
+        seen: set[str] = set()
+        for item in languages_list:
+            value = str(item).strip()
+            if not value:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(value)
+        if deduped:
+            primary = deduped[0]
+            secondaries = deduped[1:]
+    elif isinstance(secondary_languages_list, list) and secondary_languages_list:
+        primary = str(config.get("language") or "").strip()
+        seen: set[str] = {primary.lower()} if primary else set()
+        for item in secondary_languages_list:
+            value = str(item).strip()
+            if not value:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            secondaries.append(value)
+    else:
+        primary = str(config.get("language") or "").strip()
+        secondary = str(config.get("secondary_language") or "").strip()
+        if secondary and (not primary or secondary.lower() != primary.lower()):
+            secondaries = [secondary]
+
+    if not primary:
+        config.pop("language", None)
+        config.pop("languages", None)
+        config.pop("secondary_languages", None)
+        config.pop("secondary_language", None)
+        return config
+
+    config["language"] = primary
+    if secondaries:
+        config["secondary_languages"] = secondaries
+        config["languages"] = [primary, *secondaries]
+        config["secondary_language"] = secondaries[0]
+    else:
+        config.pop("languages", None)
+        config.pop("secondary_languages", None)
+        config.pop("secondary_language", None)
+
+    return config
+
+
 def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
     """
     Create a new agent type for a given org.
@@ -43,10 +120,15 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
     try:
         db = get_database()
         agent_table = db["AgentConfig"]
+
+        agent_type = (agent_data.agent_type or "").strip()
+        name_error = _validate_agent_type_name(agent_type)
+        if name_error:
+            return {"status": "fail", "message": name_error}
         
         # Check if agent_type already exists for this organization
         existing_agent = agent_table.find_one({
-            "agent_type": agent_data.agent_type,
+            "agent_type": agent_type,
             "org_id": agent_data.org_id
         })
         if existing_agent:
@@ -60,7 +142,7 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
         if existing_agent_by_id:
             return {"status": "fail", "message": "Agent ID already exists for this organization"}
 
-        agent_config = dict(agent_data.agent_config or {})
+        agent_config = _normalize_agent_language_fields(dict(agent_data.agent_config or {}))
         if not agent_config.get("interaction_mode"):
             agent_config["interaction_mode"] = "conversational"
         validation_error = _validate_agent_config_for_mode(agent_config)
@@ -69,7 +151,7 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
         
         now_iso = datetime.now().isoformat()
         agent_doc = {
-            "agent_type": agent_data.agent_type,
+            "agent_type": agent_type,
             "agent_id": agent_data.agent_id,
             "agent_config": agent_config,
             "org_id": agent_data.org_id,
@@ -101,7 +183,7 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
             agent_doc["plivo_answer_url"] = agent_data.plivo_answer_url
         
         agent_table.insert_one(agent_doc)
-        logger.info(f"Agent created successfully: {agent_data.agent_type}")
+        logger.info(f"Agent created successfully: {agent_type}")
         return {"status": "success", "message": "Agent type created successfully"}
         
     except Exception as e:
@@ -202,8 +284,9 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
             return {"status": "fail", "message": "Agent type not found"}
 
         target_agent_type = (agent_data.agent_type or agent_type).strip()
-        if not target_agent_type:
-            return {"status": "fail", "message": "Agent type cannot be empty"}
+        name_error = _validate_agent_type_name(target_agent_type)
+        if name_error:
+            return {"status": "fail", "message": name_error}
 
         if target_agent_type != agent_type:
             duplicate = agent_table.find_one({"agent_type": target_agent_type, "org_id": org_id})
@@ -211,7 +294,7 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
                 return {"status": "fail", "message": "Agent type already exists for this organization"}
 
         existing_mode = _get_interaction_mode(existing_agent.get("agent_config") or {})
-        incoming_config = dict(agent_data.agent_config or {})
+        incoming_config = _normalize_agent_language_fields(dict(agent_data.agent_config or {}))
         incoming_mode = _get_interaction_mode(incoming_config)
 
         if existing_mode == "non_conversational":
