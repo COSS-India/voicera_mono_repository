@@ -1,0 +1,19 @@
+voice_2_voice_server/utils/call_management/usage_guard.py
+  s_edae71ed09de38::t_a307e16c3e9777 5-10,23-55,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "f6b029428140e0cf91308b2d4b659a13d70400d3",
+  "prompts": {},
+  "sessions": {
+    "s_edae71ed09de38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e49bd136-5fd8-4b34-922c-22c622fa214a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
