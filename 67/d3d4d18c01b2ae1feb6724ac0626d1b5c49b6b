@@ -1,0 +1,27 @@
+ai4bharat_tts_server/inference/runner.py
+  s_9fcc766e399b6a::t_34730cc49aa6fc 41-45,54-55,64-65
+voicera_frontend/app/(dashboard)/assistants/[id]/page.tsx
+  s_9fcc766e399b6a::t_12bd8fad6395c0 959-966
+  s_9fcc766e399b6a::t_840c100b53c1e2 44,62-67,573-575,887-889,974,987,1015,1020-1022,1744,1748-1750,1758,1760,1762,1765,1767,1772-1781,1785,2077,2082,2084,2086,2089
+voicera_backend/app/services/agent_service.py
+  s_9fcc766e399b6a::t_dff8984fb075eb 412,415-420
+  s_9fcc766e399b6a::t_2ba74216739cc3 252
+  s_9fcc766e399b6a::t_fc277fda2818f8 249-251
+  s_9fcc766e399b6a::t_658f283e5420f1 6,21-33,248,255,278,310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "67d3d4d18c01b2ae1feb6724ac0626d1b5c49b6b",
+  "prompts": {},
+  "sessions": {
+    "s_9fcc766e399b6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce40f372-e052-4056-9ca2-27dc906689db",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
