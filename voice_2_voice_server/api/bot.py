@@ -66,6 +66,7 @@ from utils.language_switching import (
     is_bilingual_agent,
     resolve_agent_language_codes,
     setup_language_switching,
+    supports_vistaar_bhili_switching,
 )
 from utils.call_recording_utils import submit_call_recording
 from utils.vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
@@ -109,6 +110,7 @@ async def run_bot(
     vistaar_session_id: Optional[str] = None,
     sample_rate: Optional[int] = None,
     on_client_connected_hook: Optional[Callable[[], Awaitable[None]]] = None,
+    language_state_callback: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> Optional[CallMetricsObserver]:
     """Run the voice bot pipeline with the given configuration.
     
@@ -184,6 +186,18 @@ async def run_bot(
                 enable_fast_turn = getattr(llm, "enable_ai4bharat_fast_turn", None)
                 if callable(enable_fast_turn):
                     enable_fast_turn()
+
+            register_voice_handlers = getattr(llm, "register_voice_handlers", None)
+            if callable(register_voice_handlers):
+                register_voice_handlers(stt=stt, tts=tts)
+            if language_state_callback is not None:
+                register_lang_cb = getattr(llm, "register_language_state_callback", None)
+                if callable(register_lang_cb):
+                    register_lang_cb(language_state_callback)
+            if supports_vistaar_bhili_switching(agent_config):
+                logger.info(
+                    "Vistaar Bhili ↔ Marathi switching enabled (Kenpath control frames)"
+                )
         
         # Use fast aggregator (no lookahead/NLTK) for lower latency
         tts._aggregate_sentences = True
@@ -394,6 +408,7 @@ async def bot(
     agent_config: dict,
     provider: str = "vobiz",
     transcript_callback: Optional[Callable[[str, str, Optional[str]], Awaitable[None]]] = None,
+    language_state_callback: Optional[Callable[[str], Awaitable[None]]] = None,
     sample_rate: Optional[int] = None,
 ) -> str:
     """Main bot entry point - sets up transport and runs the pipeline."""
@@ -566,6 +581,7 @@ async def bot(
             vistaar_session_id=call_sid,
             sample_rate=sample_rate,
             on_client_connected_hook=on_client_connected_hook,
+            language_state_callback=language_state_callback,
         )
     finally:
         logger.info(f"Saving call data for {call_sid}...")

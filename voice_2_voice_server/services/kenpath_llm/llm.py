@@ -165,6 +165,148 @@ def is_bharat_vistaar_language_supported(
     return resolve_bharat_vistaar_language(language, environment=environment) is not None
 
 
+def try_parse_vistaar_language_switch(text: str) -> Optional[dict]:
+    """Parse Vistaar SSE language_switch frame (including unchanged)."""
+    stripped = (text or "").strip()
+    if not stripped.startswith("{"):
+        return None
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("event") != "language_switch":
+        return None
+    if not payload.get("success"):
+        return None
+    language = payload.get("language")
+    if not language:
+        return None
+    return payload
+
+
+def try_parse_vistaar_applied_language_switch(text: str) -> Optional[dict]:
+    """Parse language_switch frame that should trigger STT/TTS routing changes."""
+    payload = try_parse_vistaar_language_switch(text)
+    if not payload or payload.get("unchanged"):
+        return None
+    return payload
+
+
+def try_parse_vistaar_session_language(text: str) -> Optional[dict]:
+    """Parse Vistaar SSE session_language control frame."""
+    stripped = (text or "").strip()
+    if not stripped.startswith("{"):
+        return None
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("event") != "session_language":
+        return None
+    language = payload.get("language")
+    if not language:
+        return None
+    return payload
+
+
+def try_parse_vistaar_control_frame(text: str) -> Optional[dict]:
+    """Parse any Vistaar JSON control frame (session_language or language_switch)."""
+    return try_parse_vistaar_session_language(text) or try_parse_vistaar_language_switch(text)
+
+
+def peel_vistaar_json_object(text: str) -> tuple[Optional[str], str]:
+    """Extract one complete JSON object from the start of text, if present."""
+    stripped = (text or "").lstrip()
+    if not stripped.startswith("{"):
+        return None, text or ""
+
+    depth = 0
+    in_string = False
+    escape = False
+    for index, char in enumerate(stripped):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return stripped[: index + 1], stripped[index + 1 :]
+    return None, text or ""
+
+
+def find_vistaar_control_region_start(buffer: str) -> Optional[int]:
+    """Return index where non-speakable Vistaar control JSON begins."""
+    newline_idx = buffer.find("\n{")
+    if newline_idx != -1:
+        prefix = buffer[:newline_idx]
+        if prefix.strip() and not try_parse_vistaar_control_frame(prefix.strip()):
+            return newline_idx
+
+    brace_idx = buffer.find("{")
+    if brace_idx != -1:
+        tail = buffer[brace_idx:].lstrip()
+        if tail.startswith("{"):
+            return brace_idx
+    return None
+
+
+def pop_complete_words(text: str) -> tuple[list[str], str]:
+    """Split speakable text into complete word chunks; keep trailing fragment."""
+    words: list[str] = []
+    buffer = text or ""
+    while " " in buffer or "\n" in buffer:
+        space_idx = buffer.find(" ")
+        newline_idx = buffer.find("\n")
+        if space_idx == -1 and newline_idx == -1:
+            break
+        if space_idx == -1:
+            split_idx = newline_idx
+        elif newline_idx == -1:
+            split_idx = space_idx
+        else:
+            split_idx = min(space_idx, newline_idx)
+
+        word = buffer[:split_idx].strip()
+        buffer = buffer[split_idx + 1 :]
+        if word:
+            words.append(word + " ")
+    return words, buffer
+
+
+def looks_like_vistaar_control_fragment(text: str) -> bool:
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    if stripped.startswith("{"):
+        return True
+    markers = ('"event"', '"language_switch"', '"session_language"', '"language"')
+    lowered = stripped.lower()
+    return any(marker in lowered for marker in markers)
+
+
+def normalize_vistaar_language_code(language: str) -> Optional[str]:
+    """Normalize Vistaar language codes for Kenpath routing and STT/TTS."""
+    lang = (language or "").strip().lower()
+    if lang in ("bhb", "bhili"):
+        return "bhb"
+    if lang in ("mr", "marathi", "hi", "hindi", "en", "english"):
+        return {"marathi": "mr", "hindi": "hi", "english": "en"}.get(lang, lang)
+    return None
+
+
 class KenpathLLM(OpenAILLMService):
     def __init__(
         self,
@@ -222,14 +364,18 @@ class KenpathLLM(OpenAILLMService):
 
         self._session: Optional[aiohttp.ClientSession] = None
         self._voice_bhili_url = resolve_voice_bhili_url(self._vistaar_environment)
+        self._stt: Optional[object] = None
+        self._tts: Optional[object] = None
+        self._language_state_callback = None
 
         lang_lower = (language or "").strip().lower()
         if self._kenpath_backend == "bharatvistaar":
             self._use_voice_bhili = False
             self._source_lang = self._bharat_language
             self._target_lang = self._bharat_language
-        elif lang_lower == "bhb":
-            self._use_voice_bhili = True
+        elif lang_lower in ("bhb", "bhili"):
+            # Unified /api/voice/ SSE handles Bhili via session Redis + Bhashini NMT.
+            self._use_voice_bhili = False
             self._source_lang = "bhb"
             self._target_lang = "bhb"
         else:
@@ -259,7 +405,7 @@ class KenpathLLM(OpenAILLMService):
             )
         elif self._use_voice_bhili:
             logger.info(
-                "KenpathLLM initialized | Voice Bhili | env={} | timeout={}s | "
+                "KenpathLLM initialized | Voice Bhili (legacy JSON) | env={} | timeout={}s | "
                 "hold_messages={} | url={}",
                 self._vistaar_environment,
                 self.response_timeout,
@@ -268,16 +414,79 @@ class KenpathLLM(OpenAILLMService):
             )
         else:
             logger.info(
-                "KenpathLLM initialized | Vistaar | env={} | timeout={}s | "
-                "hold_messages={} | url={} | lang={}",
+                "KenpathLLM initialized | Vistaar SSE | env={} | timeout={}s | "
+                "hold_messages={} | url={}/api/voice/ | lang={}/{}",
                 self._vistaar_environment,
                 self.response_timeout,
                 len(self.hold_messages),
                 self._base_url,
                 self._source_lang,
+                self._target_lang,
             )
         if self._vistaar_session_id:
             logger.info("Vistaar session ID for this call: {}", self._vistaar_session_id)
+
+    def register_voice_handlers(self, *, stt: object, tts: object) -> None:
+        """Wire STT/TTS for mid-call Vistaar language_switch control frames."""
+        self._stt = stt
+        self._tts = tts
+        logger.info(
+            "KenpathLLM registered STT/TTS for Vistaar language switching | stt={} tts={}",
+            type(stt).__name__,
+            type(tts).__name__,
+        )
+
+    def register_language_state_callback(self, callback) -> None:
+        """Optional async callback(language_code) for browser/UI language badge updates."""
+        self._language_state_callback = callback
+
+    async def _notify_language_state(self, language: str) -> None:
+        code = normalize_vistaar_language_code(language) or str(language).strip().lower()
+        if not code:
+            return
+        self._source_lang = code
+        self._target_lang = code
+        if self._language_state_callback is not None:
+            try:
+                await self._language_state_callback(code)
+            except Exception as exc:
+                logger.warning("language_state_callback failed: {}", exc)
+
+    async def _handle_vistaar_control_frame(self, payload: dict) -> None:
+        event = payload.get("event")
+        language = payload.get("language")
+        if not language:
+            return
+        if event == "session_language":
+            await self._notify_language_state(str(language))
+            return
+        if event == "language_switch":
+            await self._notify_language_state(str(language))
+            if not payload.get("unchanged"):
+                await self._apply_vistaar_language_switch(str(language))
+
+    async def _apply_vistaar_language_switch(self, language: str) -> None:
+        code = normalize_vistaar_language_code(language)
+        if not code:
+            logger.warning("Ignoring unsupported Vistaar language switch: {}", language)
+            return
+
+        self._source_lang = code
+        self._target_lang = code
+        self._use_voice_bhili = False
+
+        if self._stt is not None or self._tts is not None:
+            from utils.language_switching import apply_vistaar_pipeline_language
+
+            await apply_vistaar_pipeline_language(self._stt, self._tts, code)
+
+        logger.info(
+            "Applied Vistaar language switch | language={} | api_langs={}/{} | use_voice_bhili={}",
+            code,
+            self._source_lang,
+            self._target_lang,
+            self._use_voice_bhili,
+        )
 
     def enable_bhashini_fast_turn(self) -> None:
         """Use Bhashini final transcript as the sole LLM turn trigger (Bhashini+Kenpath only)."""
@@ -437,9 +646,8 @@ class KenpathLLM(OpenAILLMService):
 
             if self._kenpath_backend == "bharatvistaar":
                 stream = self._stream_bharat_vistaar_chat(messages)
-            elif self._use_voice_bhili:
-                stream = self._iter_voice_bhili_text(user_message)
             else:
+                # Unified Vistaar SSE (/api/voice/) — supports mr/hi/en/bhb + control frames.
                 stream = self._stream_vistaar_completions(user_message)
 
             async for chunk in stream:
@@ -645,6 +853,7 @@ class KenpathLLM(OpenAILLMService):
                 )
 
     async def _iter_voice_bhili_text(self, query: str):
+        """Legacy JSON Bhili endpoint (prefer unified _stream_vistaar_completions)."""
         session_id = self._vistaar_session_id or str(uuid.uuid4())
         params = {
             "query": query,
@@ -674,14 +883,80 @@ class KenpathLLM(OpenAILLMService):
 
             data = await response.json()
             text = ""
+            language_switch = None
             if isinstance(data, dict):
                 text = data.get("response") or ""
+                language_switch = data.get("language_switch")
+
+            if language_switch and language_switch.get("language"):
+                await self._apply_vistaar_language_switch(
+                    str(language_switch["language"])
+                )
+
             if not (text or "").strip():
                 logger.warning("Voice Bhili returned empty response")
                 return
 
             for chunk in self._yield_word_chunks_from_text(text):
                 yield chunk
+
+    def _split_control_frame_tail(self, buffer: str) -> tuple[str, str]:
+        """Split streamed text from trailing Vistaar control JSON."""
+        control_start = find_vistaar_control_region_start(buffer)
+        if control_start is None:
+            return buffer, ""
+        return buffer[:control_start].rstrip(), buffer[control_start:].lstrip()
+
+    async def _drain_vistaar_control_blob(self, blob: str) -> str:
+        """Consume complete control JSON objects; return any incomplete tail."""
+        work = (blob or "").lstrip()
+        while work.startswith("{"):
+            obj, rest = peel_vistaar_json_object(work)
+            if obj is None:
+                return work
+            payload = try_parse_vistaar_control_frame(obj)
+            if not payload:
+                return work
+            await self._handle_vistaar_control_frame(payload)
+            work = rest.lstrip("\n\r\t ")
+        return work
+
+    async def _emit_speakable_from_buffer(self, buffer: str) -> tuple[str, list[str]]:
+        """Strip control frames and return complete speakable word chunks."""
+        out_words: list[str] = []
+        work = buffer
+
+        work = await self._drain_vistaar_control_blob(work)
+
+        control_start = find_vistaar_control_region_start(work)
+        if control_start is not None:
+            speakable = work[:control_start].rstrip()
+            control_blob = work[control_start:].lstrip()
+        else:
+            speakable = work
+            control_blob = ""
+
+        words, speakable_rest = pop_complete_words(speakable)
+        out_words.extend(words)
+
+        control_rest = await self._drain_vistaar_control_blob(control_blob)
+        if control_rest:
+            prefix = speakable_rest
+            if prefix and not prefix.endswith("\n"):
+                prefix += "\n"
+            work = f"{prefix}{control_rest}"
+        else:
+            work = speakable_rest
+
+        return work, out_words
+
+    async def _flush_vistaar_buffer(self, buffer: str) -> list[str]:
+        """Emit any remaining speakable text at stream end; never speak control JSON."""
+        work, words = await self._emit_speakable_from_buffer(buffer)
+        work = await self._drain_vistaar_control_blob(work)
+        if work.strip() and not looks_like_vistaar_control_fragment(work):
+            words.extend(self._yield_word_chunks_from_text(work))
+        return words
 
     async def _stream_vistaar_completions(
         self,
@@ -707,8 +982,10 @@ class KenpathLLM(OpenAILLMService):
         }
 
         logger.info(
-            "Vistaar API request | session_id={} | query={}...",
+            "Vistaar API request | session_id={} | source_lang={} | target_lang={} | query={}...",
             session_id,
+            source_lang,
+            target_lang,
             query[:50],
         )
 
@@ -726,28 +1003,13 @@ class KenpathLLM(OpenAILLMService):
             async for data in response.content.iter_any():
                 buffer += decoder.decode(data, final=False)
 
-                while " " in buffer or "\n" in buffer:
-                    space_idx = buffer.find(" ")
-                    newline_idx = buffer.find("\n")
-
-                    if space_idx == -1 and newline_idx == -1:
-                        break
-                    elif space_idx == -1:
-                        split_idx = newline_idx
-                    elif newline_idx == -1:
-                        split_idx = space_idx
-                    else:
-                        split_idx = min(space_idx, newline_idx)
-
-                    word = buffer[:split_idx].strip()
-                    buffer = buffer[split_idx + 1 :]
-
-                    if word:
-                        yield word + " "
+                buffer, words = await self._emit_speakable_from_buffer(buffer)
+                for word in words:
+                    yield word
 
             buffer += decoder.decode(b"", final=True)
-            if buffer.strip():
-                yield buffer.strip()
+            for word in await self._flush_vistaar_buffer(buffer):
+                yield word
 
     async def cleanup(self):
         if self._session and not self._session.closed:

@@ -571,6 +571,19 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
                 )
             )
 
+        async def send_language_state(language: str):
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "event": "languageState",
+                        "language": language,
+                    }
+                )
+            )
+
+        initial_language = str(agent_config.get("language") or "mr").strip().lower()
+        await send_language_state(initial_language)
+
         # Browser client streams 16 kHz L16 PCM (see test-browser-dialog.tsx).
         await bot(
             websocket,
@@ -580,6 +593,7 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
             agent_config,
             provider="browser",
             transcript_callback=send_transcript,
+            language_state_callback=send_language_state,
             sample_rate=16000,
         )
 

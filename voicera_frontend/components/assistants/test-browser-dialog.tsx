@@ -13,6 +13,7 @@ import {
 import { Orb, type AgentState as OrbAgentState } from "@/components/ui/orb"
 import type { Agent } from "@/lib/api"
 import { getBrowserAgentWebSocketUrl } from "@/lib/johnaic-config"
+import { displayLanguageName } from "@/lib/languageLabels"
 import { Loader2, Mic, MicOff, PhoneOff, Radio } from "lucide-react"
 
 interface TestBrowserDialogProps {
@@ -108,6 +109,7 @@ export function TestBrowserDialog({
   const [error, setError] = useState("")
   const [orbState, setOrbState] = useState<OrbAgentState>(null)
   const [transcripts, setTranscripts] = useState<Array<{ id: string; role: "user" | "assistant"; content: string }>>([])
+  const [activeLanguage, setActiveLanguage] = useState("mr")
 
   const wsRef = useRef<WebSocket | null>(null)
   const isMutedRef = useRef(false)
@@ -169,7 +171,8 @@ export function TestBrowserDialog({
     setIsConnecting(false)
     setOrbState(null)
     setTranscripts([])
-  }, [])
+    setActiveLanguage(agent?.agent_config?.language || "mr")
+  }, [agent?.agent_config?.language])
 
   const stopSession = useCallback(async () => {
     await teardown()
@@ -204,6 +207,7 @@ export function TestBrowserDialog({
     setIsConnecting(true)
     sessionIdRef.current = `browser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     setTranscripts([])
+    setActiveLanguage(agent.agent_config?.language || "mr")
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -277,6 +281,8 @@ export function TestBrowserDialog({
           const msg = JSON.parse(ev.data)
           if (msg?.event === "playAudio" && msg?.media?.payload) {
             handleIncomingAudio(msg.media.payload, Number(msg?.media?.sampleRate) || TARGET_SAMPLE_RATE)
+          } else if (msg?.event === "languageState" && msg?.language) {
+            setActiveLanguage(String(msg.language).trim().toLowerCase())
           } else if (msg?.event === "transcript" && msg?.content) {
             const role = msg.role === "assistant" ? "assistant" : "user"
             const content = String(msg.content).trim()
@@ -359,10 +365,17 @@ export function TestBrowserDialog({
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{agent ? getAgentDisplayName(agent) : "Test Agent on Browser"}</DialogTitle>
-          <DialogDescription>
-            Talk directly with your agent in real time from this browser.
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <DialogTitle>{agent ? getAgentDisplayName(agent) : "Test Agent on Browser"}</DialogTitle>
+              <DialogDescription>
+                Talk directly with your agent in real time from this browser.
+              </DialogDescription>
+            </div>
+            <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+              Active: {displayLanguageName(activeLanguage)}
+            </span>
+          </div>
         </DialogHeader>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
