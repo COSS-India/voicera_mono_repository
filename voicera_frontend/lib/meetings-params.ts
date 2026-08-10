@@ -42,9 +42,17 @@ export function buildMeetingsParams(
       case "call_status":
         params.call_status = filter.value
         break
-      case "call_type":
-        params.inbound = filter.value.toLowerCase() === "inbound"
+      case "call_type": {
+        const value = filter.value.toLowerCase()
+        if (value === "web" || value === "web call" || value === "web calls") {
+          params.call_type = "web"
+        } else if (value === "inbound") {
+          params.call_type = "inbound"
+        } else if (value === "outbound") {
+          params.call_type = "outbound"
+        }
         break
+      }
       case "from_number":
         params.from_number = filter.value
         break

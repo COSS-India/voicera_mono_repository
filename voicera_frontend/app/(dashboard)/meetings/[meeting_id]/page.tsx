@@ -6,6 +6,8 @@ import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getMeeting, type Meeting } from "@/lib/api"
+import { CallTypeBadge } from "@/components/history/call-type-badge"
+import { getCallTypeLabel, resolveCallType } from "@/lib/call-type"
 import {
   ChevronLeft,
   Phone,
@@ -113,14 +115,16 @@ export default function MeetingDetailPage() {
             <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  {meeting.inbound ? (
+                  {resolveCallType(meeting) === "web" ? (
+                    <Phone className="h-6 w-6 text-orange-500" />
+                  ) : resolveCallType(meeting) === "inbound" ? (
                     <PhoneIncoming className="h-6 w-6 text-blue-500" />
                   ) : (
                     <PhoneOutgoing className="h-6 w-6 text-green-500" />
                   )}
                   <div>
                     <h1 className="text-2xl font-semibold text-slate-900">
-                      {meeting.inbound ? "Inbound" : "Outbound"} Call
+                      {getCallTypeLabel(meeting)} Call
                     </h1>
                     <p className="text-sm text-slate-500 mt-1">
                       {meeting.agent_type}
@@ -229,7 +233,7 @@ export default function MeetingDetailPage() {
                       <div>
                         <p className="text-sm text-slate-500 mb-1">Call Direction</p>
                         <p className="text-slate-900">
-                          {meeting.inbound ? "Inbound" : "Outbound"}
+                          <CallTypeBadge meeting={meeting} className="px-2 py-0.5" />
                         </p>
                       </div>
                       {meeting.created_at && (

@@ -41,6 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
 import { agentsQueryKey } from "@/lib/queries/agents"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
@@ -58,6 +59,12 @@ import {
   loadSelectedLanguagesFromConfig,
 } from "@/lib/languageModelSupport"
 import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
+import { GreetingCommaBanner } from "@/components/assistants/greeting-comma-banner"
+import { GreetingTranslateSuggestion } from "@/components/assistants/greeting-translate-suggestion"
+import {
+  SpokenMessageInput,
+  SpokenMessageTextarea,
+} from "@/components/assistants/spoken-message-field"
 import {
   type KenpathVariant,
   isBharatVistaarLanguageSupported,
@@ -563,7 +570,9 @@ export default function AgentDetailPage() {
           setInteractionMode(loadedInteractionMode)
 
           setSystemPrompt(agentData.agent_config?.system_prompt || "")
-          setGreetingMessage(agentData.agent_config?.greeting_message || "")
+          setGreetingMessage(
+            agentData.agent_config?.greeting_message || ""
+          )
           const loadedIgnoreBeforeGreeting =
             (agentData.agent_config as any)?.ignore_user_speech_before_greeting !== false
           const loadedInterruptionMinWords = Math.max(
@@ -875,7 +884,9 @@ export default function AgentDetailPage() {
       interruption_min_words: interruptionMinWords,
       user_silence_hangup_seconds: userSilenceHangupSeconds,
       call_timeout_seconds: callTimeoutSeconds,
-      hold_messages: holdMessages.map((m) => m.trim()).filter(Boolean),
+      hold_messages: holdMessages
+        .map((m) => m.trim())
+        .filter(Boolean),
       hold_message_timeout_seconds: holdMessageTimeoutSeconds,
       user_online_detection_enabled: userOnlineDetectionEnabled,
       user_online_detection_message: userOnlineDetectionMessage.trim(),
@@ -945,9 +956,14 @@ export default function AgentDetailPage() {
   const handleSave = async () => {
     if (!agent || !user) return
     const trimmedAgentType = agentType.trim()
-    if (!trimmedAgentType) {
-      setErrorMessage("Agent name cannot be empty")
-      return
+    // Only enforce the name rule on rename — seeded default agents (and any agent
+    // created before the rule existed) have spaces in their names and must stay editable.
+    if (trimmedAgentType !== (agent.agent_type || agentId).trim()) {
+      const nameError = validateAgentName(trimmedAgentType)
+      if (nameError) {
+        setErrorMessage(nameError)
+        return
+      }
     }
 
     setShowConfirmModal(false)
@@ -955,7 +971,7 @@ export default function AgentDetailPage() {
     try {
       const originalAgentType = (agent.agent_type || agentId).trim()
       const agentIdSlug =
-        agent.agent_id || originalAgentType.replace(/\s+/g, "_").toLowerCase()
+        agent.agent_id || slugifyAgentId(originalAgentType)
 
       const updatedConfig: CreateAgentRequest = {
         org_id: user.org_id,
@@ -968,7 +984,7 @@ export default function AgentDetailPage() {
             ? {
                 interaction_mode: "non_conversational",
                 ...languageConfigFields,
-                greeting_message: greetingMessage,
+                greeting_message: greetingMessage || "",
                 tts_model: {
                   name: getProviderOfficialName(ttsProvider),
                   ...((ttsProvider === "cartesia" || ttsProvider === "gcp" || ttsProvider === "elevenlabs") && {
@@ -996,12 +1012,14 @@ export default function AgentDetailPage() {
                   interaction_mode: "conversational",
                   ...languageConfigFields,
                   system_prompt: systemPrompt,
-          greeting_message: greetingMessage,
+                  greeting_message: greetingMessage || "",
           ignore_user_speech_before_greeting: ignoreUserSpeechBeforeGreeting,
           interruption_min_words: interruptionMinWords,
           user_silence_hangup_seconds: userSilenceHangupSeconds,
           call_timeout_seconds: callTimeoutSeconds,
-          hold_messages: holdMessages.map((m) => m.trim()).filter(Boolean),
+          hold_messages: holdMessages
+        .map((m) => m.trim())
+        .filter(Boolean),
           hold_message_timeout_seconds: holdMessageTimeoutSeconds,
           user_online_detection_enabled: userOnlineDetectionEnabled,
           user_online_detection_message: userOnlineDetectionMessage.trim(),
@@ -1723,10 +1741,13 @@ export default function AgentDetailPage() {
                   </label>
                   <Input
                     value={agentType}
-                    onChange={(e) => setAgentType(e.target.value)}
+                    onChange={(e) => setAgentType(sanitizeAgentNameInput(e.target.value))}
                     className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
                     placeholder="Enter agent name"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Letters, numbers, underscores, and hyphens only. No spaces.
+                  </p>
                 </div>
 
                 <div>
@@ -1734,24 +1755,34 @@ export default function AgentDetailPage() {
                     {interactionMode === "non_conversational" ? "Alert Message" : "Greeting Message"}
                   </label>
                   {interactionMode === "non_conversational" ? (
-                    <Textarea
+                    <SpokenMessageTextarea
                       value={greetingMessage}
-                      onChange={(e) => setGreetingMessage(e.target.value)}
+                      onChange={setGreetingMessage}
                       className="min-h-[120px] border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                      placeholder="Your payment is due tomorrow."
+                      placeholder="Your payment is due tomorrow Please pay to avoid late fees"
                     />
                   ) : (
-                    <Input
+                    <SpokenMessageInput
                       value={greetingMessage}
-                      onChange={(e) => setGreetingMessage(e.target.value)}
+                      onChange={setGreetingMessage}
                       className="border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
                       placeholder="Hello"
                     />
                   )}
+                  <div className="mt-2 space-y-2">
+                    <GreetingCommaBanner context="greeting" />
+                    <GreetingTranslateSuggestion
+                      greeting={greetingMessage}
+                      primaryLanguage={primaryLanguage}
+                      onTranslated={(text) =>
+                        setGreetingMessage(text)
+                      }
+                    />
+                  </div>
                   <p className="text-xs text-slate-500 mt-1">
                     {interactionMode === "non_conversational"
                       ? "This message will be spoken on the call and the call will end when finished."
-                      : `This will be the initial message from the agent. You can use variables here using {"{variable_name}"}`}
+                      : "This will be the initial message from the agent."}
                   </p>
                   {interactionMode !== "non_conversational" && (
                   <div className="flex items-center justify-between gap-4 pt-3">
@@ -2043,18 +2074,19 @@ export default function AgentDetailPage() {
                     Played while waiting for a Kenpath LLM response. Leave empty to disable.
                     Messages rotate on each delay.
                   </p>
+                  <GreetingCommaBanner context="hold" />
 
                   <div className="space-y-3">
                     {holdMessages.map((message, index) => (
                       <div key={index} className="flex items-center gap-2">
-                        <Input
+                        <SpokenMessageInput
                           value={message}
-                          onChange={(e) => {
+                          onChange={(value) => {
                             const next = [...holdMessages]
-                            next[index] = e.target.value
+                            next[index] = value
                             setHoldMessages(next)
                           }}
-                          placeholder="e.g. Please wait, I am looking up the information"
+                          placeholder="e.g. Please wait I am looking up the information"
                           className="flex-1"
                         />
                         <Button

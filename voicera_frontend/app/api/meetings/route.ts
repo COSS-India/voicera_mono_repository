@@ -12,6 +12,7 @@ const PAGINATION_PARAMS = [
   "from_number",
   "to_number",
   "inbound",
+  "call_type",
   "call_status",
   "date_from",
   "date_to",

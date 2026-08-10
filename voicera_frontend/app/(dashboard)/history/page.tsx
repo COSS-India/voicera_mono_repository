@@ -28,6 +28,8 @@ import {
   useMeetingFilterOptionsQuery,
 } from "@/lib/queries/meetings"
 import { displayCallPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
+import { getCallTypeLabel, resolveCallType } from "@/lib/call-type"
+import { CallTypeBadge } from "@/components/history/call-type-badge"
 import { MeetingDetailSheet } from "@/components/history/meeting-detail-sheet"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -287,7 +289,7 @@ function HistoryPageContent() {
       "Agent Name": meeting.agent_type || "-",
       "To Number": meeting.to_number || "-",
       "From Number": meeting.from_number || "-",
-      "Call Type": meeting.inbound ? "Inbound" : "Outbound",
+      "Call Type": getCallTypeLabel(meeting),
       "Called On": formatDate(meeting.start_time_utc || meeting.created_at),
       "Call Status": meeting.call_busy
         ? "Busy"
@@ -417,7 +419,7 @@ function HistoryPageContent() {
           "Agent Name": meeting.agent_type || "-",
           "To Number": meeting.to_number || "-",
           "From Number": meeting.from_number || "-",
-          "Call Type": meeting.inbound ? "Inbound" : "Outbound",
+          "Call Type": getCallTypeLabel(meeting),
           "Called On": formatDate(meeting.start_time_utc || meeting.created_at),
           Transcript: transcriptText,
         }
@@ -633,7 +635,7 @@ function HistoryPageContent() {
                       </div>
                     ) : addingFilter === 'call_type' ? (
                       <div className="space-y-1">
-                        {['Inbound', 'Outbound'].map(type => (
+                        {['Inbound', 'Outbound', 'Web'].map(type => (
                           <button
                             key={type}
                             onClick={() => addFilter('call_type', type)}
@@ -862,7 +864,7 @@ function HistoryPageContent() {
                           </button>
                         </div>
                         <div className="space-y-1">
-                          {['Inbound', 'Outbound'].map(type => (
+                          {['Inbound', 'Outbound', 'Web'].map(type => (
                             <button
                               key={type}
                               onClick={() => {
@@ -1164,50 +1166,7 @@ function HistoryPageContent() {
                     }`}
                   >
                     <div>
-                      <span
-                        className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold ${
-                          meeting.inbound
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-blue-50 text-blue-700"
-                        }`}
-                        style={{
-                          minWidth: '84px',
-                          justifyContent: 'center',
-                          letterSpacing: '0.03em',
-                          transition: 'background 0.15s, color 0.15s',
-                        }}
-                        aria-label={meeting.inbound ? "Inbound Call" : "Outbound Call"}
-                        title={meeting.inbound ? "Inbound Call" : "Outbound Call"}
-                      >
-                        {meeting.inbound ? (
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 20 20"
-                            width="16"
-                            height="16"
-                            fill="#059669"
-                            aria-hidden="true"
-                            className="mr-1"
-                            style={{ opacity: 0.95, verticalAlign: "middle" }}
-                          >
-                            <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5V5c0 1.149.15 2.263.43 3.326a13.022 13.022 0 0 0 9.244 9.244c1.063.28 2.177.43 3.326.43h1.5a1.5 1.5 0 0 0 1.5-1.5v-1.148a1.5 1.5 0 0 0-1.175-1.465l-3.223-.716a1.5 1.5 0 0 0-1.767 1.052l-.267.933c-.117.41-.555.643-.95.48a11.542 11.542 0 0 1-6.254-6.254c-.163-.395.07-.833.48-.95l.933-.267a1.5 1.5 0 0 0 1.052-1.767l-.716-3.223A1.5 1.5 0 0 0 4.648 2H3.5Zm13.22.22a.75.75 0 1 1 1.06 1.06L14.56 6.5h2.69a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 1 1.5 0v2.69l3.22-3.22Z"/>
-                          </svg>
-                        ) : (
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 20 20"
-                            width="16"
-                            height="16"
-                            fill="#2563eb"
-                            aria-hidden="true"
-                            className="mr-1"
-                            style={{ opacity: 0.95, verticalAlign: "middle" }}
-                          >
-                            <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5V5c0 1.149.15 2.263.43 3.326a13.022 13.022 0 0 0 9.244 9.244c1.063.28 2.177.43 3.326.43h1.5a1.5 1.5 0 0 0 1.5-1.5v-1.148a1.5 1.5 0 0 0-1.175-1.465l-3.223-.716a1.5 1.5 0 0 0-1.767 1.052l-.267.933c-.117.41-.555.643-.95.48a11.542 11.542 0 0 1-6.254-6.254c-.163-.395.07-.833.48-.95l.933-.267a1.5 1.5 0 0 0 1.052-1.767l-.716-3.223A1.5 1.5 0 0 0 4.648 2H3.5Zm13 2.56l-3.22 3.22a.75.75 0 1 1-1.06-1.06l3.22-3.22h-2.69a.75.75 0 0 1 0-1.5h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V4.56Z"/>
-                          </svg>
-                        )}
-                        {meeting.inbound ? "Inbound" : "Outbound"}
-                      </span>
+                      <CallTypeBadge meeting={meeting} />
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-slate-900">{meeting.agent_type || "-"}</span>
@@ -1335,15 +1294,7 @@ function HistoryPageContent() {
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${
-                          meeting.inbound
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-blue-50 text-blue-700"
-                        }`}
-                      >
-                        {meeting.inbound ? "Inbound" : "Outbound"}
-                      </span>
+                      <CallTypeBadge meeting={meeting} className="px-2.5 py-1 shrink-0" />
                       <span
                         className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium shrink-0 ${statusColors[callStatus as keyof typeof statusColors]}`}
                       >

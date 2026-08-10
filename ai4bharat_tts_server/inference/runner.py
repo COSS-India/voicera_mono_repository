@@ -38,6 +38,11 @@ class ParlerTTSModelRunner:
         num_kv_heads = self.model.config["text_encoder"]["num_heads"]
         head_dim = self.model.config["decoder"]["hidden_size"] // num_kv_heads
         num_layers = self.model.config["decoder"]["num_hidden_layers"]
+        # Dense KV is preallocated as batch x seq, so VRAM scales with the product.
+        # 2304 decode steps covers long utterances; 32 slots covers the concurrent
+        # calls a single instance sustains. Raise via TTS_MAX_BATCH_SIZE only after
+        # checking nvidia-smi headroom (~+250MB KV per extra slot).
+        max_batch_size = int(os.environ.get("TTS_MAX_BATCH_SIZE", "32"))
         # Dense SDPA KV; CUDA graphs enabled once seq-bucket capture is stable.
         self.self_attn_vmem = VirtualMemory(
             max_num_pages=1024,
@@ -46,8 +51,8 @@ class ParlerTTSModelRunner:
             head_dim=head_dim,
             num_layers=num_layers,
             type="dense",
-            max_seq_len=768,
-            max_batch_size=80,
+            max_seq_len=768*3,
+            max_batch_size=max_batch_size,
         )
         self.cross_attn_vmem = VirtualMemory(
             max_num_pages=1024,
@@ -56,8 +61,8 @@ class ParlerTTSModelRunner:
             head_dim=head_dim,
             num_layers=num_layers,
             type="dense",
-            max_seq_len=128,
-            max_batch_size=80,
+            max_seq_len=128*3,
+            max_batch_size=max_batch_size,
         )
         self.topk_processor = transformers.TopKLogitsWarper(top_k=50)
         self.num_codebooks = self.model.config["decoder"]["num_codebooks"]
