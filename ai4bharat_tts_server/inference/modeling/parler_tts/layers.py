@@ -33,7 +33,7 @@ class AttentionBlock(torch.nn.Module):
 
 
 class CrossAttentionBlock(AttentionBlock):
-    def prefill(self, hidden_states, key_value_states):
+    def prefill(self, hidden_states, key_value_states, attn_mask=None):
         """If key_value_states is not None, assumed to cross attention"""
         hidden_states = hidden_states.half()
         key_value_states = key_value_states.half()
@@ -48,6 +48,7 @@ class CrossAttentionBlock(AttentionBlock):
             query,
             key,
             value,
+            attn_mask=attn_mask,
         )
 
         attn_output = self.merge_heads(attn_output)
@@ -72,9 +73,17 @@ class SelfAttentionBlock(AttentionBlock):
         key = self.split_heads(self.k_proj(hidden_states))
         value = self.split_heads(self.v_proj(hidden_states))
 
-        attn_output = torch.nn.functional.scaled_dot_product_attention(
-            query, key, value, attn_mask, is_causal=True
-        )
+        if attn_mask is None:
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                query, key, value, is_causal=True
+            )
+        else:
+            # attn_mask carries a combined causal+padding mask for batched
+            # prefill with mixed-length sequences; is_causal must be False
+            # since the mask already encodes causality.
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                query, key, value, attn_mask=attn_mask, is_causal=False
+            )
         attn_output = self.merge_heads(attn_output)
         output = self.out_proj(attn_output)
         kv_cache = (key, value)
@@ -146,11 +155,15 @@ class DecoderLayer(torch.nn.Module):
         self,
         hidden_states,
         encoder_hidden_states,
+        self_attn_mask=None,
+        cross_attn_mask=None,
     ):
         # self attn
         residual = hidden_states
         hidden_states = self.self_attn_layer_norm(hidden_states)
-        hidden_states, kv_cache = self.self_attn.prefill(hidden_states)
+        hidden_states, kv_cache = self.self_attn.prefill(
+            hidden_states, attn_mask=self_attn_mask
+        )
         hidden_states = self.dropout(hidden_states)
         hidden_states = residual + hidden_states
 
@@ -158,7 +171,7 @@ class DecoderLayer(torch.nn.Module):
         residual = hidden_states
         hidden_states = self.encoder_attn_layer_norm(hidden_states)
         hidden_states, encoder_kv_cache = self.encoder_attn.prefill(
-            hidden_states, encoder_hidden_states
+            hidden_states, encoder_hidden_states, attn_mask=cross_attn_mask
         )
         hidden_states = self.dropout(hidden_states)
         hidden_states = residual + hidden_states
