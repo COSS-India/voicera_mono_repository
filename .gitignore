@@ -3,7 +3,17 @@ __pycache__/
 *.pyo
 files/
 local_files/
+
+# MongoDB → FerretDB migration dumps (keep locally; do not commit)
+backups/mongodb/*.archive.gz
+backups/mongodb/*.bson
+backups/mongodb/*.json
+!backups/mongodb/.gitkeep
+
+# Frontend local env (compose secret); may be empty placeholder
+voicera_frontend/.env.local
 ai4bharat_tts_server/compare_marathi_tts_metrics.py
 ai4bharat_tts_server/server_grpc.py
 ai4bharat_tts_server/tts_pb2_grpc.py
 ai4bharat_tts_server/tts_pb2.py
+docs/guides/deployment/mongodb-to-ferretdb.md

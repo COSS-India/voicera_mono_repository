@@ -39,7 +39,8 @@ A complete voice AI building block with telephony integration, featuring real-ti
 | `frontend` | 3000 | Next.js web dashboard for agent management |
 | `backend` | 8000 | FastAPI REST API for data management |
 | `voice_server` | 7860 | Real-time voice processing with Pipecat |
-| `mongodb` | 27017 | Primary database |
+| `ferretdb` | 27017 | Mongo-compatible DB (FerretDB over PostgreSQL) |
+| `postgres` | (internal) | FerretDB backing store (DocumentDB extension) |
 | `minio` | 9000/9001 | Object storage for recordings & transcripts |
 | `ai4bharat_stt_server` | 8001 | Local Indic STT (optional) |
 | `ai4bharat_tts_server` | 8002 | Local Indic TTS (optional) |
@@ -106,16 +107,17 @@ The Makefile provides convenient commands for managing the services:
 
 | Command | Description |
 |---------|-------------|
-| `make build-all-services` | Build Docker images for all core services (mongodb, backend, minio, frontend, voice_server) |
-| `make start-all-services` | Start all core services in detached mode |
+| `make build-all-services` | Build Docker images for all core services (backend, minio, frontend, voice_server) |
+| `make start-all-services` | Start all core services in detached mode (postgres, ferretdb, …) |
 | `make stop-all-services` | Stop all core services |
+| `make migrate-to-ferretdb` | Dump MongoDB and cut over to FerretDB |
 
 ### Backend-Only Commands
 
 | Command | Description |
 |---------|-------------|
-| `make build-backend-services` | Build only backend infrastructure (mongodb, backend, minio) |
-| `make start-backend-services` | Start backend services without frontend/voice |
+| `make build-backend-services` | Build only backend infrastructure (backend, minio) |
+| `make start-backend-services` | Start postgres, ferretdb, backend, minio |
 | `make stop-backend-services` | Stop backend services |
 
 ### Development Commands
@@ -136,7 +138,7 @@ The Makefile provides convenient commands for managing the services:
 
 ```bash
 # MongoDB Configuration
-MONGODB_HOST=localhost          # Use 'mongodb' when running in Docker
+MONGODB_HOST=localhost          # Use 'mongodb' (FerretDB alias) when running in Docker
 MONGODB_PORT=27017
 MONGODB_USER=admin
 MONGODB_PASSWORD=admin123
@@ -332,7 +334,9 @@ docker compose logs -f frontend
 ### Reset Database
 ```bash
 docker compose down -v
-docker volume rm voicera_mono_repository_mongodb_data
+# Optional: remove legacy Mongo volume after FerretDB cutover is verified
+# docker volume rm voicera_mono_repository_mongodb_data
+docker volume rm voicera_mono_repository_ferretdb_postgres_data
 make start-all-services
 ```
 

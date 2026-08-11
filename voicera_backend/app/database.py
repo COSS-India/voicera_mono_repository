@@ -1,5 +1,5 @@
 """
-Database connection and utilities for MongoDB.
+Database connection and utilities for Mongo-compatible DB (FerretDB).
 """
 from pymongo import MongoClient
 from pymongo.database import Database
@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MongoDB:
-    """MongoDB connection manager."""
+    """Mongo-compatible connection manager (FerretDB / MongoDB wire protocol)."""
     
     client: MongoClient = None
     database: Database = None
@@ -27,16 +27,16 @@ def connect_to_mongo():
         # Test the connection
         mongodb.client.admin.command('ping')
         mongodb.database = mongodb.client[settings.MONGODB_DATABASE]
-        logger.info("Connected to MongoDB successfully")
+        logger.info("Connected to Mongo-compatible DB (FerretDB) successfully")
     except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        logger.error(f"Failed to connect to MongoDB: {e}")
+        logger.error(f"Failed to connect to Mongo-compatible DB: {e}")
         raise
 
 def close_mongo_connection():
     """Close database connection."""
     if mongodb.client:
         mongodb.client.close()
-        logger.info("Disconnected from MongoDB")
+        logger.info("Disconnected from Mongo-compatible DB")
 
 def get_database() -> Database:
     """Get database instance."""
