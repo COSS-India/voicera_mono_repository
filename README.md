@@ -2,6 +2,8 @@
 
 A complete voice AI building block with telephony integration, featuring real-time speech-to-text, text-to-speech, and LLM-powered conversational agents.
 
+**Full documentation:** [voicera.gitbook.io/voicera-docs](https://voicera.gitbook.io/voicera-docs)
+
 ## Architecture Overview
 
 ```
