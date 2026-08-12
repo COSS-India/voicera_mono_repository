@@ -1,0 +1,11 @@
+# Wire protocols needed to talk to real TTS servers. Install only what you use;
+# an adapter raises AdapterUnavailable with the exact pip line if its transport
+# is missing, so a partial install never fails mysteriously.
+-r requirements.txt
+
+# websocket_pcm adapter (Indic-Mio, AI4Bharat Parler, any float32-PCM WS server)
+websockets>=12.0
+
+# http_rest adapter (Sarvam, ElevenLabs, Cartesia, OpenAI, any REST TTS)
+# and the http ASR backend used for round-trip WER/CER.
+aiohttp>=3.9

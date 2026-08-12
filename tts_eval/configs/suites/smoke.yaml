@@ -1,0 +1,19 @@
+# Fast confidence check. Runs in seconds, needs no ASR and no GPU.
+#
+# Use for: verifying a deployment is up and behaving, CI, and PR checks. NOT for
+# model selection — 13 utterances cannot resolve the differences that matter, and
+# without ASR the language-coverage verdicts carry an explicit
+# "intelligibility unverified" note.
+suite_id: smoke
+description: 13-utterance stratified smoke test, core metrics only, sequential.
+
+dataset: indic_conversational_v1
+# One utterance per language, chosen deterministically from the dataset hash, so
+# the same 13 are used on every machine and every run.
+sample: 13
+
+metrics: core
+
+concurrency: 1
+seed: 1234
+save_audio: true

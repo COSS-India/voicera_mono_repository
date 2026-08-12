@@ -1,0 +1,6 @@
+# Core runtime for the evaluation harness. Intentionally tiny so that
+# `tts-eval run --adapter mock` and every report/compare command work on a
+# machine with no GPU and no ML stack. Anything heavier is opt-in; see
+# requirements-metrics.txt and requirements-adapters.txt.
+numpy>=1.24
+PyYAML>=6.0

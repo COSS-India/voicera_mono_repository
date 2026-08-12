@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tts-eval"
+version = "0.1.0"
+description = "Standardised, reproducible evaluation harness for Text-to-Speech models (Indic-Mio and any other provider)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Core install is deliberately light: it must be installable on a laptop or a CI
+# runner with no GPU and no ML stack. Everything heavier (MOS predictors, ASR,
+# speaker embeddings) lives behind an extra and degrades to "not_computed".
+dependencies = [
+    "numpy>=1.24",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Wire protocols. Split out so an offline/replay-only install needs neither.
+ws = ["websockets>=12.0"]
+http = ["aiohttp>=3.9"]
+
+# Round-trip intelligibility (WER/CER). `asr-local` runs Whisper in-process;
+# the HTTP ASR backend needs nothing but `http` and talks to an existing server.
+asr-local = ["faster-whisper>=1.0"]
+
+# Perceptual metrics. Each is optional and independently skippable.
+mos = ["torch>=2.0", "torchaudio>=2.0"]
+speaker = ["torch>=2.0", "torchaudio>=2.0"]
+
+# Third-party standard benchmark backends (see docs: STANDARDS.md).
+# VERSA and TTSDS2 are NOT on PyPI as thin wheels; install per their own docs
+# and this package will detect and drive them.
+versa = ["torch>=2.0"]
+ttsds = ["ttsds"]
+
+dev = ["pytest>=7.4", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+tts-eval = "tts_eval.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tts_eval*"]
+
+[tool.setuptools.package-data]
+tts_eval = ["datasets/builtin/*.jsonl", "report/assets/*.css"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]

@@ -1,0 +1,69 @@
+{"id": "en-greet-01", "text": "Hello, thank you for calling. How may I help you today?", "language": "en", "category": "greeting", "script": "Latin"}
+{"id": "en-num-01", "text": "Your outstanding balance is 12,450 rupees, due on 5 March 2026.", "language": "en", "category": "numeric", "script": "Latin", "notes": "Tests digit, currency and date normalisation."}
+{"id": "en-code-01", "text": "Please share the OTP sent to your registered mobile number.", "language": "en", "category": "code_switch", "script": "Latin", "must_contain": ["OTP"]}
+{"id": "en-ask-01", "text": "Could you confirm whether you would like to reschedule the appointment?", "language": "en", "category": "question", "script": "Latin", "notes": "Question intonation."}
+{"id": "en-long-01", "text": "I have located your booking. The pickup is scheduled from Bengaluru airport terminal two at nine forty in the morning, and the driver will call you fifteen minutes before arrival.", "language": "en", "category": "long_form", "script": "Latin", "must_contain": ["Bengaluru"], "notes": "Long utterance: drives RTF, streaming stability and intra-utterance voice drift."}
+{"id": "hi-greet-01", "text": "नमस्ते, कॉल करने के लिए धन्यवाद। मैं आपकी कैसे मदद कर सकता हूँ?", "language": "hi", "category": "greeting", "script": "Devanagari"}
+{"id": "hi-num-01", "text": "आपका बकाया ₹12,450 है और अंतिम तिथि 5 मार्च 2026 है।", "language": "hi", "category": "numeric", "script": "Devanagari", "notes": "Latin digits and currency symbol inside Devanagari text."}
+{"id": "hi-code-01", "text": "कृपया अपने रजिस्टर्ड मोबाइल नंबर पर भेजा गया OTP बताइए।", "language": "hi", "category": "code_switch", "script": "Devanagari", "must_contain": ["OTP"]}
+{"id": "hi-ask-01", "text": "क्या आप अपना अपॉइंटमेंट दूसरी तारीख पर करना चाहेंगे?", "language": "hi", "category": "question", "script": "Devanagari"}
+{"id": "hi-long-01", "text": "आपकी बुकिंग मिल गई है। गाड़ी सुबह नौ बजकर चालीस मिनट पर बेंगलुरु एयरपोर्ट टर्मिनल दो से रवाना होगी, और ड्राइवर पहुँचने से पंद्रह मिनट पहले आपको कॉल करेगा।", "language": "hi", "category": "long_form", "script": "Devanagari"}
+{"id": "bn-greet-01", "text": "নমস্কার, ফোন করার জন্য ধন্যবাদ। আমি আপনাকে কীভাবে সাহায্য করতে পারি?", "language": "bn", "category": "greeting", "script": "Bengali"}
+{"id": "bn-num-01", "text": "আপনার বাকি টাকার পরিমাণ ১২,৪৫০ টাকা।", "language": "bn", "category": "numeric", "script": "Bengali", "notes": "Native Bengali numerals rather than Latin digits."}
+{"id": "bn-code-01", "text": "আপনার রেজিস্টার্ড মোবাইল নম্বরে পাঠানো OTP টি বলুন।", "language": "bn", "category": "code_switch", "script": "Bengali", "must_contain": ["OTP"]}
+{"id": "bn-ask-01", "text": "আপনি কি অ্যাপয়েন্টমেন্টের তারিখ পরিবর্তন করতে চান?", "language": "bn", "category": "question", "script": "Bengali"}
+{"id": "bn-long-01", "text": "আপনার বুকিং পাওয়া গেছে। গাড়িটি সকাল নয়টা চল্লিশ মিনিটে বেঙ্গালুরু বিমানবন্দর টার্মিনাল দুই থেকে ছাড়বে।", "language": "bn", "category": "long_form", "script": "Bengali"}
+{"id": "ta-greet-01", "text": "வணக்கம், அழைத்ததற்கு நன்றி. நான் உங்களுக்கு எப்படி உதவ முடியும்?", "language": "ta", "category": "greeting", "script": "Tamil"}
+{"id": "ta-num-01", "text": "உங்கள் நிலுவைத் தொகை 12,450 ரூபாய்.", "language": "ta", "category": "numeric", "script": "Tamil"}
+{"id": "ta-code-01", "text": "உங்கள் பதிவு செய்யப்பட்ட மொபைல் எண்ணுக்கு அனுப்பப்பட்ட OTP-யைச் சொல்லுங்கள்.", "language": "ta", "category": "code_switch", "script": "Tamil", "must_contain": ["OTP"]}
+{"id": "ta-ask-01", "text": "நீங்கள் சந்திப்பு தேதியை மாற்ற விரும்புகிறீர்களா?", "language": "ta", "category": "question", "script": "Tamil"}
+{"id": "ta-long-01", "text": "உங்கள் முன்பதிவு கிடைத்தது. வாகனம் காலை ஒன்பது நாற்பது மணிக்கு பெங்களூரு விமான நிலையம் முனையம் இரண்டிலிருந்து புறப்படும்.", "language": "ta", "category": "long_form", "script": "Tamil"}
+{"id": "te-greet-01", "text": "నమస్కారం, కాల్ చేసినందుకు ధన్యవాదాలు. నేను మీకు ఎలా సహాయం చేయగలను?", "language": "te", "category": "greeting", "script": "Telugu"}
+{"id": "te-num-01", "text": "మీ బకాయి మొత్తం 12,450 రూపాయలు.", "language": "te", "category": "numeric", "script": "Telugu"}
+{"id": "te-code-01", "text": "మీ రిజిస్టర్డ్ మొబైల్ నంబర్‌కు పంపిన OTP చెప్పండి.", "language": "te", "category": "code_switch", "script": "Telugu", "must_contain": ["OTP"]}
+{"id": "te-ask-01", "text": "మీరు అపాయింట్‌మెంట్ తేదీని మార్చాలనుకుంటున్నారా?", "language": "te", "category": "question", "script": "Telugu"}
+{"id": "te-long-01", "text": "మీ బుకింగ్ దొరికింది. వాహనం ఉదయం తొమ్మిది నలభై గంటలకు బెంగళూరు విమానాశ్రయం టెర్మినల్ రెండు నుండి బయలుదేరుతుంది.", "language": "te", "category": "long_form", "script": "Telugu"}
+{"id": "mr-greet-01", "text": "नमस्कार, फोन केल्याबद्दल धन्यवाद. मी आपली कशी मदत करू शकतो?", "language": "mr", "category": "greeting", "script": "Devanagari"}
+{"id": "mr-num-01", "text": "आपली थकबाकी ₹12,450 आहे.", "language": "mr", "category": "numeric", "script": "Devanagari"}
+{"id": "mr-code-01", "text": "कृपया आपल्या नोंदणीकृत मोबाइल क्रमांकावर पाठवलेला OTP सांगा.", "language": "mr", "category": "code_switch", "script": "Devanagari", "must_contain": ["OTP"]}
+{"id": "mr-ask-01", "text": "आपण भेटीची तारीख बदलू इच्छिता का?", "language": "mr", "category": "question", "script": "Devanagari"}
+{"id": "mr-long-01", "text": "आपले बुकिंग सापडले आहे. गाडी सकाळी नऊ वाजून चाळीस मिनिटांनी बेंगळुरू विमानतळ टर्मिनल दोन येथून निघेल.", "language": "mr", "category": "long_form", "script": "Devanagari"}
+{"id": "gu-greet-01", "text": "નમસ્તે, ફોન કરવા બદલ આભાર. હું આપની કેવી રીતે મદદ કરી શકું?", "language": "gu", "category": "greeting", "script": "Gujarati"}
+{"id": "gu-num-01", "text": "આપની બાકી રકમ ₹12,450 છે.", "language": "gu", "category": "numeric", "script": "Gujarati"}
+{"id": "gu-code-01", "text": "કૃપા કરીને આપના રજિસ્ટર્ડ મોબાઇલ નંબર પર મોકલેલો OTP કહો.", "language": "gu", "category": "code_switch", "script": "Gujarati", "must_contain": ["OTP"]}
+{"id": "gu-ask-01", "text": "શું આપ મુલાકાતની તારીખ બદલવા માંગો છો?", "language": "gu", "category": "question", "script": "Gujarati"}
+{"id": "gu-long-01", "text": "આપનું બુકિંગ મળી ગયું છે. વાહન સવારે નવ વાગ્યે ચાળીસ મિનિટે બેંગલુરુ એરપોર્ટ ટર્મિનલ બે થી નીકળશે.", "language": "gu", "category": "long_form", "script": "Gujarati"}
+{"id": "kn-greet-01", "text": "ನಮಸ್ಕಾರ, ಕರೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?", "language": "kn", "category": "greeting", "script": "Kannada"}
+{"id": "kn-num-01", "text": "ನಿಮ್ಮ ಬಾಕಿ ಮೊತ್ತ 12,450 ರೂಪಾಯಿ.", "language": "kn", "category": "numeric", "script": "Kannada"}
+{"id": "kn-code-01", "text": "ನಿಮ್ಮ ನೋಂದಾಯಿತ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಗೆ ಕಳುಹಿಸಿದ OTP ಹೇಳಿ.", "language": "kn", "category": "code_switch", "script": "Kannada", "must_contain": ["OTP"]}
+{"id": "kn-ask-01", "text": "ನೀವು ಭೇಟಿಯ ದಿನಾಂಕವನ್ನು ಬದಲಾಯಿಸಲು ಬಯಸುತ್ತೀರಾ?", "language": "kn", "category": "question", "script": "Kannada"}
+{"id": "kn-long-01", "text": "ನಿಮ್ಮ ಬುಕಿಂಗ್ ಸಿಕ್ಕಿದೆ. ವಾಹನ ಬೆಳಿಗ್ಗೆ ಒಂಬತ್ತು ನಲವತ್ತಕ್ಕೆ ಬೆಂಗಳೂರು ವಿಮಾನ ನಿಲ್ದಾಣ ಟರ್ಮಿನಲ್ ಎರಡರಿಂದ ಹೊರಡುತ್ತದೆ.", "language": "kn", "category": "long_form", "script": "Kannada"}
+{"id": "ml-greet-01", "text": "നമസ്കാരം, വിളിച്ചതിന് നന്ദി. ഞാൻ നിങ്ങളെ എങ്ങനെ സഹായിക്കാം?", "language": "ml", "category": "greeting", "script": "Malayalam"}
+{"id": "ml-num-01", "text": "നിങ്ങളുടെ കുടിശ്ശിക 12,450 രൂപയാണ്.", "language": "ml", "category": "numeric", "script": "Malayalam"}
+{"id": "ml-code-01", "text": "നിങ്ങളുടെ രജിസ്റ്റർ ചെയ്ത മൊബൈൽ നമ്പറിൽ ലഭിച്ച OTP പറയുക.", "language": "ml", "category": "code_switch", "script": "Malayalam", "must_contain": ["OTP"]}
+{"id": "ml-ask-01", "text": "നിങ്ങൾക്ക് അപ്പോയിന്റ്മെന്റ് തീയതി മാറ്റണോ?", "language": "ml", "category": "question", "script": "Malayalam"}
+{"id": "ml-long-01", "text": "നിങ്ങളുടെ ബുക്കിംഗ് കണ്ടെത്തി. വാഹനം രാവിലെ ഒൻപത് നാൽപ്പതിന് ബെംഗളൂരു വിമാനത്താവളം ടെർമിനൽ രണ്ടിൽ നിന്ന് പുറപ്പെടും.", "language": "ml", "category": "long_form", "script": "Malayalam"}
+{"id": "pa-greet-01", "text": "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, ਫ਼ੋਨ ਕਰਨ ਲਈ ਧੰਨਵਾਦ। ਮੈਂ ਤੁਹਾਡੀ ਕਿਵੇਂ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?", "language": "pa", "category": "greeting", "script": "Gurmukhi"}
+{"id": "pa-num-01", "text": "ਤੁਹਾਡੀ ਬਾਕੀ ਰਕਮ ₹12,450 ਹੈ।", "language": "pa", "category": "numeric", "script": "Gurmukhi"}
+{"id": "pa-code-01", "text": "ਕਿਰਪਾ ਕਰਕੇ ਆਪਣੇ ਰਜਿਸਟਰਡ ਮੋਬਾਈਲ ਨੰਬਰ ਉੱਤੇ ਭੇਜਿਆ OTP ਦੱਸੋ।", "language": "pa", "category": "code_switch", "script": "Gurmukhi", "must_contain": ["OTP"]}
+{"id": "pa-ask-01", "text": "ਕੀ ਤੁਸੀਂ ਮੁਲਾਕਾਤ ਦੀ ਤਾਰੀਖ਼ ਬਦਲਣਾ ਚਾਹੁੰਦੇ ਹੋ?", "language": "pa", "category": "question", "script": "Gurmukhi"}
+{"id": "pa-long-01", "text": "ਤੁਹਾਡੀ ਬੁਕਿੰਗ ਮਿਲ ਗਈ ਹੈ। ਗੱਡੀ ਸਵੇਰੇ ਨੌਂ ਵਜ ਕੇ ਚਾਲੀ ਮਿੰਟ ਉੱਤੇ ਬੰਗਲੌਰ ਏਅਰਪੋਰਟ ਟਰਮੀਨਲ ਦੋ ਤੋਂ ਰਵਾਨਾ ਹੋਵੇਗੀ।", "language": "pa", "category": "long_form", "script": "Gurmukhi"}
+{"id": "or-greet-01", "text": "ନମସ୍କାର, ଫୋନ୍ କରିବା ପାଇଁ ଧନ୍ୟବାଦ। ମୁଁ ଆପଣଙ୍କୁ କିପରି ସାହାଯ୍ୟ କରିପାରିବି?", "language": "or", "category": "greeting", "script": "Odia"}
+{"id": "or-num-01", "text": "ଆପଣଙ୍କ ବକେୟା ରାଶି 12,450 ଟଙ୍କା।", "language": "or", "category": "numeric", "script": "Odia"}
+{"id": "or-code-01", "text": "ଦୟାକରି ଆପଣଙ୍କ ରେଜିଷ୍ଟର୍ଡ ମୋବାଇଲ୍ ନମ୍ବରକୁ ପଠାଯାଇଥିବା OTP କୁହନ୍ତୁ।", "language": "or", "category": "code_switch", "script": "Odia", "must_contain": ["OTP"]}
+{"id": "or-ask-01", "text": "ଆପଣ ସାକ୍ଷାତର ତାରିଖ ବଦଳାଇବାକୁ ଚାହୁଁଛନ୍ତି କି?", "language": "or", "category": "question", "script": "Odia"}
+{"id": "or-long-01", "text": "ଆପଣଙ୍କ ବୁକିଂ ମିଳିଛି। ଗାଡ଼ି ସକାଳ ନଅଟା ଚାଳିଶ ମିନିଟରେ ବେଙ୍ଗାଲୁରୁ ବିମାନବନ୍ଦର ଟର୍ମିନାଲ ଦୁଇରୁ ଯାତ୍ରା କରିବ।", "language": "or", "category": "long_form", "script": "Odia"}
+{"id": "as-greet-01", "text": "নমস্কাৰ, ফোন কৰাৰ বাবে ধন্যবাদ। মই আপোনাক কেনেকৈ সহায় কৰিব পাৰোঁ?", "language": "as", "category": "greeting", "script": "Bengali"}
+{"id": "as-num-01", "text": "আপোনাৰ বাকী ধনৰ পৰিমাণ ১২,৪৫০ টকা।", "language": "as", "category": "numeric", "script": "Bengali"}
+{"id": "as-code-01", "text": "অনুগ্ৰহ কৰি আপোনাৰ ৰেজিষ্টাৰ্ড মোবাইল নম্বৰত পঠোৱা OTP কওক।", "language": "as", "category": "code_switch", "script": "Bengali", "must_contain": ["OTP"]}
+{"id": "as-ask-01", "text": "আপুনি সাক্ষাৎৰ তাৰিখ সলনি কৰিব বিচাৰে নেকি?", "language": "as", "category": "question", "script": "Bengali"}
+{"id": "as-long-01", "text": "আপোনাৰ বুকিং পোৱা গৈছে। গাড়ীখন পুৱা ন বজা চল্লিশ মিনিটত বেংগালুৰু বিমানবন্দৰ টাৰ্মিনেল দুইৰ পৰা যাত্ৰা কৰিব।", "language": "as", "category": "long_form", "script": "Bengali"}
+{"id": "ur-greet-01", "text": "السلام علیکم، کال کرنے کا شکریہ۔ میں آپ کی کیسے مدد کر سکتا ہوں؟", "language": "ur", "category": "greeting", "script": "Arabic"}
+{"id": "ur-num-01", "text": "آپ کی واجب الادا رقم 12,450 روپے ہے۔", "language": "ur", "category": "numeric", "script": "Arabic"}
+{"id": "ur-code-01", "text": "براہِ کرم اپنے رجسٹرڈ موبائل نمبر پر بھیجا گیا OTP بتائیں۔", "language": "ur", "category": "code_switch", "script": "Arabic", "must_contain": ["OTP"]}
+{"id": "ur-ask-01", "text": "کیا آپ ملاقات کی تاریخ تبدیل کرنا چاہتے ہیں؟", "language": "ur", "category": "question", "script": "Arabic"}
+{"id": "ur-long-01", "text": "آپ کی بکنگ مل گئی ہے۔ گاڑی صبح نو بج کر چالیس منٹ پر بنگلورو ایئرپورٹ ٹرمینل دو سے روانہ ہوگی۔", "language": "ur", "category": "long_form", "script": "Arabic"}
+{"id": "en-edge-short-01", "text": "Yes.", "language": "en", "category": "edge_short", "script": "Latin", "notes": "Minimal utterance: exposes the fixed cost floor in TTFB and any leading-silence padding."}
+{"id": "hi-edge-short-01", "text": "जी हाँ।", "language": "hi", "category": "edge_short", "script": "Devanagari", "notes": "Minimal utterance in Devanagari."}
+{"id": "en-edge-symbols-01", "text": "Call +91 80 4567 8900 or email support@example.com for help.", "language": "en", "category": "edge_symbols", "script": "Latin", "must_contain": ["example"], "notes": "Phone number, plus sign and email address: heavy text normalisation."}
+{"id": "hi-edge-mixed-01", "text": "आपका KYC verification pending है, कृपया Aadhaar card अपलोड करें।", "language": "hi", "category": "edge_symbols", "script": "Devanagari", "must_contain": ["KYC"], "notes": "Dense Hindi-English code mixing, the common failure case for Indic TTS."}

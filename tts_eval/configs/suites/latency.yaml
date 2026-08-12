@@ -1,0 +1,26 @@
+# Latency and capacity profile. Deliberately narrow: no ASR, no MOS models, no
+# audio scoring beyond what is free — so nothing competes with the model for CPU
+# while its response times are being measured.
+#
+# Run this once per concurrency level you care about (1, 4, 8, 16...) and compare
+# the runs to each other. Because concurrency is fingerprinted, the framework will
+# not let you accidentally average them together.
+suite_id: latency
+description: >-
+  Latency/throughput profile at a fixed concurrency. Core metrics only, so scoring
+  work does not contend with synthesis and distort the measurement.
+
+dataset: indic_conversational_v1
+
+# Latency depends strongly on utterance length, so the full set is used rather
+# than a sample: mixing short greetings and long-form sentences is what makes the
+# p95 meaningful for a real conversation.
+metrics: [latency, throughput, reliability]
+
+# Override per invocation: `tts-eval run --model X --suite latency --concurrency 8`
+concurrency: 4
+seed: 1234
+
+# Audio is not scored here, so there is no reason to keep it. Skipping the writes
+# also removes disk I/O from the measured path.
+save_audio: false

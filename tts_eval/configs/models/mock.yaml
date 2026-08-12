@@ -1,0 +1,39 @@
+# Offline reference model. No server, no GPU, no network.
+#
+# Its purpose is to make the framework verifiable and demonstrable: a complete
+# benchmark report can be produced on a laptop, and because the mock is bit-
+# deterministic it is what the reproducibility tests assert against.
+#
+# It is NOT intelligible speech, so round-trip CER against it is expected to be
+# poor. That is reported honestly rather than special-cased.
+model_id: mock
+model_version: "1"
+provider: tts_eval
+description: >-
+  Deterministic speech-shaped signal generator with injectable failure modes.
+  Used for CI, for metric verification, and for demonstrating the workflow before
+  a GPU is booked.
+
+adapter: mock
+adapter_config:
+  sample_rate: 24000
+  ttfb_ms: 40
+  chunk_ms: 200
+  # 0 keeps the test suite fast. Set ~0.3 to imitate a GPU model's pacing when
+  # producing a demo report with realistic-looking latency.
+  realtime_factor: 0.0
+  # Fault injection occupies disjoint bands of the hash space, so at most one
+  # fault applies per utterance and the same utterances fail on every run.
+  fail_rate: 0.0
+  silent_rate: 0.0
+  truncate_rate: 0.0
+  clip_rate: 0.0
+  degenerate_rate: 0.0
+
+sample_rate: 24000
+voices: [mock_female, mock_male]
+default_voice: mock_female
+languages: [en, hi, bn, ta, te, gu, kn, ml, mr, pa, as, or, ur]
+supports_seed: true
+supports_emotion: true
+determinism: deterministic

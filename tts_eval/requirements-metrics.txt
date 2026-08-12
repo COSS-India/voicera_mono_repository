@@ -1,0 +1,28 @@
+# Optional perceptual-metric backends. NONE of these are required: every
+# metric they provide reports status="not_computed" with a reason when absent,
+# and the run still succeeds. Install on a GPU box for full-fidelity reports.
+-r requirements.txt
+
+# --- naturalness (predicted MOS) -------------------------------------------
+# UTMOS / UTMOSv2 are loaded from torch.hub (sarulab-speech/UTMOS22) or a local
+# checkpoint. DNSMOS P.835 is an ONNX model; see docs/STANDARDS.md for weights.
+torch>=2.0
+torchaudio>=2.0
+onnxruntime>=1.16          # DNSMOS backend only
+
+# --- pronunciation accuracy (round-trip ASR) -------------------------------
+# Use faster-whisper for a self-contained ASR, or point the `http` ASR backend
+# at an existing IndicConformer/Whisper server and skip this entirely.
+faster-whisper>=1.0
+
+# --- voice consistency / speaker similarity --------------------------------
+# Resemblyzer is the lightest option; WavLM-based ECAPA gives the numbers that
+# match published SIM/SECS figures.
+resemblyzer>=0.1.4
+
+# --- third-party standard benchmarks ---------------------------------------
+# TTSDS2 (distributional benchmark, 14 languages). VERSA is installed from its
+# own repo (`pip install -e .` per upstream instructions) because it uses tiered
+# optional dependencies; this harness only needs its `scorer.py` on PATH or its
+# python package importable.
+ttsds>=2.0 ; python_version < "3.13"
