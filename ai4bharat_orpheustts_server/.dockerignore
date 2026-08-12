@@ -2,8 +2,8 @@ models/
 hf-cache/
 .env
 .git/
-docs/
 Readme.md
+tests/
 **/__pycache__/
 **/*.pyc
 *.wav

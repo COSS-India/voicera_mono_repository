@@ -1,4 +1,4 @@
-# Model weights and caches are never committed — see docs/MODEL_SETUP.md.
+# Model weights and caches are never committed — see the Readme for setup.
 models/
 hf-cache/
 

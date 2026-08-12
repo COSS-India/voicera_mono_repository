@@ -5,7 +5,7 @@
 #   docker compose down              # stop
 #
 # The checkpoint and the HuggingFace cache are bind-mounted read-only, so ~7.6 GB
-# of weights stay out of the image. See docs/MODEL_SETUP.md.
+# of weights stay out of the image. See the Readme for checkpoint setup.
 
 services:
   tts:
@@ -25,9 +25,18 @@ services:
     # (30s by default) or the drain never gets to finish.
     stop_grace_period: 60s
 
+    # Every ORPHEUS_* variable in .env is passed into the container. Without this,
+    # Compose would use .env only for ${...} substitution inside this file, and any
+    # variable not named in the `environment:` block below would be silently
+    # dropped - it would appear to be set and have no effect.
+    env_file:
+      - path: .env
+        required: false
+
     environment:
-      # Anything from config.yaml can be overridden here. See .env.example for
-      # the full list of variable names.
+      # These five are pinned here so the service has sane defaults even with no
+      # .env present. Values set here WIN over the same key in .env, so keep this
+      # list to settings that genuinely need a default.
       ORPHEUS_MAX_NUM_SEQS: "${ORPHEUS_MAX_NUM_SEQS:-256}"
       ORPHEUS_QUANTIZATION: "${ORPHEUS_QUANTIZATION:-fp8}"
       ORPHEUS_GPU_MEMORY_UTILIZATION: "${ORPHEUS_GPU_MEMORY_UTILIZATION:-0.90}"

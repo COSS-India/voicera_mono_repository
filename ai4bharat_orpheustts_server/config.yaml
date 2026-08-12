@@ -15,8 +15,8 @@
 
 model:
   # ORPHEUS_MODEL_PATH — local directory, or a HuggingFace repo id.
-  # Relative paths resolve against the repository root. See docs/MODEL_SETUP.md
-  # for how to obtain the checkpoint and where to place it.
+  # Relative paths resolve against the repository root. See the Readme for how to
+  # obtain the checkpoint and where to place it.
   path: models/orpheus-indic-5679
 
   # ORPHEUS_DTYPE — 'auto' lets vLLM choose: bfloat16 on Ampere and newer,
@@ -29,13 +29,17 @@ model:
   # GPU the server logs a warning at boot and vLLM will either fail or fall back
   # to slow emulation — set this to null there.
   #
-  # Measured FP8 vs BF16 on the same checkpoint (RTX PRO 6000 Blackwell, 96 GB):
+  # FP8 vs BF16 on the same checkpoint, measured on an earlier deployment at
+  # gpu_memory_utilization 0.90 — NOT re-verified on the current configuration,
+  # which reports 85.3 GiB of KV cache at 0.95. Treat the ratios as indicative and
+  # the absolute KV figure as stale:
   #   decode rate      239.2 tok/s  vs  164.7 tok/s   (+45%)
   #   time to first audio  118 ms   vs  171 ms        (31% lower)
   #   real-time factor     0.343    vs  0.498
   #   KV cache available   75.8 GiB vs  73.4 GiB      (+2.4 GiB)
   # Word error rate was unchanged within measurement noise. FP8 is the better
-  # choice wherever it is supported.
+  # choice wherever it is supported. The FP8 decode rate is consistent with the
+  # current deployment, which measures 0.33-0.34 RTF and 122 ms TTFA.
   quantization: fp8
 
   # ORPHEUS_MAX_MODEL_LEN — context window: prompt tokens + generated audio
@@ -64,54 +68,36 @@ engine:
   # queue, a high value ADMITS them all and makes every stream slower. Total
   # throughput is fixed by the hardware either way.
   #
-  # Measured on one RTX PRO 6000 Blackwell (96 GB, FP8) under identical
-  # over-capacity load:
+  # Measured on one RTX PRO 6000 Blackwell Server Edition (96 GB, FP8,
+  # gpu_memory_utilization 0.95, 85.3 GiB KV cache). All N streams started at the
+  # same instant; a frame counts as LATE if it misses its real-time playback slot
+  # after a 100 ms prebuffer, and "clean" is the share of streams with none late.
+  # Reproduce with: python3 tests/orpheus_test.py --suite concurrency
   #
-  #   limit | delivered audio-s/s | started <=500 ms | streams with no late frame
-  #   ------+---------------------+------------------+---------------------------
-  #      8  |        15.6         |       5.1%       |          100%
-  #     16  |        24.3         |       9.7%       |          100%
-  #     32  |        34.1         |      21.0%       |          100%   <- last stutter-free value
-  #     48  |        38.5         |      42.6%       |           33.5%
-  #     64  |        41.5         |      67.0%       |           24.4%
-  #     96  |        42.3         |      95.5%       |           28.4%
-  #    128  |        42.4         |      98.3%       |           26.7%
+  #   concurrent | audio-s/s | TTFA p50 | TTFA p95 |  RTF | clean
+  #   -----------+-----------+----------+----------+------+-------
+  #        1     |    3.0    |  124 ms  |  124 ms  | 0.33 | 100%
+  #       16     |   30.8    |  169 ms  |  175 ms  | 0.47 | 100%
+  #       32     |   50.5    |  171 ms  |  180 ms  | 0.59 | 100%
+  #       64     |   76.9    |  192 ms  |  229 ms  | 0.78 | 100%   <- last clean value
+  #      128     |  103.4    |  265 ms  |  355 ms  | 1.16 |   0%
+  #      256     |  111.6    |  468 ms  |  694 ms  | 2.19 |   0%
   #
-  # Throughput plateaus near 42 audio-seconds per second from 96 upwards — that
-  # is this GPU's ceiling. Past 32, the GPU stops making streams wait and starts
-  # making them stutter instead.
+  # Throughput keeps rising to ~112 audio-s/s at 256 (37x the single-stream rate),
+  # but past 64 the GPU stops making streams wait and starts making them stutter.
+  # Sustained load reproduces the same knee: 64 gives 76.1 audio-s/s with 100%
+  # clean and 100% started within 500 ms; 128 gives 105.2 audio-s/s with 0% clean.
   #
   # So pick by what your clients do with the audio:
   #
-  #   256 (default here) — maximum admission. Nothing queues, every request
-  #       starts immediately. Correct when clients BUFFER before playing (batch
-  #       synthesis, file generation, an app that downloads then plays) because a
-  #       late frame costs nothing when nobody is listening yet. Note that 256 is
-  #       above the highest value measured above; it admits more, it does not
-  #       deliver more than ~42 audio-s/s.
-  #    64 — correct for BURSTY live playback. See the burst table below: every
-  #       stream in a finite burst of 64 stays smooth, and sustained throughput
-  #       is 41.5 of the 42.4 ceiling, so batch work barely suffers.
-  #    32 — every admitted stream stays real-time even under sustained overload,
-  #       extra requests queue. Correct for CONTINUOUS live playback (voice
-  #       agents, phone lines) where demand never lets up and a gap is audible.
-  #       Costs ~20% of batch throughput.
-  #
-  # A finite BURST behaves much better than sustained overload. Measured
-  # separately (all N started at once, max_num_seqs=256, one long Hindi sentence
-  # each, a frame counted late if it misses its slot after a 100 ms prebuffer):
-  #
-  #   burst | errors | audio-s/s | TTFA p50 | TTFA p95 | worst RTF | stutter-free
-  #   ------+--------+-----------+----------+----------+-----------+-------------
-  #      1  |   0    |    2.8    |  143 ms  |  143 ms  |   0.35    |    100%
-  #      8  |   0    |   17.9    |  146 ms  |  146 ms  |   0.42    |    100%
-  #     32  |   0    |   52.9    |  192 ms  |  194 ms  |   0.55    |    100%
-  #     64  |   0    |   81.8    |  236 ms  |  258 ms  |   0.73    |    100%
-  #    128  |   0    |  107.8    |  313 ms  |  365 ms  |   1.09    |      0%
-  #
-  # These two tables are NOT competing measurements of the same thing. The first
-  # says what happens when demand outruns the GPU forever; the second what a
-  # finite burst costs. Plan capacity with the first, expect the second.
+  #   256 (default here) — maximum admission and maximum throughput. Correct when
+  #       clients BUFFER before playing (batch synthesis, file generation), because
+  #       a late frame costs nothing when nobody is listening yet.
+  #    64 — the highest value where every stream stays real-time. Correct for LIVE
+  #       playback (voice agents, phone lines) where a gap is audible. Costs about
+  #       a third of peak throughput.
+  #    32 — extra headroom for live delivery if your traffic is spikier than the
+  #       test, or if the GPU is shared with other work.
   #
   # Whatever you pick, keep decoder.max_batch at or above it, and make sure
   # warmup.concurrency_widths reaches it.
