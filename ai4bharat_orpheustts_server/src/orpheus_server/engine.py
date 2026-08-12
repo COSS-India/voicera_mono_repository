@@ -15,7 +15,6 @@ changing anything:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 import uuid
@@ -138,13 +137,51 @@ class TTSEngine:
         self._ready.set()
         log.info("ready: serving %s", cfg.server.model_name)
 
+    async def _drain(self, timeout: float) -> None:
+        """Let in-flight streams finish before the engine is torn down.
+
+        Without this, a restart cuts every live stream mid-sentence. Note the
+        container's ``stop_grace_period`` has to exceed this, or Docker sends
+        SIGKILL while the drain is still waiting.
+        """
+        if timeout <= 0 or self.metrics.streams_active <= 0:
+            return
+        log.info("draining %d in-flight stream(s), up to %.0fs",
+                 self.metrics.streams_active, timeout)
+        deadline = time.monotonic() + timeout
+        while self.metrics.streams_active > 0 and time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+        if self.metrics.streams_active > 0:
+            log.warning("drain timed out with %d stream(s) still active; cutting them off",
+                        self.metrics.streams_active)
+        else:
+            log.info("drain complete")
+
     async def stop(self) -> None:
+        # Unready first: new requests get 503 from the dependency while streams
+        # already in flight are given time to finish their sentence.
         self._ready.clear()
+        await self._drain(self.settings.server.drain_timeout)
         if self._batcher is not None:
             self._batcher.stop()
         if self._engine is not None:
-            with contextlib.suppress(Exception):
-                self._engine.shutdown()
+            # vLLM has moved this method between releases. Call whichever name is
+            # present rather than suppressing the AttributeError: a silent no-op
+            # here leaves the engine subprocess holding VRAM, and the next boot
+            # fails with an out-of-memory error that points nowhere near the cause.
+            shutdown = getattr(self._engine, "shutdown", None) or getattr(
+                self._engine, "shutdown_background_loop", None
+            )
+            if shutdown is None:
+                log.warning(
+                    "this vLLM build exposes neither shutdown() nor shutdown_background_loop(); "
+                    "GPU memory may not be released until the process exits"
+                )
+            else:
+                try:
+                    shutdown()
+                except Exception:
+                    log.exception("vLLM engine shutdown failed")
         self._engine = None
 
     async def _warmup(self) -> None:
@@ -167,18 +204,57 @@ class TTSEngine:
             ):
                 pass
 
-        for width in sorted(set(self.settings.warmup.concurrency_widths)):
-            if width < 1:
-                continue
+        widths = [w for w in sorted(set(self.settings.warmup.concurrency_widths)) if w >= 1]
+        failures = 0
+        for width in widths:
             log.info("warmup: concurrency %d", width)
-            with contextlib.suppress(Exception):
+            try:
                 await asyncio.gather(*[once() for _ in range(width)])
+            except Exception:
+                # Keep booting - one width failing is not worth refusing to serve -
+                # but never silently. Warmup is the first end-to-end exercise of the
+                # checkpoint, so it is where a bad one shows up first.
+                failures += 1
+                log.exception("warmup failed at concurrency %d; continuing", width)
+        if widths and failures == len(widths):
+            log.error(
+                "every warmup width failed: the server will report ready, but synthesis is "
+                "almost certainly broken. A tokenizer.json that does not match the checkpoint "
+                "is the usual cause - see docs/MODEL_SETUP.md."
+            )
 
     # -- synthesis ----------------------------------------------------------
     def clamp_max_tokens(self, requested: Optional[int]) -> int:
         cfg = self.settings.engine
         value = cfg.max_tokens_default if requested is None else int(requested)
         return max(64, min(value, cfg.max_tokens_limit))
+
+    def preflight(self, text: str, voice: str, style: Optional[str]) -> list[int]:
+        """Validate a request while an HTTP status code can still be returned.
+
+        A streaming response commits its status line and headers before the first
+        audio byte, so a failure discovered later can only truncate the body - the
+        client sees ``200 OK`` and short or empty audio. Everything knowable up
+        front is therefore checked here, in the request handler, before any
+        response object is constructed.
+
+        Returns the prompt token ids so the stream does not build them twice.
+        Raises ``ValueError`` with a message meant for the client.
+        """
+        if self._tokenizer is None:
+            raise RuntimeError("engine is not loaded")
+        if not text or not text.strip():
+            raise ValueError("input text is empty")
+        token_ids = prompt.build_prompt_token_ids(
+            self._tokenizer, self.roster.template, text, voice, style
+        )
+        limit = self.settings.model.max_model_len
+        if len(token_ids) >= limit:
+            raise ValueError(
+                f"input is too long: {len(token_ids)} prompt tokens against a max_model_len "
+                f"of {limit}. Split the text into shorter requests."
+            )
+        return token_ids
 
     async def stream_pcm(
         self,
@@ -188,11 +264,15 @@ class TTSEngine:
         style: Optional[str],
         max_tokens: int,
         stats: StreamStats,
+        token_ids: Optional[list[int]] = None,
     ) -> AsyncIterator[bytes]:
         """Yield 24 kHz mono s16le PCM, one 85.33 ms frame at a time.
 
         ``stats`` is filled in as the stream progresses so the caller can report
         this request's own latency rather than a shared global's.
+
+        ``token_ids`` is the prompt already built by :meth:`preflight`. Callers
+        that skip preflight (warmup) leave it None and it is built here.
         """
         from vllm import SamplingParams, TokensPrompt
 
@@ -202,9 +282,10 @@ class TTSEngine:
             raise ValueError("input text is empty")
 
         sampling = self.settings.sampling
-        token_ids = prompt.build_prompt_token_ids(
-            self._tokenizer, self.roster.template, text, voice, style
-        )
+        if token_ids is None:
+            token_ids = prompt.build_prompt_token_ids(
+                self._tokenizer, self.roster.template, text, voice, style
+            )
         params = SamplingParams(
             temperature=sampling.temperature,
             top_p=sampling.top_p,
@@ -219,6 +300,19 @@ class TTSEngine:
         cursor = 0
         started = time.perf_counter()
         last_chunk_at: Optional[float] = None
+        bytes_per_frame = codec.SAMPLES_PER_FRAME * 2
+
+        def account(pcm: bytes) -> None:
+            """Record one emitted chunk. Head and tail chunks carry two frames."""
+            nonlocal last_chunk_at
+            now = time.perf_counter()
+            if stats.ttfa_ms is None:
+                stats.ttfa_ms = (now - started) * 1000.0
+            elif last_chunk_at is not None:
+                stats.gaps_ms.append((now - last_chunk_at) * 1000.0)
+            last_chunk_at = now
+            stats.frames += len(pcm) // bytes_per_frame
+            stats.pcm_bytes += len(pcm)
 
         generator = self._engine.generate(
             TokensPrompt(prompt_token_ids=token_ids), params, str(uuid.uuid4())
@@ -228,22 +322,24 @@ class TTSEngine:
             tokens = list(output.outputs[0].token_ids)
             for token_id in tokens[cursor:]:
                 stats.tokens += 1
-                window = buffer.push_token(token_id)
-                if window is None:
+                pending = buffer.push_token(token_id)
+                if pending is None:
                     continue
-                pcm = await self._batcher.decode(window)
+                pcm = await self._batcher.decode(*pending)
                 if not pcm:
                     continue
-                now = time.perf_counter()
-                if stats.ttfa_ms is None:
-                    stats.ttfa_ms = (now - started) * 1000.0
-                elif last_chunk_at is not None:
-                    stats.gaps_ms.append((now - last_chunk_at) * 1000.0)
-                last_chunk_at = now
-                stats.frames += 1
-                stats.pcm_bytes += len(pcm)
+                account(pcm)
                 yield pcm
             cursor = len(tokens)
+
+        # No sliding window ever reaches the final two frames. Without this the
+        # closing ~171 ms of every utterance is generated and then thrown away.
+        pending = buffer.flush()
+        if pending is not None:
+            pcm = await self._batcher.decode(*pending)
+            if pcm:
+                account(pcm)
+                yield pcm
 
         stats.gen_ms = (time.perf_counter() - started) * 1000.0
         self.metrics.audio_seconds_total += stats.audio_ms / 1000.0

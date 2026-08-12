@@ -3,7 +3,7 @@ hf-cache/
 .env
 .git/
 docs/
-README.md
+Readme.md
 **/__pycache__/
 **/*.pyc
 *.wav

@@ -72,7 +72,8 @@ class SpeechRequest(BaseModel):
         None, description="Extension: speaking style, e.g. 'CONV', 'NEWS'. Takes precedence over instructions.",
     )
     max_tokens: Optional[int] = Field(
-        None, description="Extension: cap on generated audio tokens (~85 ms of audio each).",
+        None, description="Extension: cap on generated audio tokens (~12.2 ms of audio each; "
+                          "7 tokens make one 85.33 ms frame).",
     )
 
 
@@ -120,6 +121,14 @@ async def create_speech(
     except LookupError as exc:
         raise HTTPException(400, str(exc)) from exc
 
+    # Before any response object exists, so a bad request is a 400 rather than a
+    # 200 with an empty body. Once StreamingResponse has sent its status line the
+    # only way left to signal failure is to stop writing audio.
+    try:
+        token_ids = engine.preflight(req.input, voice, style)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
     max_tokens = engine.clamp_max_tokens(req.max_tokens)
     engine.metrics.requests_total += 1
     stats = StreamStats()
@@ -133,12 +142,22 @@ async def create_speech(
     def pcm_stream():
         return engine.stream_pcm(
             text=req.input, voice=voice, language=language,
-            style=style, max_tokens=max_tokens, stats=stats,
+            style=style, max_tokens=max_tokens, stats=stats, token_ids=token_ids,
         )
 
     if req.stream_format == "sse":
+        if not audio_fmt.encodes_incrementally(req.response_format):
+            # flac and opus buffer everything until close, so every delta would be
+            # empty and the whole clip would arrive as one enormous final event.
+            raise HTTPException(
+                400,
+                f"response_format {req.response_format!r} cannot be delivered over SSE: its "
+                f"encoder only produces bytes when the file is closed. Use 'pcm', 'mp3' or "
+                f"'wav' with stream_format='sse', or request {req.response_format!r} with "
+                f"stream_format='audio' to get it as one complete file.",
+            )
         return StreamingResponse(
-            _sse_events(engine, pcm_stream, req.response_format, stats),
+            _sse_events(engine, pcm_stream, req.response_format, stats, len(token_ids)),
             media_type="text/event-stream",
             headers={**headers, "Cache-Control": "no-store", "X-Accel-Buffering": "no"},
         )
@@ -151,6 +170,7 @@ async def create_speech(
     if not audio_fmt.streams_incrementally(req.response_format):
         encoder = audio_fmt.make_encoder(req.response_format, streaming=False)
         body = bytearray()
+        engine.metrics.streams_active += 1
         try:
             async for pcm in pcm_stream():
                 body += encoder.feed(pcm)
@@ -159,6 +179,8 @@ async def create_speech(
             engine.metrics.errors_total += 1
             log.exception("synthesis failed")
             raise HTTPException(500, f"synthesis failed: {exc}") from exc
+        finally:
+            engine.metrics.streams_active -= 1
         if stats.frames == 0:
             engine.metrics.errors_total += 1
             raise HTTPException(500, "no audio produced")
@@ -207,7 +229,8 @@ async def _audio_chunks(engine: TTSEngine, pcm_stream, fmt: str):
         engine.metrics.streams_active -= 1
 
 
-async def _sse_events(engine: TTSEngine, pcm_stream, fmt: str, stats: StreamStats):
+async def _sse_events(engine: TTSEngine, pcm_stream, fmt: str, stats: StreamStats,
+                      prompt_tokens: int):
     """OpenAI's SSE speech stream: audio deltas, then a terminal done event."""
     encoder = audio_fmt.make_encoder(fmt, streaming=True)
     engine.metrics.streams_active += 1
@@ -232,9 +255,9 @@ async def _sse_events(engine: TTSEngine, pcm_stream, fmt: str, stats: StreamStat
         yield event({
             "type": "speech.audio.done",
             "usage": {
-                "input_tokens": 0,
+                "input_tokens": prompt_tokens,
                 "output_tokens": stats.tokens,
-                "total_tokens": stats.tokens,
+                "total_tokens": prompt_tokens + stats.tokens,
             },
             "audio": {
                 "duration_ms": round(stats.audio_ms, 1),

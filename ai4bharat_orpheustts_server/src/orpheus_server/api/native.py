@@ -37,7 +37,8 @@ class TTSRequest(BaseModel):
     language: Optional[str] = Field(None, description="Optional: inferred from the speaker name.",
                                     examples=["hi"])
     style: Optional[str] = Field(None, description="Speaking style from GET /v1/styles.", examples=["CONV"])
-    max_tokens: Optional[int] = Field(None, description="Cap on generated audio tokens (~85 ms each).")
+    max_tokens: Optional[int] = Field(
+        None, description="Cap on generated audio tokens (~12.2 ms of audio each).")
 
 
 # ---------------------------------------------------------------------------
@@ -83,20 +84,28 @@ async def tts(
         language, voice, style = roster.resolve(req.voice, req.language, req.style)
     except LookupError as exc:
         raise HTTPException(400, str(exc)) from exc
+    try:
+        token_ids = engine.preflight(req.text, voice, style)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     stats = StreamStats()
     engine.metrics.requests_total += 1
     pcm = bytearray()
+    engine.metrics.streams_active += 1
     try:
         async for chunk in engine.stream_pcm(
             text=req.text, voice=voice, language=language, style=style,
             max_tokens=engine.clamp_max_tokens(req.max_tokens), stats=stats,
+            token_ids=token_ids,
         ):
             pcm += chunk
     except Exception as exc:  # noqa: BLE001
         engine.metrics.errors_total += 1
         log.exception("synthesis failed")
         raise HTTPException(500, f"synthesis failed: {exc}") from exc
+    finally:
+        engine.metrics.streams_active -= 1
     if not pcm:
         engine.metrics.errors_total += 1
         raise HTTPException(500, "no audio produced")
@@ -135,6 +144,10 @@ async def tts_stream(
         resolved_language, resolved_voice, resolved_style = roster.resolve(voice, language, style)
     except LookupError as exc:
         raise HTTPException(400, str(exc)) from exc
+    try:
+        token_ids = engine.preflight(text, resolved_voice, resolved_style)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     stats = StreamStats()
     engine.metrics.requests_total += 1
@@ -147,6 +160,7 @@ async def tts_stream(
             async for pcm in engine.stream_pcm(
                 text=text, voice=resolved_voice, language=resolved_language,
                 style=resolved_style, max_tokens=clamped, stats=stats,
+                token_ids=token_ids,
             ):
                 yield encoder.feed(pcm)
             tail = encoder.close()
@@ -178,7 +192,10 @@ async def tts_websocket(websocket: WebSocket):
     The server replies with a JSON ``start`` frame describing the audio format,
     then binary PCM frames (24 kHz mono s16le, one 85.33 ms frame each), then a
     final JSON ``done`` frame carrying this stream's own metrics. Failures arrive
-    as ``{"type": "error", ...}`` and do not tear down the connection.
+    as ``{"type": "error", ...}``.
+
+    One utterance per connection: the socket is closed once the stream ends, on
+    success or failure alike. Clients open a connection per request.
     """
     engine: TTSEngine = websocket.app.state.engine
     roster: Roster = websocket.app.state.roster
@@ -196,6 +213,9 @@ async def tts_websocket(websocket: WebSocket):
         language, voice, style = roster.resolve(
             request["voice"], request.get("language"), request.get("style")
         )
+        # Checked before the start frame goes out, so a bad request is one error
+        # frame rather than a start frame followed by silence.
+        token_ids = engine.preflight(request.get("text", ""), voice, style)
         engine.metrics.requests_total += 1
         stats = StreamStats()
 
@@ -206,6 +226,7 @@ async def tts_websocket(websocket: WebSocket):
         async for pcm in engine.stream_pcm(
             text=request["text"], voice=voice, language=language, style=style,
             max_tokens=engine.clamp_max_tokens(request.get("max_tokens")), stats=stats,
+            token_ids=token_ids,
         ):
             await websocket.send_bytes(pcm)
 
@@ -216,7 +237,10 @@ async def tts_websocket(websocket: WebSocket):
         await websocket.send_text(json.dumps({"type": "done", "metrics": metrics}))
     except WebSocketDisconnect:
         pass
-    except (KeyError, LookupError) as exc:
+    except (KeyError, LookupError, ValueError) as exc:
+        # Client-side mistakes: malformed JSON (a ValueError), a missing field, an
+        # unknown voice, text that cannot fit the context. Not counted as server
+        # errors. ValueError also covers everything preflight rejects.
         with contextlib.suppress(Exception):
             await websocket.send_text(json.dumps({"type": "error", "message": str(exc)}))
     except Exception as exc:  # noqa: BLE001 - a bad request must not kill the socket

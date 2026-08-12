@@ -32,7 +32,20 @@ FRAME_MS = SAMPLES_PER_FRAME / SAMPLE_RATE * 1000.0   # 85.333 ms
 # removes the boundary click you get from decoding frames in isolation.
 DECODE_WINDOW_FRAMES = 4
 DECODE_WINDOW_CODES = DECODE_WINDOW_FRAMES * CODES_PER_FRAME          # 28
-EMIT_SLICE = slice(SAMPLES_PER_FRAME, 2 * SAMPLES_PER_FRAME)          # [2048:4096]
+
+# Which samples of a decoded 4-frame window to keep. A pure middle-slice policy
+# emits frames 1 .. N-3 and silently discards frame 0 and the final two frames -
+# ~85 ms off the front and ~171 ms off the tail of every utterance, which is where
+# the closing syllable lives. The first and last windows therefore emit wider:
+#
+#   first window  [f0 f1 f2 f3] -> f0, f1      (no left context exists to wait for)
+#   middle window [fk .. fk+3]  -> fk+1        (context on both sides)
+#   final window  [fN-4 .. fN-1] -> fN-2, fN-1 (no right context will ever arrive)
+#
+# Together these tile the stream exactly once, with no gap and no repeat.
+EMIT_HEAD = slice(0, 2 * SAMPLES_PER_FRAME)                           # [0:4096]
+EMIT_MIDDLE = slice(SAMPLES_PER_FRAME, 2 * SAMPLES_PER_FRAME)         # [2048:4096]
+EMIT_TAIL = slice(2 * SAMPLES_PER_FRAME, 4 * SAMPLES_PER_FRAME)       # [4096:8192]
 
 
 def token_id_to_code(token_id: int, index: int) -> Optional[int]:
@@ -56,16 +69,34 @@ class StreamingAudioBuffer:
     def __init__(self) -> None:
         self.codes: list[int] = []
         self.count = 0          # accepted audio codes so far; drives the frame phase
+        self._emitted = False   # has the head window gone out yet?
+        self._last: Optional[list[int]] = None
 
-    def push_token(self, token_id: int) -> Optional[list[int]]:
+    def push_token(self, token_id: int) -> Optional[tuple[list[int], slice]]:
+        """Feed one generated token; return ``(window, emit)`` when one completes."""
         code = token_id_to_code(token_id, self.count)
         if code is None:
             return None
         self.codes.append(code)
         self.count += 1
         if self.count % CODES_PER_FRAME == 0 and self.count >= DECODE_WINDOW_CODES:
-            return self.codes[-DECODE_WINDOW_CODES:]
+            self._last = self.codes[-DECODE_WINDOW_CODES:]
+            if self._emitted:
+                return self._last, EMIT_MIDDLE
+            self._emitted = True
+            return self._last, EMIT_HEAD
         return None
+
+    def flush(self) -> Optional[tuple[list[int], slice]]:
+        """The last two frames, which no sliding window ever reaches.
+
+        Call once after generation ends. Returns None when nothing was ever
+        emitted (fewer than one full window of audio codes was produced).
+        """
+        if self._last is None:
+            return None
+        window, self._last = self._last, None
+        return window, EMIT_TAIL
 
 
 class SnacDecoder:
@@ -81,8 +112,12 @@ class SnacDecoder:
         # Decode is called from a worker thread; serialise access to the module.
         self.lock = threading.Lock()
 
-    def decode_windows(self, windows: list[list[int]]) -> list[bytes]:
-        """Decode a batch of equal-length code windows to int16 PCM (middle frame each).
+    def decode_windows(self, windows: list[list[int]], emits: list[slice]) -> list[bytes]:
+        """Decode a batch of equal-length code windows to int16 PCM.
+
+        ``emits[i]`` selects which samples of row ``i``'s decoded window to keep -
+        head, middle or tail (see EMIT_*). Every window is the same length, so the
+        decode still batches; only the slice taken afterwards differs per row.
 
         Rows containing an out-of-range code are returned as b"" instead of being
         decoded, so one bad row cannot take down the whole batch via the SNAC
@@ -109,13 +144,15 @@ class SnacDecoder:
 
         layers = [to_gpu(level0), to_gpu(level1), to_gpu(level2)]
         with self.lock, torch.inference_mode():
-            audio = self.model.decode(layers)                        # [V, 1, frames*2048]
+            audio = self.model.decode(layers)                        # [V, 1, 4*2048]
+            # Scale, clamp and narrow to int16 on the GPU. Rows keep different
+            # slices now, so the copy back is per row regardless - and int16 halves
+            # the bytes crossing the bus versus pulling float32 and converting here.
+            pcm = (audio.squeeze(1) * 32767.0).clamp_(-32768, 32767).to(torch.int16)
 
-        middle = audio[:, :, EMIT_SLICE]                             # -> [V, 1, 2048]
-        pcm = middle.squeeze(1).float().cpu().numpy() * 32767.0
-        pcm = np.clip(pcm, -32768, 32767).astype(np.int16)
+        host = pcm.cpu().numpy()                                     # [V, 4*2048]
         for row, index in enumerate(valid):
-            results[index] = pcm[row].tobytes()
+            results[index] = host[row][emits[index]].tobytes()
         return results
 
 
@@ -136,7 +173,7 @@ class BatchedSnacDecoder:
     def __init__(self, decoder: SnacDecoder, max_batch: int = 96) -> None:
         self.decoder = decoder
         self.max_batch = max_batch
-        self._queue: "_queue.Queue[tuple[list[int], object]]" = _queue.Queue()
+        self._queue: "_queue.Queue[tuple[list[int], slice, object]]" = _queue.Queue()
         self._loop = None
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
@@ -151,9 +188,9 @@ class BatchedSnacDecoder:
     def stop(self) -> None:
         self._stop.set()
 
-    async def decode(self, window: list[int]) -> bytes:
+    async def decode(self, window: list[int], emit: slice) -> bytes:
         future = self._loop.create_future()
-        self._queue.put((window, future))
+        self._queue.put((window, emit, future))
         return await future
 
     def _worker(self) -> None:
@@ -167,20 +204,22 @@ class BatchedSnacDecoder:
 
         while not self._stop.is_set():
             try:
-                window, future = self._queue.get(timeout=0.5)
+                head = self._queue.get(timeout=0.5)
             except _queue.Empty:
                 continue
-            batch = [(window, future)]
+            batch = [head]
             while len(batch) < self.max_batch:
                 try:
                     batch.append(self._queue.get_nowait())
                 except _queue.Empty:
                     break
             try:
-                results = self.decoder.decode_windows([w for w, _ in batch])
+                results = self.decoder.decode_windows(
+                    [w for w, _, _ in batch], [e for _, e, _ in batch]
+                )
             except Exception as exc:  # noqa: BLE001 - propagate to every waiter in the batch
-                for _, fut in batch:
+                for _, _, fut in batch:
                     self._loop.call_soon_threadsafe(settle, fut, None, exc)
                 continue
-            for (_, fut), pcm in zip(batch, results):
+            for (_, _, fut), pcm in zip(batch, results):
                 self._loop.call_soon_threadsafe(settle, fut, pcm, None)

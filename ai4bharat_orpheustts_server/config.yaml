@@ -7,9 +7,10 @@
 # anything.
 #
 # Defaults here are set for FULL CAPACITY on a large datacentre GPU (the service
-# is meant to be shared across teams). If you are on a smaller card, read the
-# "Sizing for your GPU" section in README.md before first boot — the two keys
-# that matter are model.quantization and engine.gpu_memory_utilization.
+# is meant to be shared across teams). If you are on a smaller card, or serving
+# LIVE audio rather than batch, read the Configuration section in Readme.md before
+# first boot — the keys that matter are engine.max_num_seqs, model.quantization
+# and engine.gpu_memory_utilization.
 # =============================================================================
 
 model:
@@ -88,12 +89,32 @@ engine:
   #       late frame costs nothing when nobody is listening yet. Note that 256 is
   #       above the highest value measured above; it admits more, it does not
   #       deliver more than ~42 audio-s/s.
-  #    32 — every admitted stream stays real-time, extra requests queue. Correct
-  #       for LIVE playback (voice agents, phone lines) where a gap is audible.
-  #    64-128 — a middle ground: most streams start fast, some stutter.
+  #    64 — correct for BURSTY live playback. See the burst table below: every
+  #       stream in a finite burst of 64 stays smooth, and sustained throughput
+  #       is 41.5 of the 42.4 ceiling, so batch work barely suffers.
+  #    32 — every admitted stream stays real-time even under sustained overload,
+  #       extra requests queue. Correct for CONTINUOUS live playback (voice
+  #       agents, phone lines) where demand never lets up and a gap is audible.
+  #       Costs ~20% of batch throughput.
   #
-  # See "Improving performance" in README.md for what to do when this limit is
-  # not the thing holding you back.
+  # A finite BURST behaves much better than sustained overload. Measured
+  # separately (all N started at once, max_num_seqs=256, one long Hindi sentence
+  # each, a frame counted late if it misses its slot after a 100 ms prebuffer):
+  #
+  #   burst | errors | audio-s/s | TTFA p50 | TTFA p95 | worst RTF | stutter-free
+  #   ------+--------+-----------+----------+----------+-----------+-------------
+  #      1  |   0    |    2.8    |  143 ms  |  143 ms  |   0.35    |    100%
+  #      8  |   0    |   17.9    |  146 ms  |  146 ms  |   0.42    |    100%
+  #     32  |   0    |   52.9    |  192 ms  |  194 ms  |   0.55    |    100%
+  #     64  |   0    |   81.8    |  236 ms  |  258 ms  |   0.73    |    100%
+  #    128  |   0    |  107.8    |  313 ms  |  365 ms  |   1.09    |      0%
+  #
+  # These two tables are NOT competing measurements of the same thing. The first
+  # says what happens when demand outruns the GPU forever; the second what a
+  # finite burst costs. Plan capacity with the first, expect the second.
+  #
+  # Whatever you pick, keep decoder.max_batch at or above it, and make sure
+  # warmup.concurrency_widths reaches it.
   max_num_seqs: 256
 
   # ORPHEUS_ENFORCE_EAGER — true skips CUDA-graph capture: boots faster and uses
@@ -107,7 +128,8 @@ engine:
   tensor_parallel_size: 1
 
   # ORPHEUS_MAX_TOKENS_DEFAULT — generation cap when a request omits max_tokens.
-  # Each token is ~85 ms of audio, so 8192 is roughly 100 s.
+  # One token is ~12.2 ms of audio (7 tokens = one 85.33 ms frame), so 8192 is
+  # roughly 100 s.
   #
   # Set this to match max_model_len. A lower value SILENTLY TRUNCATES long text
   # mid-sentence with no error — clients get a short clip and no warning.
@@ -163,12 +185,27 @@ warmup:
   max_tokens: 64
 
 server:
+  # host/port apply when the module is run directly (`python -m orpheus_server`).
+  # Under Docker they are not used: the image's CMD fixes the container port at
+  # 9000, and compose remaps it on the host side with ORPHEUS_PORT (`9000:9000`
+  # by default). To serve on a different host port, set ORPHEUS_PORT in .env —
+  # do not change these two keys.
   host: 0.0.0.0            # ORPHEUS_HOST
   port: 9000               # ORPHEUS_PORT
   model_name: orpheus-indic  # ORPHEUS_MODEL_NAME — the id reported by GET /v1/models
 
   # ORPHEUS_CORS_ORIGINS — comma-separated when set via environment.
   cors_origins: ["*"]
+
+  # ORPHEUS_DRAIN_TIMEOUT — on shutdown, how long in-flight streams get to finish
+  # before the engine is torn down. /health goes unready immediately, so a load
+  # balancer stops sending new work while the sentences already in progress play
+  # out. 0 disables the wait and cuts every live stream mid-word.
+  #
+  # docker-compose.yml sets stop_grace_period: 60s to sit above this. Raise both
+  # together, never just this one — Docker SIGKILLs at the grace period whatever
+  # the drain is doing.
+  drain_timeout: 30.0
 
 # Roster of languages, speakers and styles. Swap this file to serve a different
 # checkpoint; set prompt_template to "plain" for upstream English Orpheus models.

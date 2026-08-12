@@ -63,6 +63,20 @@ def streams_incrementally(fmt: str) -> bool:
     return fmt in STREAMING_FORMATS
 
 
+def encodes_incrementally(fmt: str) -> bool:
+    """True if ``make_encoder(fmt, streaming=True)`` actually emits bytes as it is fed.
+
+    Distinct from :func:`streams_incrementally`, which answers whether a format may
+    be sent as a chunked HTTP *body*. WAV is excluded there so its RIFF length stays
+    truthful, but it encodes incrementally perfectly well - which is what SSE needs,
+    since each delta is framed by the event stream rather than by the container.
+
+    ``flac`` and ``opus`` fail both tests: their encoders buffer everything until
+    close, so over SSE they would emit no deltas at all and then one enormous one.
+    """
+    return fmt in STREAMING_FORMATS or fmt == "wav"
+
+
 # ---------------------------------------------------------------------------
 # WAV headers
 # ---------------------------------------------------------------------------

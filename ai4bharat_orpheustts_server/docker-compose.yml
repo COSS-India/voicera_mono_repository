@@ -20,6 +20,11 @@ services:
     shm_size: "8gb"
     init: true
 
+    # Docker's default grace period is 10s, which SIGKILLs the container while
+    # streams are still speaking. This has to stay above ORPHEUS_DRAIN_TIMEOUT
+    # (30s by default) or the drain never gets to finish.
+    stop_grace_period: 60s
+
     environment:
       # Anything from config.yaml can be overridden here. See .env.example for
       # the full list of variable names.

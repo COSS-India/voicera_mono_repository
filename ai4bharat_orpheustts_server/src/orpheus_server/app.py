@@ -11,7 +11,10 @@ import logging
 import os
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import Settings, check_hardware, load_settings
 from .engine import TTSEngine
@@ -46,6 +49,20 @@ The speaker name selects the language — every speaker belongs to exactly one, 
 | A complete WAV, one call | `POST /v1/tts` |
 | Playable URL for `<audio>` or curl | `GET /v1/tts/stream` |
 """
+
+
+def openai_error(status_code: int, message: str, param: str | None = None) -> JSONResponse:
+    """Render an error in OpenAI's envelope.
+
+    OpenAI clients read ``error.message``; FastAPI's default ``{"detail": ...}``
+    reaches them as an opaque blob instead, so a wrong voice name shows up in the
+    SDK as an unhelpful string. Same status, same text, shape the clients parse.
+    """
+    kind = "invalid_request_error" if status_code < 500 else "server_error"
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"message": message, "type": kind, "param": param, "code": None}},
+    )
 
 
 def configure_logging() -> None:
@@ -97,6 +114,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = settings
     application.state.roster = roster
     application.state.engine = engine
+
+    @application.exception_handler(StarletteHTTPException)
+    async def _http_error(_request, exc: StarletteHTTPException):
+        response = openai_error(exc.status_code, str(exc.detail))
+        if exc.headers:
+            # Starlette's default handler carries these; 405 needs Allow, 401
+            # needs WWW-Authenticate.
+            response.headers.update(exc.headers)
+        return response
+
+    @application.exception_handler(RequestValidationError)
+    async def _validation_error(_request, exc: RequestValidationError):
+        # OpenAI answers a malformed body with 400, not FastAPI's default 422.
+        errors = exc.errors()
+        first = errors[0] if errors else {}
+        param = ".".join(str(p) for p in first.get("loc", ()) if p != "body") or None
+        message = first.get("msg", "invalid request")
+        return openai_error(400, f"{message} (at '{param}')" if param else message, param)
 
     if settings.server.cors_origins:
         application.add_middleware(

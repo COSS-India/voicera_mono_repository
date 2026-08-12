@@ -1,8 +1,10 @@
 """Configuration.
 
-One YAML file is the source of truth; every key can be overridden by a flat
-``ORPHEUS_*`` environment variable (so Docker/Compose can tune the service
-without editing files or rebuilding the image).
+One YAML file carries the defaults; every key can be overridden by a flat
+``ORPHEUS_*`` environment variable, which always wins (so Docker/Compose can tune
+the service without editing files or rebuilding the image). Note that
+``docker-compose.yml`` already sets five of those variables, so for those keys the
+YAML is not what takes effect - see the Configuration section of the README.
 
 Resolution order, lowest priority first:
 
@@ -67,7 +69,8 @@ class EngineConfig(BaseModel):
     tensor_parallel_size: int = Field(1, ge=1, description="Number of GPUs to shard the model across.")
     max_tokens_default: int = Field(
         8192, ge=64,
-        description="Default generation cap when a request omits max_tokens. ~85 ms of audio per token.",
+        description="Default generation cap when a request omits max_tokens. ~12.2 ms of audio "
+                    "per token; 7 tokens make one 85.33 ms frame.",
     )
     max_tokens_limit: int = Field(8192, ge=64, description="Hard server-side ceiling on max_tokens.")
 
@@ -119,6 +122,11 @@ class ServerConfig(BaseModel):
     port: int = 9000
     model_name: str = Field("orpheus-indic", description="Id reported by GET /v1/models.")
     cors_origins: list[str] = Field(default_factory=lambda: ["*"], description="Allowed CORS origins.")
+    drain_timeout: float = Field(
+        30.0, ge=0.0,
+        description="Seconds in-flight streams get to finish on shutdown before the engine "
+                    "is torn down. Keep the container's stop_grace_period above this.",
+    )
 
 
 class Settings(BaseModel):
@@ -180,6 +188,7 @@ _ENV_MAP: dict[str, tuple[str, ...]] = {
     "ORPHEUS_PORT": ("server", "port"),
     "ORPHEUS_MODEL_NAME": ("server", "model_name"),
     "ORPHEUS_CORS_ORIGINS": ("server", "cors_origins"),
+    "ORPHEUS_DRAIN_TIMEOUT": ("server", "drain_timeout"),
     "ORPHEUS_VOICES_FILE": ("voices_file",),
 }
 
