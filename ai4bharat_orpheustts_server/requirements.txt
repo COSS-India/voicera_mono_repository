@@ -1,0 +1,23 @@
+# Top-level dependencies. Install with the pinned transitive set:
+#   pip install -r requirements.txt -c constraints.txt
+#
+# vllm brings torch, triton and the nvidia CUDA toolkit wheels with it, so the
+# CUDA stack is not listed here — it is pinned in constraints.txt.
+vllm==0.25.1
+torch==2.11.0
+torchaudio==2.11.0
+transformers==5.14.1
+triton==3.6.0
+
+# Audio: SNAC is the codec Orpheus emits codes for; soundfile (libsndfile) does
+# the mp3/flac/opus encoding for OpenAI response formats.
+snac==1.2.1
+soundfile==0.14.0
+numpy==2.3.5
+
+# Service
+fastapi==0.136.3
+uvicorn[standard]==0.51.0   # [standard] adds uvloop + httptools: a measurably faster event loop
+pydantic==2.13.4
+PyYAML==6.0.3
+websockets==16.1.1

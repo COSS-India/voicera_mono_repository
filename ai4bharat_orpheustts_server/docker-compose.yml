@@ -1,0 +1,73 @@
+# AI4Bharat Orpheus Indic TTS
+#
+#   docker compose up -d --build     # build and start on :9000
+#   docker compose logs -f tts       # watch model load and warmup
+#   docker compose down              # stop
+#
+# The checkpoint and the HuggingFace cache are bind-mounted read-only, so ~7.6 GB
+# of weights stay out of the image. See docs/MODEL_SETUP.md.
+
+services:
+  tts:
+    build: .
+    image: ai4bharat-orpheus-indic-tts:latest
+    container_name: orpheus-indic-tts
+    restart: unless-stopped
+
+    # vLLM's workers talk over shared memory and Docker's 64 MB default is not
+    # enough. init:true reaps the vLLM engine subprocess on stop, so nothing is
+    # left holding GPU memory after `docker compose down`.
+    shm_size: "8gb"
+    init: true
+
+    environment:
+      # Anything from config.yaml can be overridden here. See .env.example for
+      # the full list of variable names.
+      ORPHEUS_MAX_NUM_SEQS: "${ORPHEUS_MAX_NUM_SEQS:-256}"
+      ORPHEUS_QUANTIZATION: "${ORPHEUS_QUANTIZATION:-fp8}"
+      ORPHEUS_GPU_MEMORY_UTILIZATION: "${ORPHEUS_GPU_MEMORY_UTILIZATION:-0.90}"
+      ORPHEUS_MODEL_PATH: "${ORPHEUS_MODEL_PATH:-/models/orpheus-indic-5679}"
+      ORPHEUS_LOG_LEVEL: "${ORPHEUS_LOG_LEVEL:-INFO}"
+      HF_HOME: /hf-cache
+      # INFO shows vLLM's one-time memory accounting at boot ("Available KV cache
+      # memory: X GiB"), which is the only way to see the real effect of a
+      # quantization or gpu_memory_utilization change.
+      VLLM_LOGGING_LEVEL: "${VLLM_LOGGING_LEVEL:-INFO}"
+
+    volumes:
+      - ./models:/models:ro
+      # Cache for the SNAC codec (~76 MB, fetched on first boot). Mounting it
+      # read-write lets the first run populate it; after that the service needs
+      # no network. Set HF_HUB_OFFLINE=1 once it is warm for a fully airgapped run.
+      #
+      # CREATE THIS DIRECTORY BEFORE THE FIRST `up` (`mkdir -p hf-cache`). If it is
+      # missing, Docker creates it owned by root, and the container runs as uid 1000
+      # and cannot write the download. `sudo chown 1000:1000 hf-cache` fixes it after
+      # the fact, and is also needed if your host account is not uid 1000.
+      - ./hf-cache:/hf-cache
+      # Mounted, not baked in, so tuning is a restart instead of a rebuild.
+      - ./config.yaml:/app/config.yaml:ro
+      - ./voices.json:/app/voices.json:ro
+
+    ports:
+      - "${ORPHEUS_PORT:-9000}:9000"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all          # or a specific number, e.g. 1
+              capabilities: [gpu]
+
+    healthcheck:
+      # /health returns 503 until the model is loaded AND warmup is done, so
+      # "healthy" means genuinely ready to serve.
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 60
+      # Cold start is dominated by weight load, CUDA-graph capture and warmup.
+      # Measured at ~150 s before warmup; the default warmup ladder up to width
+      # 256 adds to that. Lower warmup.concurrency_widths to boot faster.
+      start_period: 600s
