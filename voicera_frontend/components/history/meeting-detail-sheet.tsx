@@ -461,9 +461,18 @@ export function MeetingDetailSheet({
 
       const blob = await response.blob()
       const blobUrl = URL.createObjectURL(blob)
+      const contentType = response.headers.get("content-type") || blob.type
+      let extension = "wav"
+      if (contentType.includes("mpeg") || contentType.includes("mp3")) {
+        extension = "mp3"
+      } else if (contentType.includes("mp4") || contentType.includes("m4a")) {
+        extension = "m4a"
+      } else if (recordingUrl.includes(".mp3")) {
+        extension = "mp3"
+      }
       const link = document.createElement("a")
       link.href = blobUrl
-      link.download = `${meeting?.meeting_id || "recording"}.wav`
+      link.download = `${meeting?.meeting_id || "recording"}.${extension}`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
