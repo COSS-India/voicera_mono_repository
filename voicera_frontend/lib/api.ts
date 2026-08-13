@@ -1611,9 +1611,9 @@ export async function deleteMember(email: string, orgId: string): Promise<{ stat
 }
 
 /**
- * Transfer organization ownership to another member (owner only)
+ * Promote a member to organization owner (owner only). Caller remains an owner.
  */
-export async function transferOwnership(
+export async function promoteToOwner(
   email: string,
   orgId: string
 ): Promise<{ status: string; message: string }> {
@@ -1627,10 +1627,18 @@ export async function transferOwnership(
 
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.detail || error.error || "Failed to transfer ownership")
+    throw new Error(error.detail || error.error || "Failed to promote member to owner")
   }
 
   return response.json()
+}
+
+/** @deprecated Use promoteToOwner */
+export async function transferOwnership(
+  email: string,
+  orgId: string
+): Promise<{ status: string; message: string }> {
+  return promoteToOwner(email, orgId)
 }
 
 /**

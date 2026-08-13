@@ -10,6 +10,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _mask_api_key(api_key: str) -> str:
+    key = (api_key or "").strip()
+    if len(key) <= 4:
+        return "****"
+    return f"{'*' * (len(key) - 4)}{key[-4:]}"
+
+
+def _to_response(integration: Dict[str, Any], *, mask_key: bool = False) -> Dict[str, Any]:
+    api_key = integration.get("api_key", "")
+    return {
+        "org_id": integration.get("org_id"),
+        "model": integration.get("model"),
+        "api_key": _mask_api_key(api_key) if mask_key else api_key,
+        "created_at": integration.get("created_at"),
+        "updated_at": integration.get("updated_at"),
+    }
+
+
 def create_integration(integration_data: IntegrationCreate) -> Dict[str, Any]:
     """
     Create or update an integration for a given org and model.
@@ -88,14 +106,24 @@ def get_integration(org_id: str, model: str) -> Optional[Dict[str, Any]]:
         })
         
         if integration:
-            # Remove MongoDB _id field
             integration.pop("_id", None)
-            
-        return integration
-        
+            return integration
+
+        return None
+
     except Exception as e:
         logger.error(f"Error fetching integration: {str(e)}")
         return None
+
+
+def get_integration_response(
+    org_id: str, model: str, *, mask_key: bool = False
+) -> Optional[Dict[str, Any]]:
+    """Fetch integration formatted for API response."""
+    integration = get_integration(org_id, model)
+    if not integration:
+        return None
+    return _to_response(integration, mask_key=mask_key)
 
 
 def get_openai_api_key_for_org(org_id: str) -> Optional[str]:
@@ -125,30 +153,30 @@ def get_openai_api_key_for_org(org_id: str) -> Optional[str]:
     return None
 
 
-def get_integrations_by_org(org_id: str) -> List[Dict[str, Any]]:
+def get_integrations_by_org(org_id: str, *, mask_key: bool = False) -> List[Dict[str, Any]]:
     """
     Fetch all integrations for a given organization.
-    
+
     Args:
         org_id: Organization ID
-        
+        mask_key: When True, mask api_key values for non-owner callers.
+
     Returns:
         List of integration documents
     """
     try:
         db = get_database()
         integration_table = db["Integrations"]
-        
+
         integrations = list(integration_table.find({"org_id": org_id}))
-        
+
         result = []
         for integration in integrations:
-            # Remove MongoDB _id field
             integration.pop("_id", None)
-            result.append(integration)
-        
+            result.append(_to_response(integration, mask_key=mask_key))
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Error fetching integrations: {str(e)}")
         return []
