@@ -249,10 +249,16 @@ def _build_vi_post_stream_url() -> str:
     return f"{server_url}/vi/post-stream"
 
 
+VI_START_TIMEOUT_SECS = 15.0
+VI_START_MAX_MESSAGES = 20
+
+
 async def _read_vi_start_message(websocket: WebSocket) -> tuple[dict, str, str]:
     """Read VI WebSocket messages until the start event is received."""
-    while True:
-        message = await websocket.receive_text()
+    for _ in range(VI_START_MAX_MESSAGES):
+        message = await asyncio.wait_for(
+            websocket.receive_text(), timeout=VI_START_TIMEOUT_SECS
+        )
         data = json.loads(message)
         event = data.get("event")
         if event == "connected":
@@ -274,6 +280,47 @@ async def _read_vi_start_message(websocket: WebSocket) -> tuple[dict, str, str]:
             )
             return data, str(call_sid), str(stream_sid)
         logger.warning(f"VI WebSocket expected connected/start, got event={event}")
+    raise TimeoutError("VI start event not received")
+
+
+def _resolve_vi_agent_id(path_agent_id: Optional[str], start_info: Dict[str, Any]) -> Optional[str]:
+    """Resolve which agent to run for a VI stream.
+
+    VI's proxy may not preserve the URL path, so fall back to the custom
+    parameters configured on the Streaming object, then to a server default.
+    """
+    if path_agent_id:
+        return path_agent_id
+
+    custom_parameters = start_info.get("custom_parameters") or {}
+    for key in ("agent_id", "agentId", "agent"):
+        value = custom_parameters.get(key)
+        if value:
+            return str(value).strip()
+
+    return (os.environ.get("VI_DEFAULT_AGENT_ID") or "").strip() or None
+
+
+def _apply_vi_custom_parameters(
+    agent_config: Dict[str, Any], custom_parameters: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Overlay VI custom parameters (e.g. upstream language choice) on the agent."""
+    if not custom_parameters:
+        return agent_config
+
+    agent_config["vi_custom_parameters"] = dict(custom_parameters)
+
+    language = custom_parameters.get("language") or custom_parameters.get("lang")
+    if language:
+        language = str(language).strip()
+        agent_config["language"] = language
+        for model_key in ("stt_model", "tts_model"):
+            model = agent_config.get(model_key)
+            if isinstance(model, dict):
+                model["language"] = language
+        logger.info(f"VI custom parameter set language={language}")
+
+    return agent_config
 
 
 def _build_stream_xml(websocket_url: str) -> str:
@@ -573,24 +620,38 @@ async def plivo_websocket_endpoint(websocket: WebSocket, agent_id: str):
         logger.info(f"🔌 Plivo WebSocket closed: call_sid={call_sid}")
 
 
-@app.websocket("/vi/agent/{agent_id}")
-async def vi_websocket_endpoint(websocket: WebSocket, agent_id: str):
-    """WebSocket endpoint for Vodafone Idea (VI) bidirectional voice streaming."""
+async def _run_vi_session(websocket: WebSocket, path_agent_id: Optional[str] = None):
+    """Handle one VI bidirectional streaming session."""
     await websocket.accept()
-    logger.info(f"🔌 VI WebSocket connected: agent={agent_id}")
+    logger.info(f"🔌 VI WebSocket connected (path agent={path_agent_id or '-'})")
 
     call_sid = None
     stream_sid = None
 
     try:
+        # The agent may be identified by the URL path or by custom parameters
+        # inside `start`, so read the handshake before resolving the config.
+        start_data, call_sid, stream_sid = await _read_vi_start_message(websocket)
+        start_info = start_data.get("start", {}) or {}
+        custom_parameters = start_info.get("custom_parameters") or {}
+
+        agent_id = _resolve_vi_agent_id(path_agent_id, start_info)
+        if not agent_id:
+            logger.error(
+                "❌ VI stream has no agent_id (URL path, custom_parameters, "
+                "and VI_DEFAULT_AGENT_ID are all empty)"
+            )
+            await websocket.close(code=1008, reason="Missing agent_id")
+            return
+
         agent_config = await fetch_agent_config_from_backend(agent_id)
         if not agent_config:
             logger.error(f"❌ Failed to fetch agent config from backend: {agent_id}")
+            await websocket.close(code=1008, reason="Agent config not found")
             return
 
+        agent_config = _apply_vi_custom_parameters(agent_config, custom_parameters)
         agent_type = agent_config.get("agent_type")
-        start_data, call_sid, stream_sid = await _read_vi_start_message(websocket)
-        start_info = start_data.get("start", {}) or {}
 
         meeting_payload = {
             "CallUUID": call_sid,
@@ -602,8 +663,8 @@ async def vi_websocket_endpoint(websocket: WebSocket, agent_id: str):
         await log_meeting(agent_id, meeting_payload)
 
         logger.info(
-            f"📞 VI call started: call_sid={call_sid}, room_id={stream_sid}, "
-            f"cli={start_info.get('cli')}, dni={start_info.get('dni')}"
+            f"📞 VI call started: agent={agent_id} call_id={call_sid} room_id={stream_sid} "
+            f"cli={start_info.get('cli')} dni={start_info.get('dni')}"
         )
 
         await bot(
@@ -616,6 +677,9 @@ async def vi_websocket_endpoint(websocket: WebSocket, agent_id: str):
             sample_rate=8000,
         )
 
+    except (asyncio.TimeoutError, TimeoutError):
+        logger.error("❌ VI stream did not send a start event in time")
+        await websocket.close(code=1008, reason="No start event")
     except FileNotFoundError as e:
         logger.error(f"❌ {e}")
         await websocket.close(code=1008, reason="Agent config not found")
@@ -623,7 +687,25 @@ async def vi_websocket_endpoint(websocket: WebSocket, agent_id: str):
         logger.error(f"❌ VI WebSocket error: {e}")
         logger.debug(traceback.format_exc())
     finally:
-        logger.info(f"🔌 VI WebSocket closed: call_sid={call_sid}")
+        logger.info(f"🔌 VI WebSocket closed: call_id={call_sid}")
+
+
+@app.websocket("/vi/agent/{agent_id}")
+async def vi_websocket_endpoint(websocket: WebSocket, agent_id: str):
+    """VI streaming endpoint with the agent id in the URL path."""
+    await _run_vi_session(websocket, path_agent_id=agent_id)
+
+
+@app.websocket("/vi/stream")
+async def vi_stream_websocket_endpoint(websocket: WebSocket):
+    """Static VI streaming endpoint; agent resolved from custom parameters."""
+    await _run_vi_session(websocket)
+
+
+@app.websocket("/")
+async def vi_root_websocket_endpoint(websocket: WebSocket):
+    """Root VI endpoint for proxies that strip the URL path."""
+    await _run_vi_session(websocket)
 
 
 @app.get("/vi/integration-info/{agent_id}")
@@ -633,10 +715,16 @@ async def vi_integration_info(agent_id: str):
     if not agent_config:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
 
+    websocket_prefix = os.environ.get("JOHNAIC_WEBSOCKET_URL", "").rstrip("/")
     return {
         "agent_id": agent_id,
         "telephony_provider": agent_config.get("telephony_provider"),
         "websocket_url": _build_vi_websocket_url(agent_id),
+        "websocket_url_fallbacks": [
+            f"{websocket_prefix}/vi/stream",
+            websocket_prefix,
+        ],
+        "custom_parameters": {"agent_id": agent_id},
         "post_stream_callback_url": _build_vi_post_stream_url(),
         "protocol": "VI Voice Streaming (bidirectional, 8kHz PCM16, JSON over WSS)",
         "custom_parameters_supported": 3,

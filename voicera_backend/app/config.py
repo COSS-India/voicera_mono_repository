@@ -57,12 +57,19 @@ class Settings:
     
     @property
     def mongodb_uri(self) -> str:
-        """Build MongoDB connection URI."""
-        return (
+        """Build MongoDB connection URI.
+
+        authSource is optional: FerretDB authenticates against the target
+        database, and pymongo rejects an empty authSource value outright.
+        """
+        uri = (
             f"mongodb://{self.MONGODB_USER}:{self.MONGODB_PASSWORD}"
             f"@{self.MONGODB_HOST}:{self.MONGODB_PORT}/{self.MONGODB_DATABASE}"
-            f"?authSource={self.MONGODB_AUTH_SOURCE}"
         )
+        auth_source = (self.MONGODB_AUTH_SOURCE or "").strip()
+        if auth_source:
+            uri += f"?authSource={auth_source}"
+        return uri
 
 # Global settings instance
 settings = Settings()

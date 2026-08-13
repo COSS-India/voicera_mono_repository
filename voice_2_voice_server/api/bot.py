@@ -433,6 +433,7 @@ async def bot(
         serializer = ViFrameSerializer(
             room_id=stream_sid,
             call_id=call_sid,
+            websocket=websocket_client,
             params=ViFrameSerializer.InputParams(sample_rate=VI_SAMPLE_RATE),
         )
     else:
@@ -483,6 +484,10 @@ async def bot(
     import pipecat.transports.base_output
     pipecat.transports.base_output.BOT_VAD_STOP_SECS = 0.2
     
+    # VI requires 1.6 KB media frames; 10 x 10ms at 8 kHz lands exactly on that
+    # boundary so the serializer never has to buffer across writes.
+    audio_out_10ms_chunks = 10 if normalized_provider == "vi" else 4
+
     transport = FastAPIWebsocketTransport(
         websocket=websocket_client,
         params=FastAPIWebsocketParams(
@@ -493,7 +498,7 @@ async def bot(
             serializer=serializer,
             audio_in_passthrough=True,
             session_timeout=session_timeout,
-            audio_out_10ms_chunks=4,  # ADD THIS LINE - reduces from 4 to 1
+            audio_out_10ms_chunks=audio_out_10ms_chunks,
         ),
     )
 
