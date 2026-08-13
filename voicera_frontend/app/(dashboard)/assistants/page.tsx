@@ -8,6 +8,12 @@ import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplica
 import { isValidAgentName, sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
 import { agentsQueryKey, useAgentsQuery } from "@/lib/queries/agents"
 import { requireJohnaicServerUrl } from "@/lib/johnaic-config"
+import {
+  agentCategoryForProvider,
+  isTelephonyAgent,
+  isWebSocketAgent,
+  WEBSOCKET_PROVIDER,
+} from "@/lib/agent-delivery"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -219,7 +225,7 @@ const WIZARD_STEP_META: Record<
   agent: { title: "Agent", subtitle: "Name & Prompt", icon: FileText },
   llm: { title: "LLM", subtitle: "Model Config", icon: Settings },
   audio: { title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
-  telephony: { title: "Telephony", subtitle: "Select Provider", icon: Phone },
+  telephony: { title: "Delivery", subtitle: "Telephony or WebSocket", icon: Phone },
   call_mgmt: { title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
   review: { title: "Review", subtitle: "Confirm", icon: CheckCircle2 },
 }
@@ -450,7 +456,10 @@ export default function AssistantsPage() {
 
   const sortedAgents = useMemo(() => {
     const copy = [...filteredAgents]
-    const isAgentActive = (agent: Agent) => Boolean(agent.phone_number?.trim())
+    const isAgentActive = (agent: Agent) => {
+      if (isWebSocketAgent(agent)) return true
+      return Boolean(agent.phone_number?.trim())
+    }
     /** Prefer created_at; fall back to updated_at for legacy rows without created_at. */
     const sortTime = (a: Agent) =>
       new Date(a.created_at || a.updated_at || 0).getTime()
@@ -730,7 +739,7 @@ export default function AssistantsPage() {
 
     try {
       // Step 1: Detach phone number if agent has one
-      if (agent.phone_number) {
+      if (isTelephonyAgent(agent) && agent.phone_number) {
         try {
           // If provider is Vobiz, unlink from Vobiz application first
           if (agent.telephony_provider === "Vobiz") {
@@ -758,7 +767,7 @@ export default function AssistantsPage() {
       }
 
       // Step 2: Delete Vobiz application if it exists
-      if (agent.telephony_provider === "Vobiz" && agent.vobiz_app_id) {
+      if (isTelephonyAgent(agent) && agent.telephony_provider === "Vobiz" && agent.vobiz_app_id) {
         try {
           await deleteVobizApplication(agent.vobiz_app_id)
         } catch (error) {
@@ -767,7 +776,7 @@ export default function AssistantsPage() {
         }
       }
       const telephonyAgent = agent as AgentWithTelephony
-      if (agent.telephony_provider === "Plivo" && telephonyAgent.plivo_app_id) {
+      if (isTelephonyAgent(agent) && agent.telephony_provider === "Plivo" && telephonyAgent.plivo_app_id) {
         try {
           await deletePlivoApplication(telephonyAgent.plivo_app_id)
         } catch (error) {
@@ -1019,7 +1028,6 @@ export default function AssistantsPage() {
       let vobizAnswerUrl: string | undefined
       let plivoAppId: string | undefined
       let plivoAnswerUrl: string | undefined
-      
       if (config.telephonyProvider === "Vobiz") {
         vobizAnswerUrl = `${requireJohnaicServerUrl()}/answer?agent_id=${agentId}`
         console.log(" answer url", vobizAnswerUrl)
@@ -1045,7 +1053,7 @@ export default function AssistantsPage() {
 
       const agentData: CreateAgentRequest = {
         org_id: user.org_id,
-        agent_category: "voicera_telephony",
+        agent_category: agentCategoryForProvider(config.telephonyProvider),
         agent_type: trimmedName,
         agent_id: agentId,
         agent_config:
@@ -2239,39 +2247,41 @@ export default function AssistantsPage() {
               </div>
             )}
 
-            {/* Step 4: Telephony */}
+            {/* Step: Delivery */}
             {currentStepKey === "telephony" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
-                <div className="space-y-8">
-                  {/* Telephony Provider Selection */}
-                  <div className="space-y-3">
-                    <label className="text-base font-bold text-slate-900">Select Telephone Provider</label>
-                    <Select 
-                      value={config.telephonyProvider} 
-                      onValueChange={(v) => updateConfig("telephonyProvider", v)}
-                    >
-                      <SelectTrigger className="h-12 rounded-lg border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-slate-400" />
-                          <SelectValue placeholder="Select telephone provider" />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent className="rounded-lg">
-                        <SelectItem value="Vobiz" className="py-3">
-                          <span className="font-medium">Vobiz</span>
-                        </SelectItem>
-                        <SelectItem value="Plivo" className="py-3">
-                          <span className="font-medium">Plivo</span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-sm text-slate-500">
-                      Choose the telephone provider for your agent calls.
-                    </p>
-                  </div>
+                <div className="space-y-3">
+                  <label className="text-base font-bold text-slate-900">Delivery Mode</label>
+                  <Select
+                    value={config.telephonyProvider}
+                    onValueChange={(v) => updateConfig("telephonyProvider", v)}
+                  >
+                    <SelectTrigger className="h-12 rounded-lg border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-slate-400" />
+                        <SelectValue placeholder="Select delivery mode" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="rounded-lg">
+                      <SelectItem value="Vobiz" className="py-3">
+                        <span className="font-medium">Vobiz</span>
+                      </SelectItem>
+                      <SelectItem value="Plivo" className="py-3">
+                        <span className="font-medium">Plivo</span>
+                      </SelectItem>
+                      <SelectItem value={WEBSOCKET_PROVIDER} className="py-3">
+                        <span className="font-medium">WebSocket</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-slate-500">
+                    {config.telephonyProvider === WEBSOCKET_PROVIDER
+                      ? "Browser test only — no phone provider or phone number required."
+                      : "Phone calls via the selected telephony provider."}
+                  </p>
                 </div>
 
-                <Button 
+                <Button
                   onClick={handleNextStep}
                   disabled={!canProceed()}
                   className="mt-8 h-11 px-6 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium gap-2 disabled:bg-slate-200 disabled:text-slate-400 transition-all"
@@ -2712,12 +2722,12 @@ export default function AssistantsPage() {
                     </button>
                   </div>
 
-                  {/* Telephony Settings */}
+                  {/* Delivery Settings */}
                   <div className="flex items-start justify-between p-4 border-b border-slate-200 hover:bg-slate-100/50 transition-colors">
                     <div>
-                      <p className="text-sm font-bold text-slate-900 mb-2">Telephony Provider</p>
+                      <p className="text-sm font-bold text-slate-900 mb-2">Delivery Mode</p>
                       <p className="text-sm font-medium text-slate-700">
-                        {config.telephonyProvider ? config.telephonyProvider.charAt(0).toUpperCase() + config.telephonyProvider.slice(1) : "—"}
+                        {config.telephonyProvider || "—"}
                       </p>
                     </div>
                     <button onClick={() => setCreateStep(getStepIdByKey("telephony"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">

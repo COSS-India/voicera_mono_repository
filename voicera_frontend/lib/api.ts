@@ -364,10 +364,11 @@ export interface Agent {
   org_id: string
   agent_type: string
   agent_id: string
+  agent_category?: string
   agent_config: AgentConfig
   created_at: string
   updated_at: string
-  telephony_provider: string
+  telephony_provider?: string
   phone_number?: string
   vobiz_app_id?: string
   vobiz_answer_url?: string

@@ -42,6 +42,11 @@ import {
 } from "@/components/ui/dialog"
 import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
 import { sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
+import {
+  agentCategoryForProvider,
+  isWebSocketAgent,
+  WEBSOCKET_PROVIDER,
+} from "@/lib/agent-delivery"
 import { agentsQueryKey } from "@/lib/queries/agents"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
@@ -217,7 +222,7 @@ const editWizardStepMeta: Record<
   agent: { title: "Agent", subtitle: "Name & Prompt", icon: FileText },
   llm: { title: "LLM", subtitle: "Model Config", icon: Settings },
   audio: { title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
-  telephony: { title: "Telephony", subtitle: "Provider Info", icon: Phone },
+  telephony: { title: "Delivery", subtitle: "Telephony or WebSocket", icon: Phone },
   call_mgmt: { title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
 }
 
@@ -292,6 +297,7 @@ export default function AgentDetailPage() {
   const [ttsDescription, setTtsDescription] = useState("")
   const [speed, setSpeed] = useState(1.0)
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("conversational")
+  const [deliveryMode, setDeliveryMode] = useState("Plivo")
 
   // Collapsible states
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(true)
@@ -512,6 +518,7 @@ export default function AgentDetailPage() {
     setTtsDescription("")
     setSpeed(1.0)
     setInteractionMode("conversational")
+    setDeliveryMode("Plivo")
     setOriginalConfig(null)
     setHasChanges(false)
     setShowSuccess(false)
@@ -568,6 +575,11 @@ export default function AgentDetailPage() {
               ? "non_conversational"
               : "conversational"
           setInteractionMode(loadedInteractionMode)
+          setDeliveryMode(
+            isWebSocketAgent(agentData)
+              ? WEBSOCKET_PROVIDER
+              : agentData.telephony_provider || "Plivo"
+          )
 
           setSystemPrompt(agentData.agent_config?.system_prompt || "")
           setGreetingMessage(
@@ -945,9 +957,14 @@ export default function AgentDetailPage() {
 
     const hasConfigChanged = originalNormalized !== currentNormalized
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
-    const hasChanged = hasConfigChanged || hasAgentTypeChanged
+    const hasDeliveryChanged =
+      deliveryMode !==
+      (isWebSocketAgent(agent)
+        ? WEBSOCKET_PROVIDER
+        : agent.telephony_provider || "Plivo")
+    const hasChanged = hasConfigChanged || hasAgentTypeChanged || hasDeliveryChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, deliveryMode, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -974,7 +991,8 @@ export default function AgentDetailPage() {
         agent_type: trimmedAgentType,
         agent_id: agentIdSlug,
         original_agent_type: originalAgentType,
-        agent_category: (agent as any).agent_category || "voicera_telephony",
+        agent_category: agentCategoryForProvider(deliveryMode),
+        telephony_provider: deliveryMode,
         agent_config:
           interactionMode === "non_conversational"
             ? {
@@ -1831,47 +1849,39 @@ export default function AgentDetailPage() {
             <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${currentEditStepKey === "telephony" ? "" : "hidden"}`}>
               <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
                 <Phone size={20} className="text-blue-500" />
-                Telephony Info
+                Delivery
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-lg border border-slate-100 bg-slate-50 flex items-center gap-3">
-                  <span className="bg-blue-100 rounded-full p-2">
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="text-blue-500"
-                    >
-                      <Phone size={20} />
-                    </svg>
-                  </span>
-                  <div>
-                    <div className="text-xs text-slate-500">Provider</div>
-                    <div className="text-base font-bold text-slate-900">
-                      {agent.telephony_provider}
-                    </div>
-                  </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Delivery Mode</label>
+                  <Select value={deliveryMode} onValueChange={setDeliveryMode}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Select delivery mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Vobiz">Vobiz</SelectItem>
+                      <SelectItem value="Plivo">Plivo</SelectItem>
+                      <SelectItem value={WEBSOCKET_PROVIDER}>WebSocket</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-500">
+                    {deliveryMode === WEBSOCKET_PROVIDER
+                      ? "Browser test only. Switch to Vobiz or Plivo to enable phone calls."
+                      : "Attach a phone number from the Numbers page after saving."}
+                  </p>
                 </div>
-                <div className="p-4 rounded-lg border border-slate-100 bg-slate-50 flex items-center gap-3">
-                  <span className="bg-blue-100 rounded-full p-2">
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="text-blue-500"
-                    >
-                      <Phone size={20} />
-                    </svg>
-                  </span>
-                  <div>
+                {deliveryMode !== WEBSOCKET_PROVIDER && (
+                  <div className="p-4 rounded-lg border border-slate-100 bg-slate-50">
                     <div className="text-xs text-slate-500">Phone Number</div>
                     <div className="text-base font-bold text-slate-900">
-                      {agent.phone_number ? agent.phone_number : <span className="italic text-slate-400">Not linked</span>}
+                      {agent.phone_number ? (
+                        agent.phone_number
+                      ) : (
+                        <span className="italic text-slate-400 font-normal">Not linked</span>
+                      )}
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
             <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${currentEditStepKey === "call_mgmt" ? "" : "hidden"}`}>
