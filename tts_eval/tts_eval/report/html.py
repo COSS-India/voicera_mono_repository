@@ -63,6 +63,16 @@ def _bar(fraction: float | None, band: str) -> str:
     )
 
 
+# An inline-SVG emoji favicon, data-URI'd so the standalone report stays a single
+# file and the UI serves no extra asset — just enough to stop the browser 404ing
+# on /favicon.ico and to give both a recognisable tab icon.
+_FAVICON = (
+    '<link rel="icon" href="data:image/svg+xml,'
+    "%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E"
+    "%3Ctext%20y='.9em'%20font-size='90'%3E%F0%9F%8E%A7%3C/text%3E%3C/svg%3E\">"
+)
+
+
 def _page(title: str, body: str, *, inline_css: bool = True, extra_head: str = "") -> str:
     style = f"<style>{CSS}</style>" if inline_css else '<link rel="stylesheet" href="/static/style.css">'
     theme_script = """
@@ -122,6 +132,7 @@ def _page(title: str, body: str, *, inline_css: bool = True, extra_head: str = "
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_e(title)}</title>
+{_FAVICON}
 {style}
 {theme_script}
 {extra_head}

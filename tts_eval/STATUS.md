@@ -4,37 +4,34 @@ Standalone TTS evaluation harness. Zero imports from `voice_2_voice_server`,
 `voicera_backend` or any other service in this monorepo — talks to TTS servers over
 the wire only. Copy the directory out and it still works.
 
-**~10,700 lines across 44 files.** Core install: `numpy` + `PyYAML` only.
+**~12,400 lines of library code across 48 modules**, plus a 12-file pytest suite.
+Core install: `numpy` + `PyYAML` only.
 
 ## Test status
 
 ```
-111 passed in 259s   (python3 -m pytest tests/test_all.py)
+119 passed in 125s   (cd tts_eval && python3 -m pytest -q)
 ```
 
-Everything below marked ✅ is covered by that suite. Run it with
-`cd tts_eval && python3 -m pytest -q`.
+Everything below marked ✅ is covered by that suite. One file per area, mirroring
+the package layout; shared fixtures live in `tests/conftest.py`. Each file defends
+one property — the properties are what the acceptance criteria actually ask for:
 
-Tests are grouped by the *property* being defended, not by module — the properties
-are what the acceptance criteria actually ask for:
-
-| Group | n | Defends |
+| File | n | Defends |
 |---|---|---|
-| `TestDatasetIdentity` | 10 | Reproducible, tamper-evident test inputs |
-| `TestTextNormalisation` | 9 | Symmetric, script-aware CER/WER scoring |
-| `TestAudio` | 5 | WAV/DSP primitives |
-| `TestAdapters` | 12 | Provider-agnostic synthesis + honest failures |
-| `TestCatalogue` | 6 | Every AC has metrics; every metric has polarity |
-| `TestDegeneracyDetection` | 8 | Each silent-failure mode is caught |
-| `TestMissingDataIsExplicit` | 8 | Absent deps degrade with reasons, never crash |
-| `TestFingerprint` | 6 | Only real inputs move the fingerprint |
-| `TestRunnerBehaviour` | 8 | Ordering, memory, warnings, real concurrency |
-| `TestStore` | 8 | Durable, rebuildable, secret-free storage |
-| `TestComparison` | 9 | Defensible verdicts, blocked when non-comparable |
-| `TestSubjective` | 11 | Blinding, rater screening, correct de-blinding |
-| `TestConfig` | 8 | Config-only model onboarding |
+| `test_datasets.py` | 10 | Reproducible, tamper-evident test inputs |
+| `test_text_scoring.py` | 9 | Symmetric, script-aware CER/WER scoring |
+| `test_audio.py` | 5 | WAV/DSP primitives |
+| `test_adapters.py` | 13 | Provider-agnostic synthesis + honest failures |
+| `test_metrics.py` | 21 | Every AC has metrics; each silent-failure mode caught; absent deps degrade with reasons |
+| `test_runner.py` | 18 | Only real inputs move the fingerprint; ordering, memory, warnings, real concurrency |
+| `test_store.py` | 8 | Durable, rebuildable, secret-free storage |
+| `test_compare.py` | 9 | Defensible verdicts, blocked when non-comparable |
+| `test_subjective.py` | 11 | Blinding, rater screening, correct de-blinding |
+| `test_config.py` | 8 | Config-only model onboarding |
+| `test_cli.py` | 7 | CLI wraps the API and returns honest exit codes |
 
-### Three real bugs the tests found and fixed
+### Four real bugs the tests found and fixed
 
 1. **Loop detector flagged clean speech and missed real loops.** Raw magnitude
    spectra are all dominated by the same spectral tilt, so cosine similarity is high
@@ -49,6 +46,14 @@ are what the acceptance criteria actually ask for:
    scored 0.69 — above the 0.55 flag line — because fixed onset/offset padding
    dominates. Now affine: `overhead + chars/rate`. Regression-guarded by
    `test_short_utterance_truncation_is_detected`.
+4. **`save_audio: false` marked every utterance as failed.** `SynthesisResult.ok`
+   read `audio_path` once the in-memory buffer was freed, so a run that deliberately
+   does not persist WAVs — the `latency` suite, and any `--no-audio` run — scored
+   0/69 success, zeroing throughput/reliability and every aggregate. `ok` now trusts
+   a persisted `n_samples` captured at synthesis, independent of buffer and file
+   lifecycle. The pre-existing `test_save_audio_false_writes_nothing` only checked
+   that no file was written and never that the run succeeded — that blind spot is why
+   it slipped through; the test now also asserts `n_ok == 13`, plus a reload guard.
 
 ### One design gap the tests exposed and closed
 
@@ -212,16 +217,25 @@ they differ only in URL and static fields. That is the generalisation claim, con
 
 ---
 
-## Pending
+## Done since first draft (were pending)
 
 | # | Item | Notes |
 |---|---|---|
-| 7 | **Reports** — Markdown + standalone HTML/CSS + CSV export | Data layer + `min_effect`/polarity/AC-matrix all ready for a renderer; renderers not written |
-| 7 | **Lightweight UI** — stdlib `http.server`, static report browsing + audio playback | Your "maybe html css" ask. The listening-test player is already this shape, so the pattern is proven |
-| 7 | **CLI** — `tts-eval run/list/compare/report/dataset/subjective/verify/serve` | Entry point declared in `pyproject.toml`; module not written. **Everything is currently driven via the Python API** |
-| 8 | **Docs** — `README.md`, `docs/STANDARDS.md` | STANDARDS to cover VERSA/TTSDS2/DNSMOS weight setup + IndicVoices-R conversion |
+| 7 | **Reports** — Markdown + standalone HTML/CSS + CSV export | `write_run_report` emits `report.html`, `report.md` and the three CSVs into the run dir; comparison reports via `write_comparison_report`. ✅ |
+| 7 | **Lightweight UI** — stdlib `http.server`, static report browsing + audio playback | `python -m tts_eval.ui` / `tts-eval serve`. Read-only, binds `127.0.0.1`. ✅ |
+| 7 | **CLI** — `tts-eval run/list/report/compare/dataset/subjective/verify/serve` | `tts_eval/cli.py`, wired to the `tts-eval` entry point. Thin wrapper over the Python API — no eval logic of its own. ✅ tested (`TestCLI`) |
 
-pytest suite is **done** (111 tests, above), not pending.
+The Python API remains the reference interface; the CLI just wraps it, so anything
+one does the other can.
+
+## Still pending
+
+Nothing in the build plan. `docs/STANDARDS.md` (VERSA/TTSDS2/DNSMOS/UTMOS setup +
+IndicVoices-R conversion recipe) is now written. ✅
+
+What remains is verification that needs hardware, not code — see below.
+
+pytest suite is **done** (119 tests), not pending.
 
 ### Not yet exercised against anything real
 - `websocket_pcm` against a live Indic-Mio / Parler server — code paths untested end to end.
@@ -238,7 +252,7 @@ pytest suite is **done** (111 tests, above), not pending.
    only within CIs. Fix is upstream (forward seed + `temperature: 0`), then flip the
    card flag.
 2. **Dataset not native-speaker reviewed.** 13 languages authored for the harness.
-   Per-language CER from it is indicative. `docs/STANDARDS.md` will carry the
+   Per-language CER from it is indicative. `docs/STANDARDS.md` carries the
    IndicVoices-R conversion recipe for publication-grade numbers.
 3. **No reference audio in the seed set** → `speaker_similarity` and `ttsds2_overall`
    report `not_computed` on it by design.

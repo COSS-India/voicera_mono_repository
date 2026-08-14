@@ -164,6 +164,13 @@ class SynthesisResult:
     provider_meta: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
     audio_path: str | None = None
+    # Count of audio samples the provider produced, captured at synthesis time and
+    # persisted. This is the durable record of "did the request succeed": it stays
+    # correct after the in-memory buffer is freed AND when audio is deliberately not
+    # written to disk (``save_audio: false``), neither of which the buffer or the
+    # file path can be trusted for. ``None`` only on a record from before this field
+    # existed, where ``ok`` falls back to the buffer/path.
+    n_samples: int | None = None
 
     @property
     def ok(self) -> bool:
@@ -175,6 +182,11 @@ class SynthesisResult:
         """
         if self.error is not None:
             return False
+        # The captured sample count is the source of truth: it is independent of
+        # whether the buffer is still in memory or the WAV was ever written, so a
+        # not-saved-audio run is not mistaken for a run of total failures.
+        if self.n_samples is not None:
+            return self.n_samples > 0
         if self.audio is None:
             return self.audio_path is not None
         return not self.audio.is_empty()
@@ -193,6 +205,7 @@ class SynthesisResult:
             "provider_meta": dict(self.provider_meta),
             "error": self.error,
             "audio_path": self.audio_path,
+            "n_samples": self.n_samples,
             "audio_duration_s": _round_opt(self.duration_s, 4),
             "sample_rate": self.audio.sample_rate if self.audio is not None else None,
         }
@@ -208,6 +221,7 @@ class SynthesisResult:
             provider_meta=dict(d.get("provider_meta") or {}),
             error=d.get("error"),
             audio_path=d.get("audio_path"),
+            n_samples=d.get("n_samples"),
         )
         # Duration/sample-rate survive without the buffer so reports and
         # comparisons work on a store that has had its WAVs pruned.

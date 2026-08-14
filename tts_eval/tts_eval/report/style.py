@@ -294,26 +294,52 @@ code {
 
 /* -- run list ---------------------------------------------------------------*/
 
+.run-filter { width: 100%; margin: 0 0 1rem; }
+
 .run-list { list-style: none; padding: 0; display: grid; gap: .6rem; }
 
 .run-list li {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: .85rem 1.1rem;
   transition: box-shadow .12s ease, border-color .12s ease;
 }
 
 .run-list li:hover { box-shadow: var(--shadow-sm); border-color: var(--accent); }
-.run-list a { color: var(--text); }
-.run-list a:hover { text-decoration: none; }
-.run-list .title { font-weight: 650; }
+
+.run-list .run-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .85rem 1.1rem;
+  color: var(--text);
+}
+
+.run-list .run-link:hover { text-decoration: none; }
+.run-main { min-width: 0; }
+.run-list .title { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run-list .sub { color: var(--muted); font-size: .82rem; margin-top: .3rem; }
+
+.run-stats {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-shrink: 0;
+}
+
+.run-count { color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; }
+
+.run-empty { color: var(--muted); padding: 1.25rem; text-align: center; }
 
 /* -- theme toggle -------------------------------------------------------- */
 
 .theme-toggle {
-  padding: .4rem .75rem;
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 40;
+  padding: .5rem .85rem;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
@@ -323,9 +349,11 @@ code {
   font-size: .82rem;
   line-height: 1.2;
   white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  transition: background .12s ease, transform .12s ease;
 }
 
-.theme-toggle:hover { background: var(--surface-subtle); }
+.theme-toggle:hover { background: var(--surface-subtle); transform: translateY(-1px); }
 .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .audio-cell audio { height: 30px; width: 12rem; }
@@ -357,7 +385,10 @@ button:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn-secondary { background: var(--surface-subtle); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--border); }
 
-select, input[type="text"], .new-input {
+/* All text-like inputs, not just [type=text]: bare inputs, search and number
+   fields were falling through to the default browser chrome before. */
+select, textarea, .new-input,
+input:not([type="checkbox"]):not([type="radio"]) {
   padding: .45rem .6rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -366,6 +397,9 @@ select, input[type="text"], .new-input {
   font: inherit;
   font-size: .9rem;
 }
+
+/* Native search "clear" affordance clashes with the dark theme; normalise it. */
+input[type="search"] { -webkit-appearance: none; appearance: none; }
 
 select:focus, input:focus, textarea:focus {
   outline: 2px solid var(--accent-soft);
@@ -423,7 +457,7 @@ select:focus, input:focus, textarea:focus {
 
 .toast {
   position: fixed;
-  bottom: 1.5rem;
+  bottom: 4.5rem;
   right: 1.5rem;
   padding: .6rem 1.2rem;
   border-radius: var(--radius-sm);
@@ -509,6 +543,54 @@ select:focus, input:focus, textarea:focus {
 .editor-toolbar { display: flex; gap: .5rem; align-items: center; margin-bottom: .75rem; }
 .editor-title { font-weight: 600; font-size: .95rem; flex: 1; }
 .new-input { width: 100%; margin-bottom: .4rem; }
+
+/* -- new-config dialog ---------------------------------------------------- */
+
+dialog.modal {
+  width: min(40rem, calc(100vw - 2rem));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+  padding: 0;
+}
+
+dialog.modal::backdrop { background: rgba(10, 12, 16, .5); backdrop-filter: blur(2px); }
+
+.modal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem .5rem;
+}
+
+.modal-head h3 { margin: 0; font-size: 1.05rem; }
+.modal-head p { margin: .15rem 0 0; }
+
+.modal-body { padding: .5rem 1.25rem 0; }
+.modal-body .form-group { margin-bottom: .85rem; }
+
+.yaml-input {
+  width: 100%;
+  min-height: 17rem;
+  font-family: ui-monospace, monospace;
+  font-size: .85rem;
+  line-height: 1.55;
+  tab-size: 2;
+  white-space: pre;
+  resize: vertical;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: .6rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.modal-hint { font-size: .82rem; color: var(--muted); margin: 0 0 .6rem; }
 """
 
 __all__ = ["CSS"]

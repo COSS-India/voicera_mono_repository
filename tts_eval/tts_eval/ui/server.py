@@ -95,35 +95,79 @@ def _run_option(summary: RunSummary, selected: str) -> str:
 # Page renderers
 # ---------------------------------------------------------------------------
 
+def _success_band(rate: float | None) -> str:
+    """Map a success rate to a badge colour band, matching report.html thresholds."""
+    if rate is None:
+        return "neutral"
+    if rate >= 0.99:
+        return "good"
+    if rate >= 0.9:
+        return "warn"
+    return "bad"
+
+
 def render_index(store: RunStore) -> str:
     summaries = store.list_runs(limit=500)
     if not summaries:
         body = (
             f'<div class="topbar"><h1>tts_eval</h1><nav>{_nav(active="runs")}</nav></div>'
-            f'<p class="muted">No runs found under <code>{_e(store.root)}</code>.</p>'
+            f'<p class="muted">No runs found under <code>{_e(store.root)}</code>. '
+            f'Start one from the <a href="/launch">Launch</a> tab.</p>'
         )
         return _page("tts_eval — runs", body)
 
     items = []
     for summary in summaries:
         success = f"{summary.success_rate:.0%}" if summary.success_rate is not None else "—"
+        band = _success_band(summary.success_rate)
         reviewed = (
             '<span class="badge good">reviewed</span>'
             if summary.reviewed
             else '<span class="badge neutral">unreviewed</span>'
         )
+        # data-search backs the client-side filter box: one lowercase haystack so
+        # a reviewer scanning dozens of runs can jump to one by name, label or id.
+        haystack = _e(
+            f"{summary.display_name} {summary.label} {summary.run_id}".lower()
+        )
         items.append(
-            f'<li><a href="/run/{_e(summary.run_id)}">'
-            f'<div class="title">{_e(summary.display_name)} — {_e(summary.label)}</div></a>'
-            f'<div class="sub">{_e(summary.run_id)} &middot; {_e(summary.created_at[:19])} &middot; '
-            f"{summary.n_ok}/{summary.n_utterances} ok ({success}) &middot; "
-            f"concurrency {summary.concurrency} &middot; {reviewed}</div></li>"
+            f'<li data-search="{haystack}"><a class="run-link" href="/run/{_e(summary.run_id)}">'
+            f'<div class="run-main">'
+            f'<div class="title">{_e(summary.display_name)} — {_e(summary.label)}</div>'
+            f'<div class="sub">{_e(summary.run_id)} &middot; {_e(summary.created_at[:19])} '
+            f"&middot; concurrency {summary.concurrency}</div>"
+            f'</div>'
+            f'<div class="run-stats">'
+            f'<span class="run-count">{summary.n_ok}/{summary.n_utterances}</span>'
+            f'<span class="badge {band}">{success}</span>'
+            f"{reviewed}"
+            f"</div></a></li>"
         )
 
     body = f"""
 <div class="topbar"><h1>tts_eval</h1><nav>{_nav(active="runs")}</nav></div>
 <p class="subtitle">{len(summaries)} run(s) under <code>{_e(store.root)}</code></p>
-<ul class="run-list">{''.join(items)}</ul>
+<input class="run-filter" id="run-filter" type="search" autocomplete="off"
+  placeholder="Filter runs by name, label or id…" aria-label="Filter runs">
+<ul class="run-list" id="run-list">{''.join(items)}</ul>
+<p class="run-empty" id="run-empty" hidden>No runs match that filter.</p>
+<script>
+(function () {{
+  const input = document.getElementById('run-filter');
+  const items = Array.from(document.querySelectorAll('#run-list > li'));
+  const empty = document.getElementById('run-empty');
+  input.addEventListener('input', function () {{
+    const q = input.value.trim().toLowerCase();
+    let shown = 0;
+    for (const li of items) {{
+      const match = !q || li.dataset.search.includes(q);
+      li.hidden = !match;
+      if (match) shown++;
+    }}
+    empty.hidden = shown > 0;
+  }});
+}})();
+</script>
 """
     return _page("tts_eval — runs", body)
 
@@ -155,6 +199,44 @@ a dataset and concurrency — see the comparability checks in the result.</p>
     return _page("tts_eval — compare", body)
 
 
+# Starter templates shown in the "new config" dialog: a single commented YAML the
+# reviewer edits in place, rather than a field-per-input form. Comments carry the
+# structure so a newcomer learns the shape from the sample itself.
+_MODEL_SAMPLE = """# Model card — how to reach one TTS system. Edit the values below.
+model_id: my-tts-model
+model_version: "1.0"
+provider: MyTeam
+
+# Transport adapter. Built-in: http_rest, websocket_pcm, mock, replay.
+adapter: http_rest
+adapter_config:
+  url: ${MY_MODEL_URL:-http://localhost:8000/synthesize}
+  method: POST
+  # A JSON API returning base64 audio? Set response_format: json_base64.
+
+sample_rate: 24000
+voices: [default]
+default_voice: default
+languages: [en]
+
+# deterministic | best_effort  (recorded in the run; runs across a mismatch are refused).
+determinism: best_effort
+"""
+
+_SUITE_SAMPLE = """# Suite — the fixed protocol every model in a bake-off runs unchanged.
+suite_id: my-suite
+dataset: indic_conversational_v1
+
+# Metric tier: core | standard | all  (all adds the optional perceptual backends).
+metrics: standard
+
+# Protocol, not a speed knob: runs at a different concurrency are non-comparable.
+concurrency: 1
+seed: 1234
+save_audio: true
+"""
+
+
 def render_configs_page() -> str:
     """Configuration manager: list and edit model cards and suite configs."""
     models = list_model_cards()
@@ -170,6 +252,9 @@ def render_configs_page() -> str:
         for s in suites
     ) or '<li class="muted">No suites found</li>'
 
+    model_sample = _e(_MODEL_SAMPLE)
+    suite_sample = _e(_SUITE_SAMPLE)
+
     body = f"""
 <div class="topbar"><h1>Configurations</h1><nav>{_nav(active="configs")}</nav></div>
 <p class="subtitle">Edit model cards and evaluation suites. Changes are saved to <code>{_e(MODELS_DIR.parent)}</code>.</p>
@@ -179,18 +264,14 @@ def render_configs_page() -> str:
     <div class="config-section">
       <h3>Model Cards</h3>
       <ul class="config-list" id="model-list">{model_items}</ul>
-      <div style="margin-top:.4rem">
-        <input class="new-input" id="new-model-name" placeholder="new-model-name">
-        <button class="btn btn-secondary" style="width:100%" onclick="createNew('model')">+ New Model Card</button>
-      </div>
+      <button class="btn btn-secondary" style="width:100%;margin-top:.5rem"
+        onclick="document.getElementById('model-dialog').showModal()">+ New Model Card</button>
     </div>
     <div class="config-section">
       <h3>Suites</h3>
       <ul class="config-list" id="suite-list">{suite_items}</ul>
-      <div style="margin-top:.4rem">
-        <input class="new-input" id="new-suite-name" placeholder="new-suite-name">
-        <button class="btn btn-secondary" style="width:100%" onclick="createNew('suite')">+ New Suite</button>
-      </div>
+      <button class="btn btn-secondary" style="width:100%;margin-top:.5rem"
+        onclick="document.getElementById('suite-dialog').showModal()">+ New Suite</button>
     </div>
   </div>
 
@@ -202,10 +283,56 @@ def render_configs_page() -> str:
     <div class="editor-wrap">
       <pre class="editor-highlight" id="editor-highlight" aria-hidden="true"></pre>
       <textarea class="editor-area" id="editor" spellcheck="false"
-        placeholder="Select a model card or suite from the sidebar to view and edit its YAML." disabled></textarea>
+        placeholder="Select a model card or suite from the sidebar, or create a new one, to view and edit its YAML." disabled></textarea>
     </div>
   </div>
 </div>
+
+<dialog class="modal" id="model-dialog">
+  <form method="dialog" onsubmit="return createModel(event)">
+    <div class="modal-head">
+      <div><h3>New Model Card</h3><p class="modal-hint">Name it, then edit the sample YAML. Saved to the editor as a draft.</p></div>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Name (file name)</label>
+        <input id="md-name" placeholder="my-tts-model" required
+          pattern="[A-Za-z0-9_-]+" title="Letters, digits, - and _ only">
+      </div>
+      <div class="form-group">
+        <label>YAML</label>
+        <textarea class="yaml-input" id="md-yaml" spellcheck="false">{model_sample}</textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="suite-dialog">
+  <form method="dialog" onsubmit="return createSuite(event)">
+    <div class="modal-head">
+      <div><h3>New Suite</h3><p class="modal-hint">Name it, then edit the sample YAML. Saved to the editor as a draft.</p></div>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Name (file name)</label>
+        <input id="su-name" placeholder="my-suite" required
+          pattern="[A-Za-z0-9_-]+" title="Letters, digits, - and _ only">
+      </div>
+      <div class="form-group">
+        <label>YAML</label>
+        <textarea class="yaml-input" id="su-yaml" spellcheck="false">{suite_sample}</textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn">Create</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 let curType = null, curName = null;
@@ -286,22 +413,34 @@ async function saveConfig() {{
   }} catch(e) {{ toast('Save failed: ' + e, true); }}
 }}
 
-function createNew(type) {{
-  const input = document.getElementById('new-' + type + '-name');
-  const name = input.value.trim().replace(/\\.ya?ml$/, '');
-  if (!name) {{ toast('Enter a name', true); return; }}
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {{ toast('Name: letters, digits, - and _ only', true); return; }}
-  const tmpl = type === 'model'
-    ? 'model_id: ' + name + '\\nmodel_version: "1.0"\\nprovider: MyTeam\\nadapter: http_rest\\nadapter_config:\\n  url: ${{MY_MODEL_URL:-http://localhost:8000/synthesize}}\\n  method: POST\\n  response_type: streaming\\nsample_rate: 24000\\nvoices: [default]\\ndefault_voice: default\\nlanguages: [en]\\ndeterminism: best_effort\\n'
-    : 'suite_id: ' + name + '\\ndataset: indic_conversational_v1\\nmetrics: standard\\nconcurrency: 1\\nseed: 1234\\nsave_audio: true\\n';
-  document.getElementById('editor').value = tmpl;
-  document.getElementById('editor').disabled = false;
+// -- "new config" dialogs ------------------------------------------------
+// One name + one YAML textarea prefilled with a commented sample, so the
+// structure teaches itself. On create the YAML drops into the editor as an
+// unsaved draft; the reviewer clicks Save to write it.
+function openInEditor(type, name, yaml) {{
+  const ed = document.getElementById('editor');
+  ed.value = yaml;
+  ed.disabled = false;
   document.getElementById('save-btn').disabled = false;
-  document.getElementById('editor-title').textContent = name + '.yaml (' + type + ') — NEW';
+  document.getElementById('editor-title').textContent = name + '.yaml (' + type + ') — new draft, click Save';
   curType = type; curName = name;
-  input.value = '';
   updateHighlight();
+  ed.focus();
+  toast('Draft ready — review and click Save');
 }}
+
+function createConfig(ev, type, nameId, yamlId, dialogId) {{
+  ev.preventDefault();
+  const name = document.getElementById(nameId).value.trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) {{ toast('Name: letters, digits, - and _ only', true); return false; }}
+  const yaml = document.getElementById(yamlId).value;
+  document.getElementById(dialogId).close();
+  openInEditor(type, name, yaml);
+  return false;
+}}
+
+function createModel(ev) {{ return createConfig(ev, 'model', 'md-name', 'md-yaml', 'model-dialog'); }}
+function createSuite(ev) {{ return createConfig(ev, 'suite', 'su-name', 'su-yaml', 'suite-dialog'); }}
 
 function toast(msg, err) {{
   const el = document.createElement('div');

@@ -234,6 +234,9 @@ class TTSAdapter(abc.ABC):
             chunk_timings=capture.timings,
             provider_meta=meta,
             error=error,
+            # Persisted now, while we still have the buffer: this is what ``ok``
+            # trusts once the audio is freed or when the run does not save WAVs.
+            n_samples=int(audio.n_samples),
         )
 
     # -- helpers for subclasses -------------------------------------------

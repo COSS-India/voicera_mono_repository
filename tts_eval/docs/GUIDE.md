@@ -140,8 +140,22 @@ generation_params:                    # fixed generation overrides
 
 ## 5. Run Evaluation
 
-> [!NOTE]
-> CLI `tts-eval` is currently pending implementation. Use the **Python API** — it's the complete, fully-tested interface.
+Two equivalent front-ends — the `tts-eval` CLI and the Python API it wraps.
+
+### CLI (fastest path):
+
+```bash
+tts-eval run --model my-model --suite smoke      # evaluate
+tts-eval list                                    # stored runs
+tts-eval report <run-id>                         # (re)build report.html/md + CSVs
+tts-eval compare <baseline> <candidate>          # A/B with verdicts
+tts-eval verify <run-id>                         # reproducibility drift
+tts-eval serve                                   # web UI on 127.0.0.1:8765
+tts-eval --help                                  # all commands and flags
+```
+
+Exit codes: `0` ok, `1` expected failure (bad config, unreachable server),
+`2` a comparison/verify that ran but is not comparable / drifted.
 
 ### Python script (copy-paste ready):
 
@@ -468,8 +482,8 @@ cat runs/*/aggregates.csv
 
 | Task | How |
 |------|-----|
-| Run eval | Python API: `build_plan` → `run_sync` → `store.save` |
-| Quick test (no server) | `load_model_card("mock")` + `load_suite("smoke")` |
+| Run eval | `tts-eval run -m <model> -s <suite>` (or API: `build_plan` → `run_sync` → `store.save`) |
+| Quick test (no server) | `tts-eval run -m mock -s smoke` |
 | Connect new model (HTTP/WS) | Create YAML in `configs/models/` |
 | Connect model (custom protocol) | Subclass `TTSAdapter` + `@register_adapter` |
 | Choose metrics | Suite config: `metrics: core\|standard\|all` or explicit list |

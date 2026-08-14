@@ -5,9 +5,20 @@ Sarvam, or any other provider). Zero imports from the rest of this monorepo —
 it talks to TTS servers over the wire only, so this directory can be copied
 out and it still works.
 
-> **CLI status:** the `tts-eval` command declared in `pyproject.toml` is not
-> built yet. Everything below is the Python API, which is what actually
-> works today. A CLI would just wrap these same calls.
+Two equivalent interfaces: a **`tts-eval` CLI** for day-to-day use and the
+**Python API** it wraps. Anything one can do, the other can — pick whichever
+fits. The CLI is the fast path:
+
+```bash
+tts-eval run -m mock -s smoke          # evaluate (mock model, no server/GPU)
+tts-eval list                          # stored runs
+tts-eval compare <baseline> <candidate>
+tts-eval report <run-id>               # (re)generate report.html/md + CSVs
+tts-eval verify <run-id>               # re-run and report reproducibility drift
+tts-eval dataset show indic_conversational_v1
+tts-eval serve                         # browse runs at http://127.0.0.1:8765
+tts-eval --help                        # every command and flag
+```
 
 See `STATUS.md` for what's built/tested and known limitations.
 
