@@ -1,0 +1,331 @@
+tts_eval/tts_eval/datasets/__init__.py
+  s_894cdd1eb2ecef::t_f1a701aed1ba01 1-20
+tts_eval/tts_eval/adapters/http_rest.py
+  s_894cdd1eb2ecef::t_57323002499ef4 188-189,192-194,196,198-203,205-208
+  s_894cdd1eb2ecef::t_94a43751a4755b 153-157,162-163,167,170-171,177
+  s_894cdd1eb2ecef::t_87827563323390 1-152,158-161,164-166,168-169,172-176,178-187,190-191,195,197,204,209-220,222-232,261-265,273-275,277-284,286-289,291-302
+  s_894cdd1eb2ecef::t_e7c104ac59b7a7 221,233-260,266-272,276,285,290
+tts_eval/tts_eval/datasets/loader.py
+  s_894cdd1eb2ecef::t_99d08a7805a8eb 136-138
+  s_894cdd1eb2ecef::t_73a647c8c7a630 1-67,79,85-111,114-135,139-306,309-445
+  s_894cdd1eb2ecef::t_a7061afb274758 68-78,80-84
+  s_894cdd1eb2ecef::t_897b6d85fcd5b0 307-308
+  s_894cdd1eb2ecef::t_c9f30d7fdde681 112-113
+tts_eval/tts_eval/datasets/builtin/indic_conversational_v1.jsonl
+  s_894cdd1eb2ecef::t_c38c782226a8c6 1-69
+tts_eval/requirements-metrics.txt
+  s_894cdd1eb2ecef::t_dc574deb41e1a0 1-28
+tts_eval/pyproject.toml
+  s_894cdd1eb2ecef::t_b243ed5f99b57e 1-54
+tts_eval/tts_eval/metrics/latency.py
+  s_894cdd1eb2ecef::t_3c802ea68d774c 1-215
+tts_eval/tts_eval/report/style.py
+  s_b72f68d1360c0e::t_78bb33d29a356a 10-16,22-23,55-58,88,90,100,113,165,188,206,226,250,265,277,281,294,304,358,401,418,442
+  s_b72f68d1360c0e::t_ac36d68b9a25ea 42-48
+  s_b72f68d1360c0e::t_45c3423a5a6c6d 496
+  s_d27d044ea2933a::t_085700e4e61af1 458
+  s_d27d044ea2933a::t_e0d20758f7a974 497-514
+  s_894cdd1eb2ecef::t_48f38337320db2 1-6,17-21,40,54,85-87,91,93-94,99,102,107-108,114,116,152,159-160,164,173-174,177,179-181,183,185,189,192,199-202,204-205,209-211,213,216-221,227,232,234,244-248,251-253,255,257-264,268,271,274,276,282-287,293,299,301,303,359-364,400,407-411,417,441,463
+  s_b72f68d1360c0e::t_515f91c82919b3 7-9,24-39,41,49-53,59-75,83-84,89,92,95-98,101,103-106,109-112,115,117-151,153-158,161-163,166-172,175-176,178,182,184,186-187,190-191,193-198,203,207-208,212,214-215,222-225,228-231,233,235-243,249,254,256,266-267,269-270,272-273,275,278-280,288-292,295-298,300,302,305,333-337,343-353,355-357,365-388,393-399,402-406,412-416,419-440,443-457,459-462,464-495
+  s_b72f68d1360c0e::t_4e9028aed6c04b 76-82
+  s_d27d044ea2933a::t_b914ed07773cf5 338-342,354
+  s_d27d044ea2933a::t_3bac0d6cd8c6df 306-332
+  s_d27d044ea2933a::t_e9c84d589a7a3e 389-392
+tts_eval/tts_eval/ui/__init__.py
+  s_894cdd1eb2ecef::t_79b414fadeb62f 24
+  s_894cdd1eb2ecef::t_fd6d2933553299 1-23
+tts_eval/tests/test_adapters.py
+  s_3dc25239d0c11a::t_0e3693186b6a66 1-108
+tts_eval/tts_eval/metrics/audio_quality.py
+  s_894cdd1eb2ecef::t_802307528ed2b5 317-333,335
+  s_894cdd1eb2ecef::t_334ead55dd7b21 392,395
+  s_894cdd1eb2ecef::t_41b34ae6d16a86 390,393-394
+  s_894cdd1eb2ecef::t_c568c4088cecc3 198,205,234
+  s_894cdd1eb2ecef::t_6ddf5961307a52 284-301,305,316,334
+  s_894cdd1eb2ecef::t_9889b4bf0af335 64,66-70
+  s_894cdd1eb2ecef::t_4bc8ff386818f5 264,266-270,279
+  s_894cdd1eb2ecef::t_d15b5d6d496cfd 51-60
+  s_894cdd1eb2ecef::t_7ab27b2e2629a5 72-76
+  s_894cdd1eb2ecef::t_5a002bf7121408 208-218,222-230,235
+  s_894cdd1eb2ecef::t_5782961705ad28 1-50,61,77-197,199-204,206-207,219-221,231-233,236-263,265,271-278,280-283,302-303,336-337,343,361-369,371-389,391,396-449
+  s_894cdd1eb2ecef::t_02140d0353fa47 346-351
+  s_894cdd1eb2ecef::t_aab3f640622fc0 370
+  s_894cdd1eb2ecef::t_c07c011f2a0235 306-315
+  s_894cdd1eb2ecef::t_792883e3c58c06 338-342
+  s_894cdd1eb2ecef::t_30bbcaa77601b5 304,344-345,352-360
+  s_894cdd1eb2ecef::t_224e71663f7f8f 62-63,65,71
+tts_eval/tts_eval/report/csv_export.py
+  s_894cdd1eb2ecef::t_cf0ea04b0c715d 1-117
+tts_eval/tests/test_compare.py
+  s_3dc25239d0c11a::t_2600f05a73a450 1-90
+tts_eval/tests/test_cli.py
+  s_3dc25239d0c11a::t_920586c44ed5b9 1-82
+tts_eval/tts_eval/cli.py
+  s_3dc25239d0c11a::t_ad4914095358ce 1-468
+tts_eval/requirements.txt
+  s_894cdd1eb2ecef::t_deee0dfbefea90 1-6
+tts_eval/tts_eval/metrics/base.py
+  s_894cdd1eb2ecef::t_d7a09ff8a00d2b 1-60,67-182,199,203-454
+  s_894cdd1eb2ecef::t_a6b83161c7d09a 183-198,200-202
+  s_894cdd1eb2ecef::t_2da9ecef73c652 61-66
+tts_eval/tts_eval/metrics/plugins/versa.py
+  s_894cdd1eb2ecef::t_52ca4a54979692 1-209
+tts_eval/tests/test_audio.py
+  s_3dc25239d0c11a::t_494d4693c5e795 1-40
+tts_eval/tts_eval/ui/server.py
+  s_d27d044ea2933a::t_291db698205885 210
+  s_d27d044ea2933a::t_4e4bd9e73ee221 336-339,341,344
+  s_894cdd1eb2ecef::t_b2f8f24dae0ecd 457-462
+  s_b72f68d1360c0e::t_9a9a83c5bf3775 314-316
+  s_b72f68d1360c0e::t_54f2c6327c73b8 317
+  s_b72f68d1360c0e::t_66c333398987ca 211-219,224-231,307-311,320-326,340,348,353,358-362,367-369,371-375,384-422,428-447,452-455
+  s_894cdd1eb2ecef::t_f75a8562ca0c60 220-221
+  s_894cdd1eb2ecef::t_dae1eb2730ee3c 377-382
+  s_b72f68d1360c0e::t_ecd2930c4ebf4a 425-427,448-450
+  s_d27d044ea2933a::t_3603e0b86e0155 332-335
+  s_b72f68d1360c0e::t_96fa48a5810f95 318-319,327-329
+  s_b72f68d1360c0e::t_86fde6ea065d1f 370
+  s_b72f68d1360c0e::t_58705996bd1aaa 304-306,312-313
+  s_b72f68d1360c0e::t_89c19d194c85df 253-254,256-258
+  s_894cdd1eb2ecef::t_6551a9bc65b977 1-76,78-102,106-117,155-159,181-209,223,354,366,376,383,456,463-714
+  s_d27d044ea2933a::t_76b8e989aff148 222,232-233,238-239,251,255
+  s_b72f68d1360c0e::t_b8a43e7ace3461 234,240,247-250,252
+  s_b72f68d1360c0e::t_2b09af00d70301 264
+  s_d27d044ea2933a::t_567e88b38643bf 103-105,118-154,160-180
+  s_b72f68d1360c0e::t_c1333c6742dfaa 299-302
+  s_b72f68d1360c0e::t_237fdf056eb2f5 331,342
+  s_b72f68d1360c0e::t_2141b374a10ea0 345-347,349-351
+  s_b72f68d1360c0e::t_b72b9e7002dee8 241-246
+  s_b72f68d1360c0e::t_50ad47cdd456c7 235-237
+  s_b72f68d1360c0e::t_c726425b24742e 259-263,265-298,303,330,352,423-424,451
+  s_b72f68d1360c0e::t_ab561798b0052e 343
+  s_d27d044ea2933a::t_e0d20758f7a974 715-833
+  s_b72f68d1360c0e::t_98f647596d0918 77
+  s_894cdd1eb2ecef::t_2f2415cbbcdc06 355-357,363-365
+tts_eval/tts_eval/metrics/catalog.py
+  s_894cdd1eb2ecef::t_53f6a851e75d4d 1-49,59-70,72-77,79-83,85-88,90-95,97-101,103-105,107-109,111-113,115-121,123-126,128-132,134-137,139-142,144-147,149-153,155-158,160-164,166-171,173-177,179-183,185-192,194-198,200-205,207-214,216-218,220-222,224-226,228-232,234-238,240,253-256,258-266,268-272,274-278,280,288-293,295-298,300-302,304-310,312-316,318-407
+  s_894cdd1eb2ecef::t_e77e50bb0d9dfb 241-244,246-250,252
+  s_894cdd1eb2ecef::t_172a22075881c0 281-285,287
+  s_894cdd1eb2ecef::t_3e34d1e05c6943 71,78,84,89,96,102,106,110,114,122,127,133,138,143,148,154,159,165,172,178,184,193,199,206,215,219,223,227,233,239,245,251,257,267,273,279,286,294,299,303,311,317
+  s_894cdd1eb2ecef::t_3a7800bd8c9102 50-58
+tts_eval/tts_eval/metrics/plugins/ttsds2.py
+  s_894cdd1eb2ecef::t_f9358525f091e1 1-166
+tts_eval/tests/test_text_scoring.py
+  s_3dc25239d0c11a::t_6ac469404b5eb2 1-46
+tts_eval/tts_eval/report/html.py
+  s_d27d044ea2933a::t_e0d20758f7a974 510-520
+  s_894cdd1eb2ecef::t_0d533d1393ccc6 1-22,24-509
+  s_894cdd1eb2ecef::t_6dbc2b7a63c33b 23
+tts_eval/tts_eval/asr/base.py
+  s_894cdd1eb2ecef::t_c0f40972f13857 1-39,44-48,59,61,65-210
+  s_894cdd1eb2ecef::t_b0fcb6e8a0199b 40-43,49-58,60,62-64
+tts_eval/tts_eval/subjective/ingest.py
+  s_894cdd1eb2ecef::t_1b2bd910a8df78 2-15,18-20,22-24,26-34,36
+  s_894cdd1eb2ecef::t_c979f22f2ebc33 1,16-17,21,25,35,37-531
+tts_eval/tests/test_all.py
+  s_894cdd1eb2ecef::t_a9b1a1bfb79426 638-644,649-650,652-662
+  s_894cdd1eb2ecef::t_f72684a8257d31 1-59,68-371,391-392,394-396,404-418,426-429,433,450-637,645-648,651,668-680,683,685-1033,1035
+  s_894cdd1eb2ecef::t_6479c024a170c3 372-390
+  s_894cdd1eb2ecef::t_92e4d50b2a6adb 393,397-403
+  s_894cdd1eb2ecef::t_b8bb77ca379a60 663-667
+  s_894cdd1eb2ecef::t_5db662ffbb546f 681-682,684
+  s_894cdd1eb2ecef::t_e87129ec80f00d 60-67
+  s_894cdd1eb2ecef::t_7b039f35ca61fe 1034,1036-1038
+  s_894cdd1eb2ecef::t_df18402842108d 419-425,430-432,434-449
+tts_eval/tts_eval/metrics/__init__.py
+  s_894cdd1eb2ecef::t_ee6d5942a60cdc 1-74
+tts_eval/tts_eval/audio.py
+  s_894cdd1eb2ecef::t_29c9ab925a5edc 1-250
+tts_eval/tts_eval/asr/http_asr.py
+  s_894cdd1eb2ecef::t_bf9a6e155930e0 1-24,26-52,58-72,78-80,91-95,97-99,101-106,108-117,119-184,197-229
+  s_894cdd1eb2ecef::t_e60220166f0467 118
+  s_58c34750e9866c::t_89410fcf8abf92 73-77
+  s_58c34750e9866c::t_6feb249d17629e 185-196
+  s_58c34750e9866c::t_4078a6f4549e04 53-57
+  s_58c34750e9866c::t_e1395fd470db19 81-90,96,100,107
+  s_894cdd1eb2ecef::t_3307e676c17483 25
+tts_eval/tests/test_subjective.py
+  s_3dc25239d0c11a::t_a916bea38a989d 1-168
+tts_eval/requirements-adapters.txt
+  s_894cdd1eb2ecef::t_08ce452928cabe 1-11
+tts_eval/configs/suites/latency.yaml
+  s_894cdd1eb2ecef::t_42798dace99c52 1-26
+tts_eval/tts_eval/asr/__init__.py
+  s_894cdd1eb2ecef::t_cb1bec2902da2a 1-61
+tts_eval/tts_eval/metrics/voice_consistency.py
+  s_894cdd1eb2ecef::t_7650c0bed743f4 116-124,126
+  s_894cdd1eb2ecef::t_a77ed38f1f66f4 1-26,28-53,77-115,125,127-231,236-237,242-249
+  s_894cdd1eb2ecef::t_5087e6aac382bc 232-235,238-241
+  s_894cdd1eb2ecef::t_c1c0b7a6f0dbdb 54-76
+  s_894cdd1eb2ecef::t_82dd5625a3bd9e 27
+tts_eval/tts_eval/subjective/listening_test.py
+  s_894cdd1eb2ecef::t_7f4493a42a195c 42
+  s_894cdd1eb2ecef::t_b3b98bcc4b726f 280-282
+  s_894cdd1eb2ecef::t_b8a8257c91eb96 98-105
+  s_894cdd1eb2ecef::t_e1ac33245f6c57 1-41,43-97,106-279,283-494
+tts_eval/tts_eval/datasets/builtin/indic_conversational_v1.meta.yaml
+  s_894cdd1eb2ecef::t_8a30539b5c7eca 1-48
+tts_eval/tts_eval/ui/__main__.py
+  s_894cdd1eb2ecef::t_6ef92a7ffd2bba 1-26
+tts_eval/tts_eval/adapters/__init__.py
+  s_894cdd1eb2ecef::t_e46c8c30458fe4 1-37
+tts_eval/tests/test_datasets.py
+  s_3dc25239d0c11a::t_62281666645d16 1-74
+tts_eval/configs/models/mock.yaml
+  s_894cdd1eb2ecef::t_1fffac5d5147a2 1-39
+tts_eval/tts_eval/adapters/mock.py
+  s_894cdd1eb2ecef::t_08dc6cfc05e1da 172-173,178-180,187-191,194-202,220-222
+  s_894cdd1eb2ecef::t_208d88fb1b574d 71-74
+  s_894cdd1eb2ecef::t_d6a70859c60d0a 212-219,224,226-232,241-244
+  s_894cdd1eb2ecef::t_0e845161d930af 1-70,75-80,105-112,118-122,124-126,128-129,136,138,140-149,151-171,192-193,203-211,223,247-266
+  s_894cdd1eb2ecef::t_3cbad16d0e232c 81-104,113-117,123,127,131,137,139
+  s_894cdd1eb2ecef::t_ccb0e11ce2fd8b 130,132-135
+  s_894cdd1eb2ecef::t_36453cafda3860 174-177,181-186
+  s_894cdd1eb2ecef::t_8b3cc6574140d5 150
+  s_894cdd1eb2ecef::t_3afc464f7b5f04 225,233-240,245-246
+tts_eval/docs/STANDARDS.md
+  s_3dc25239d0c11a::t_45681de3d0f118 1-213
+tts_eval/configs/suites/smoke.yaml
+  s_894cdd1eb2ecef::t_4c987972d1a1ea 1-19
+tts_eval/tests/test_store.py
+  s_3dc25239d0c11a::t_5b540609023e34 1-90
+tts_eval/tests/test_metrics.py
+  s_3dc25239d0c11a::t_6dc0354c0dd86b 1-245
+tts_eval/tts_eval/types.py
+  s_894cdd1eb2ecef::t_3c380046a64fc6 1-757
+  s_d27d044ea2933a::t_e0d20758f7a974 758-771
+tts_eval/tts_eval/metrics/plugins/speaker.py
+  s_894cdd1eb2ecef::t_26e24f4211ae95 55-57
+  s_894cdd1eb2ecef::t_1e1a69c7852349 28
+  s_894cdd1eb2ecef::t_fe91d76df3b0d2 1-27,29-54,58-206
+tts_eval/tts_eval/metrics/reliability.py
+  s_894cdd1eb2ecef::t_380fec813ae810 1-100
+tts_eval/tts_eval/adapters/websocket_pcm.py
+  s_58c34750e9866c::t_5e9a51f13fad6a 66-73
+  s_894cdd1eb2ecef::t_54bde5ecad1d24 1-65,74-110,117-179,185-218
+  s_58c34750e9866c::t_5775ad6b5fc968 180-184
+  s_58c34750e9866c::t_a61672f0677ffa 111-116
+tts_eval/tts_eval/errors.py
+  s_894cdd1eb2ecef::t_27604f346ea0cc 1-52
+tts_eval/tts_eval/store.py
+  s_894cdd1eb2ecef::t_cd5b6b0c0ffa45 1-404
+tts_eval/tests/conftest.py
+  s_3dc25239d0c11a::t_98906b2a2efbb9 1-33
+tts_eval/tts_eval/__init__.py
+  s_894cdd1eb2ecef::t_a7575663e41262 1-33
+tts_eval/tts_eval/subjective/__init__.py
+  s_894cdd1eb2ecef::t_c0de526b28b645 1-33
+tts_eval/tts_eval/adapters/replay.py
+  s_894cdd1eb2ecef::t_b507d0d9f44e02 1-117
+tts_eval/tts_eval/metrics/aggregate.py
+  s_894cdd1eb2ecef::t_e5cce49abc64d2 1-222
+tts_eval/tts_eval/runner.py
+  s_894cdd1eb2ecef::t_778e0a662fdcb8 1-416
+tts_eval/docs/GUIDE.md
+  s_3dc25239d0c11a::t_69cc77e187b1ed 143
+  s_d27d044ea2933a::t_e0d20758f7a974 466-477
+  s_d27d044ea2933a::t_3f6dd39765dd44 1-142,144-464,479
+  s_d27d044ea2933a::t_3dc7e6ffc9502e 465
+  s_d27d044ea2933a::t_8b0b14492ab67c 478,480
+tts_eval/tts_eval/metrics/plugins/naturalness.py
+  s_894cdd1eb2ecef::t_6bc3f8c5adf452 1-172
+tts_eval/README.md
+  s_d27d044ea2933a::t_e0d20758f7a974 8-21
+  s_3dc25239d0c11a::t_ace8d9170e21dd 22-32
+  s_894cdd1eb2ecef::t_ca4b87787f378f 1-7,33-271
+tts_eval/tts_eval/asr/whisper_asr.py
+  s_894cdd1eb2ecef::t_1d1782f7eb02d9 1-82
+tts_eval/tts_eval/report/scoring.py
+  s_894cdd1eb2ecef::t_d60fb02f6bf2b0 1-70
+tts_eval/tts_eval/adapters/base.py
+  s_894cdd1eb2ecef::t_391cde3e8be5b1 1-350
+  s_d27d044ea2933a::t_e0d20758f7a974 351-353
+tts_eval/tts_eval/metrics/coverage.py
+  s_58c34750e9866c::t_ee4e860c5f9dfb 156,160
+  s_58c34750e9866c::t_1202d14237ae3c 157-159
+  s_894cdd1eb2ecef::t_44ae6c7d6b989e 1-155,161-186
+tts_eval/tests/test_runner.py
+  s_3dc25239d0c11a::t_d733653a3b075e 1-162
+tts_eval/tts_eval/report/__init__.py
+  s_894cdd1eb2ecef::t_18ca397d01cc27 1-79
+tts_eval/tests/test_config.py
+  s_d27d044ea2933a::t_f50a0b16e6d9cc 1-8,12,16-22,26-31,34-37,43,45-72,75-78,91,93-99,102
+  s_3dc25239d0c11a::t_5d0dedcd6abbe1 9-11,13-15,23-25,32-33,38-42,44,73-74,79-90,92,100-101
+tts_eval/tts_eval/metrics/intelligibility.py
+  s_894cdd1eb2ecef::t_e5fb3d471d5931 1-158
+tts_eval/tts_eval/compare.py
+  s_894cdd1eb2ecef::t_308604b6cbae17 162-168,174-175
+  s_894cdd1eb2ecef::t_12ae18b76d0c17 569,574
+  s_894cdd1eb2ecef::t_10164a64fa4969 147-161,172-173,176-177,180
+  s_894cdd1eb2ecef::t_6c71b317824059 38-53,58-62
+  s_894cdd1eb2ecef::t_63bdc36165b536 449,451-460,472,478-479,481-482,484-493
+  s_894cdd1eb2ecef::t_c9fcc0b2cb221e 570,575
+  s_894cdd1eb2ecef::t_311352813f1acb 279-293,295-302,305-306,308-313,323-324
+  s_894cdd1eb2ecef::t_a4bb089322200e 1-37,54-57,63-146,169-171,178-179,181-278,294,303-304,307,314-322,325-387,397-407,415-448,450,461-471,473-477,480,483,494-568,571-573,576-578
+  s_894cdd1eb2ecef::t_810c20480d4da6 409,413-414
+  s_894cdd1eb2ecef::t_6016bf05e20fe6 388-396,408,410-412
+tts_eval/tts_eval/metrics/plugins/__init__.py
+  s_894cdd1eb2ecef::t_93ba4a7efa6b66 1-15
+tts_eval/tts_eval/report/markdown.py
+  s_894cdd1eb2ecef::t_a86983883dc85a 1-244
+tts_eval/tts_eval/config.py
+  s_894cdd1eb2ecef::t_80500b9be6db0a 1-346
+tts_eval/STATUS.md
+  s_3dc25239d0c11a::t_c0e859748a1dd3 30
+  s_894cdd1eb2ecef::t_91a0a5bb1afeb4 237-244
+  s_3dc25239d0c11a::t_51ea15bb3650dd 209,213-230
+  s_894cdd1eb2ecef::t_04d0bbe176757c 10-13,15-16,20,29,31-62
+  s_3dc25239d0c11a::t_21b551774ff168 7-9
+  s_894cdd1eb2ecef::t_57ca3250da1fb8 1-6,63-208,210-212,245
+  s_3dc25239d0c11a::t_44a6d035e8b3f6 231-236
+  s_d27d044ea2933a::t_e0d20758f7a974 246-253
+  s_3dc25239d0c11a::t_9884405927acca 14,17-19,21-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "289c1c555d66361db5936d9552f9ab52ad77e759",
+  "prompts": {},
+  "sessions": {
+    "s_3dc25239d0c11a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f4b33bd2-a5c1-491a-9f19-bcf5d48924a7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_58c34750e9866c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21f922b3-c329-4448-8d10-18d2f2fb4a47",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_894cdd1eb2ecef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "880885b1-d9f5-4453-96ff-d81da7871354",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    },
+    "s_b72f68d1360c0e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39c7f3fd-2944-46ff-8a74-9a1b7c92ff4a",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_d27d044ea2933a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "006df9d7-b314-48dd-ae76-1ab421460b9f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
