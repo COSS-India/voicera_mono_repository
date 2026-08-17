@@ -126,6 +126,25 @@ def _page(title: str, body: str, *, inline_css: bool = True, extra_head: str = "
   aria-pressed="false" aria-label="Switch to dark mode"
   title="Switch to dark mode">☾ Dark</button>
 """
+    # A collapsed <details> hides its body via internal UA state that `display`
+    # can't override, so CSS alone can't expand the Warnings / Not-computed
+    # callouts for print. Toggle the `open` attribute around the print, restoring
+    # only those we opened so the on-screen collapsed default survives after.
+    print_script = """
+<script>
+(function () {
+  let opened = [];
+  window.addEventListener("beforeprint", function () {
+    opened = Array.from(document.querySelectorAll(".callout.collapsible:not([open])"));
+    opened.forEach(function (d) { d.open = true; });
+  });
+  window.addEventListener("afterprint", function () {
+    opened.forEach(function (d) { d.open = false; });
+    opened = [];
+  });
+})();
+</script>
+"""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -135,6 +154,7 @@ def _page(title: str, body: str, *, inline_css: bool = True, extra_head: str = "
 {_FAVICON}
 {style}
 {theme_script}
+{print_script}
 {extra_head}
 </head>
 <body>
@@ -156,14 +176,19 @@ def render_run_html(
     inline_css: bool = True,
     audio_base: str = "audio/",
     nav_html: str = "",
+    export_base: str = "",
 ) -> str:
-    """Full single-run report. See module docstring for the standalone contract."""
+    """Full single-run report. See module docstring for the standalone contract.
+
+    ``export_base`` prefixes the download links in the export bar. Empty (the
+    default, used by the on-disk ``report.html``) makes them relative to the run
+    directory, where ``run.json``/``report.md``/the CSVs are siblings; the UI
+    passes ``/run/<id>/`` so the same links resolve against its routes.
+    """
     parts: list[str] = []
 
     parts.append(_run_header(record, nav_html))
-    if record.warnings:
-        parts.append(_warnings_callout(record.warnings))
-    parts.append(_absent_backends_callout(record))
+    parts.append(_export_bar(export_base))
 
     for criterion in criteria_order():
         rows = [
@@ -185,6 +210,11 @@ def render_run_html(
     parts.append(_reliability_section(record, audio_base))
     parts.append(_signoff_section(record))
     parts.append(_utterances_section(record, audio_base))
+    # Warnings and not-computed notes live at the bottom, collapsed: they are
+    # provenance to consult when a number looks off, not the headline of the run.
+    if record.warnings:
+        parts.append(_warnings_callout(record.warnings))
+    parts.append(_absent_backends_callout(record))
     parts.append(_footer(record))
 
     return _page(title or record.label or record.display_name, "\n".join(parts), inline_css=inline_css)
@@ -216,9 +246,35 @@ def _run_header(record: RunRecord, nav_html: str) -> str:
 """
 
 
+def _export_bar(export_base: str) -> str:
+    """Download links + print-to-PDF for one run.
+
+    No image/PDF renderer is bundled (that would mean a heavy headless-browser
+    dependency); "Print / PDF" hands off to the browser's own print-to-PDF, and
+    the rest are the standard archival artefacts a run already carries.
+    """
+    b = _e(export_base)
+    return f"""
+<div class="export-bar" role="group" aria-label="Export this run">
+  <span class="export-label">Export:</span>
+  <button type="button" class="btn btn-secondary" onclick="window.print()">🖨 Print / PDF</button>
+  <a class="btn btn-secondary" href="{b}run.json" download>JSON</a>
+  <a class="btn btn-secondary" href="{b}report.md" download>Markdown</a>
+  <a class="btn btn-secondary" href="{b}report.html" download>HTML</a>
+  <a class="btn btn-secondary" href="{b}utterances.csv" download>Utterances CSV</a>
+  <a class="btn btn-secondary" href="{b}aggregates.csv" download>Aggregates CSV</a>
+  <a class="btn btn-secondary" href="{b}coverage.csv" download>Coverage CSV</a>
+</div>
+"""
+
+
 def _warnings_callout(warnings: Sequence[str]) -> str:
     items = "".join(f"<li>{_e(w)}</li>" for w in warnings)
-    return f'<div class="callout"><strong>Warnings</strong><ul>{items}</ul></div>'
+    return (
+        '<details class="callout collapsible warnings-callout">'
+        f'<summary><strong>Warnings</strong><span class="count">{len(warnings)}</span></summary>'
+        f"<ul>{items}</ul></details>"
+    )
 
 
 def _absent_backends_callout(record: RunRecord) -> str:
@@ -230,8 +286,10 @@ def _absent_backends_callout(record: RunRecord) -> str:
         for name, reason in sorted(absent.items())
     )
     return (
-        '<div class="callout"><strong>Not computed in this run</strong>'
-        f"<ul>{items}</ul></div>"
+        '<details class="callout collapsible">'
+        '<summary><strong>Not computed in this run</strong>'
+        f'<span class="count">{len(absent)}</span></summary>'
+        f"<ul>{items}</ul></details>"
     )
 
 
@@ -294,22 +352,27 @@ def _coverage_section(coverage: Sequence[LanguageCoverage]) -> str:
 
 
 def _category_section(per_category: dict) -> str:
+    def _cell(agg: dict, digits: int = 3) -> str:
+        # Each metric carries its own n: taking a single max across cer /
+        # audio_quality / ttfb advertised a sample count the low-n columns did
+        # not have (e.g. ttfb n=50 next to a CER mean from 2 samples).
+        mean = _fmt(agg.get("mean"), digits)
+        n = agg.get("n") or 0
+        return f"<td class='num'>{mean} <span class='small muted'>n={n}</span></td>"
+
     rows = []
     for category, aggs in sorted(per_category.items()):
         cer = aggs.get("cer", {})
         quality = aggs.get("audio_quality_score", {})
         ttfb = aggs.get("ttfb_ms", {})
-        n = max((aggs.get(k, {}).get("n") or 0) for k in ("cer", "audio_quality_score", "ttfb_ms"))
         rows.append(
-            f"<tr><td>{_e(category)}</td><td class='num'>{n}</td>"
-            f"<td class='num'>{_fmt(cer.get('mean'))}</td>"
-            f"<td class='num'>{_fmt(quality.get('mean'))}</td>"
-            f"<td class='num'>{_fmt(ttfb.get('mean'), 1)}</td></tr>"
+            f"<tr><td>{_e(category)}</td>"
+            f"{_cell(cer)}{_cell(quality)}{_cell(ttfb, 1)}</tr>"
         )
     return f"""
 <h2>By Category</h2>
 <table>
-  <thead><tr><th>Category</th><th class="num">n</th><th class="num">CER</th>
+  <thead><tr><th>Category</th><th class="num">CER</th>
     <th class="num">Audio Quality</th><th class="num">TTFB (ms)</th></tr></thead>
   <tbody>{''.join(rows)}</tbody>
 </table>
@@ -377,10 +440,13 @@ def _reliability_section(record: RunRecord, audio_base: str) -> str:
 
 
 def _signoff_section(record: RunRecord) -> str:
+    # Wrapped in a div (rather than a bare <h2>) so the print stylesheet can hide
+    # the whole section by selector — an in-progress review has nothing to show
+    # in an archival PDF snapshot.
     if not record.signoffs:
         return (
-            "<h2>Review Sign-off</h2>"
-            '<p class="callout small">Not yet reviewed.</p>'
+            '<div class="signoff-section"><h2>Review Sign-off</h2>'
+            '<p class="callout small">Not yet reviewed.</p></div>'
         )
     rows = "".join(
         f"<li>{_badge(s.verdict, 'good' if s.verdict == 'approved' else 'bad')} "
@@ -389,7 +455,7 @@ def _signoff_section(record: RunRecord) -> str:
         + "</li>"
         for s in record.signoffs
     )
-    return f"<h2>Review Sign-off</h2><ul>{rows}</ul>"
+    return f'<div class="signoff-section"><h2>Review Sign-off</h2><ul>{rows}</ul></div>'
 
 
 def _audio_tag(utterance: UtteranceRecord, audio_base: str) -> str:
@@ -419,6 +485,7 @@ def _utterances_section(record: RunRecord, audio_base: str) -> str:
         else ""
     )
     return f"""
+<div class="utterances-section">
 <h2>All Utterances</h2>
 {truncation_note}
 <details><summary class="small muted">Expand ({len(shown)} rows)</summary>
@@ -428,6 +495,7 @@ def _utterances_section(record: RunRecord, audio_base: str) -> str:
   <tbody>{''.join(rows)}</tbody>
 </table>
 </details>
+</div>
 """
 
 

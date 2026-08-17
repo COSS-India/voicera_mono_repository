@@ -1,0 +1,87 @@
+# The model-selection protocol. This is the suite to cite in a benchmark report.
+#
+# A suite is model-agnostic: it fixes HOW a model is judged (test set, metrics,
+# ASR, thresholds, concurrency), never WHICH model. Every model in a bake-off runs
+# THIS file unchanged — that is what makes the comparison valid. The name is about
+# the *test set*, not any model: "indic-full" = the full Indic conversational set
+# scored on every metric. Add another dataset later and you add another suite; the
+# model cards never change.
+suite_id: indic-full
+description: >-
+  Full 69-utterance conversational set across 13 Indic languages, all metrics,
+  measured at concurrency 4 to reflect a modestly loaded single instance.
+
+dataset: indic_conversational_v1
+
+# Everything registered, including the optional perceptual backends. Any that are
+# not installed report `not_computed` with the reason and the run still completes,
+# so this suite is safe on a machine without the MOS models — the report simply
+# states which criteria were measured and which were not.
+metrics: all
+
+metric_options:
+  utmos:
+    # Set repo_dir to a local UTMOS22 checkout for fully offline runs.
+    device: null
+  dnsmos:
+    # Download sig_bak_ovr.onnx from the DNS-Challenge repo; see docs/STANDARDS.md.
+    model_path: ${DNSMOS_MODEL_PATH:-}
+  ttsds2:
+    # A corpus of REAL speech in the same languages (e.g. an IndicVoices-R subset).
+    # Scores are comparable only between runs using the same reference_dir.
+    reference_dir: ${TTSDS_REFERENCE_DIR:-}
+    multilingual: true
+
+# Round-trip intelligibility. Points at the on-prem AI4Bharat STT server
+# (ai4bharat_stt_server / voicera-prod-stt-1, port 8001), whose contract is:
+#   POST /transcribe  {"audio_b64": <base64 raw int16 LE mono PCM @16kHz>,
+#                      "language_id": <lang>}  ->  {"text": <transcript>}
+# The harness records which ASR ran; the comparison engine refuses to average two
+# runs that used different ASR backends. Override the URL per environment.
+asr:
+  backend: http_asr
+  url: ${TTS_EVAL_ASR_URL:-http://localhost:8001/transcribe}
+  body_format: json_base64
+  audio_format: pcm_s16le      # server does np.frombuffer(bytes, dtype=int16)
+  file_field: audio_b64
+  language_field: language_id
+  transcript_path: text
+  target_sample_rate: 16000
+  timeout_s: 120
+  # AI4Bharat IndicConformer STT supports 22 INDIC languages by code:
+  #   as bn brx doi gu hi kn kok ks mai ml mni mr ne or pa sa sat sd ta te ur
+  # The dataset's 12 Indic codes (as bn gu hi kn ml mr or pa ta te ur) all match,
+  # so they pass through unchanged — no remap needed. Add one only if a future
+  # dataset uses a different code, e.g.  language_map: {odia: or}
+  #
+  # NOTE: the STT does NOT cover English (en) or Chhattisgarhi (hne), both of which
+  # Parler-TTS *does* synthesise. Round-trip CER is therefore impossible for those:
+  # their utterances still render and score on every audio metric, but intelligibility
+  # comes back "unverified" — an ASR limitation, not a TTS failure. There is no useful
+  # remap (transcribing English with an Indic model just yields garbage CER).
+
+thresholds:
+  # Permissive because round-trip CER also carries the ASR's own error rate, which
+  # is substantial for low-resource Indic languages. Tighten per language once you
+  # have measured your ASR's floor on ground-truth recordings.
+  cer_verified_max: 0.30
+  success_verified_min: 0.90
+  degeneracy_max: 0.50
+
+# Serial on purpose. This is a QUALITY/intelligibility suite: CER does not depend
+# on load, and the round-trip ASR call is scored off the synthesis semaphore, so a
+# higher value would fan out many simultaneous requests at the single-GPU STT and
+# time them out. Use the `latency` suite (not this one) to profile load levels.
+# Concurrency is recorded and fingerprinted; runs at different values are refused
+# as non-comparable.
+concurrency: 1
+
+seed: 1234
+
+# Pinned so every model is generated under one regime. Providers that do not
+# support a parameter ignore it; the value is still recorded.
+generation_params:
+  temperature: 0.9
+  top_p: 0.9
+
+save_audio: true

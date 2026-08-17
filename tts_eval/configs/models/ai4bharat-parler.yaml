@@ -1,0 +1,55 @@
+# AI4Bharat Indic Parler-TTS — on-prem WebSocket server (ai4bharat_tts_server).
+#
+# Wire protocol (see ai4bharat_tts_server/server.py): the client sends one JSON
+# object {"prompt": <text>, "description": <free-text voice/style>}; the server
+# replies with a `meta` frame, then float32 mono PCM frames at 44.1 kHz, then a
+# `done` frame. Parler has NO structured voice/language fields — the speaker and
+# style live entirely in `description`, so this card selects a voice by templating
+# the speaker name into that description.
+model_id: ai4bharat-parler
+model_version: indic-parler-tts-v1
+provider: AI4Bharat
+description: On-prem Indic Parler-TTS over WebSocket, description-conditioned voices.
+
+adapter: websocket_pcm
+adapter_config:
+  # Where the TTS server is reachable. In the monorepo the container listens on
+  # 8002; override per environment via the AI4BHARAT_TTS_URL env var (SSH tunnel,
+  # published port, or in-cluster hostname — see the steps in the run notes).
+  url: ${AI4BHARAT_TTS_URL:-ws://localhost:8002}
+  encoding: float32
+
+  # The server reads ONLY `prompt` and `description`. Keep the payload to those:
+  # blank out the voice/language fields the adapter would otherwise add.
+  field_map:
+    text: prompt
+    voice: ""      # voice is carried inside `description`, not as a field
+    language: ""   # language is implicit in the prompt's script
+
+  # Voice selection for Parler = a speaker name plus style attributes, written
+  # into the description the model actually conditions on. {voice} is filled from
+  # the card's declared voice (below) / the suite's chosen voice.
+  description_template: "{voice}'s voice is clear and natural, delivered at a moderate pace in a quiet environment with minimal background noise."
+  description_field: description
+
+  open_timeout_s: 15
+  recv_timeout_s: 120
+
+# Server streams float32 PCM at 44.1 kHz (AUDIO_SAMPLE_RATE in server.py).
+sample_rate: 44100
+
+# Parler speakers are free-text names, not an enum. Radha/Vidya are the names the
+# server's own smoke tests use; swap in whatever speakers your checkpoint favours.
+voices: [Radha, Vidya]
+default_voice: Radha
+
+# The 24 languages Indic Parler-TTS supports. Codes are ISO 639-1 where one
+# exists, else ISO 639-3: brx Bodo, doi Dogri, hne Chhattisgarhi, kok Konkani,
+# mai Maithili, mni Manipuri, sat Santali. The bundled indic_conversational_v1
+# only exercises 13 of these, so coverage_ratio is scored out of 24 — the other
+# 11 show as "claimed but untested" until a dataset covers them. That is the
+# honest picture: the model claims them, this run did not test them.
+languages: [as, bn, brx, doi, en, gu, hi, hne, kn, kok, ks, mai, ml, mni, mr, ne, or, pa, sa, sat, sd, ta, te, ur]
+
+# Parler sampling is stochastic: audio is not bit-reproducible run to run.
+determinism: best_effort

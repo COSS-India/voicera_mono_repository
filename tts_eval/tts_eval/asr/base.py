@@ -167,6 +167,50 @@ def slot_hits(hypothesis: str, required: tuple[str, ...], *, language: str = "")
     return hits, missing
 
 
+def _is_latin(text: str) -> bool:
+    """True when the token's letters are all Latin (e.g. "OTP", "KYC").
+
+    Used to spot a slot token an Indic ASR cannot emit: the model may pronounce
+    "OTP" perfectly, but an ASR that only outputs native script will never write
+    the Latin letters, so the round-trip check cannot witness it.
+    """
+    letters = [c for c in text if c.isalpha()]
+    return bool(letters) and all("a" <= c <= "z" for c in letters)
+
+
+def slot_evaluation(
+    hypothesis: str, required: tuple[str, ...], *, language: str = ""
+) -> tuple[int, list[str], list[str]]:
+    """Like ``slot_hits`` but separates genuine misses from *unverifiable* tokens.
+
+    A token is unverifiable when the ASR could not have emitted its script at all
+    -- the evidence being that the transcript contains no character of that script.
+    A Latin token like "OTP" scored against an Indic ASR whose output is entirely
+    native script is the motivating case: counting it as a miss reports a
+    pronunciation failure the transcript cannot actually witness (a false 0), so it
+    is reported unverifiable instead. If the ASR *did* emit Latin somewhere in the
+    transcript, the token is checked normally and a real miss still counts.
+
+    Returns ``(hits, missing, unverifiable)``.
+    """
+    hyp = normalise_text(hypothesis, language=language).replace(" ", "")
+    hyp_has_latin = any("a" <= c <= "z" for c in hyp)
+    hits = 0
+    missing: list[str] = []
+    unverifiable: list[str] = []
+    for token in required:
+        needle = normalise_text(token, language=language).replace(" ", "")
+        if not needle:
+            continue
+        if needle in hyp:
+            hits += 1
+        elif _is_latin(needle) and not hyp_has_latin:
+            unverifiable.append(token)
+        else:
+            missing.append(token)
+    return hits, missing, unverifiable
+
+
 class ASRBackend(abc.ABC):
     """Transcribes audio for round-trip scoring."""
 

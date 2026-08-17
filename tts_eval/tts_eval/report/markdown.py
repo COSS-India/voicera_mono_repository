@@ -114,16 +114,20 @@ def render_run_markdown(record: RunRecord, *, title: str | None = None) -> str:
     if per_category:
         add("## By Category")
         add("")
-        add("| Category | n | CER | Audio quality | TTFB (ms) |")
-        add("|---|---:|---:|---:|---:|")
+        # Each mean carries its own n: a single max-n column overstated the
+        # sample count behind the lower-n metrics.
+        add("| Category | CER | Audio quality | TTFB (ms) |")
+        add("|---|---:|---:|---:|")
+
+        def _cell(agg: dict, digits: int = 3) -> str:
+            return f"{_fmt(agg.get('mean'), digits)} (n={agg.get('n') or 0})"
+
         for category, aggs in sorted(per_category.items()):
             cer = aggs.get("cer", {})
             quality = aggs.get("audio_quality_score", {})
             ttfb = aggs.get("ttfb_ms", {})
-            n = max((aggs.get(k, {}).get("n") or 0) for k in ("cer", "audio_quality_score", "ttfb_ms"))
             add(
-                f"| {category} | {n} | {_fmt(cer.get('mean'))} | {_fmt(quality.get('mean'))} | "
-                f"{_fmt(ttfb.get('mean'), 1)} |"
+                f"| {category} | {_cell(cer)} | {_cell(quality)} | {_cell(ttfb, 1)} |"
             )
         add("")
 

@@ -20,7 +20,13 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from ..asr.base import ASRBackend, character_error_rate, normalise_text, slot_hits, word_error_rate
+from ..asr.base import (
+    ASRBackend,
+    character_error_rate,
+    normalise_text,
+    slot_evaluation,
+    word_error_rate,
+)
 from ..datasets.loader import TestCase
 from ..types import MetricStatus, MetricValue, SynthesisResult
 from .base import MetricContext, UtteranceBackend, make_value, missing_value, register_backend
@@ -130,17 +136,41 @@ class IntelligibilityBackend(UtteranceBackend):
                 MetricStatus.NOT_APPLICABLE,
             )
         else:
-            hits, missing = slot_hits(hypothesis, case.must_contain, language=case.language)
-            out["slot_accuracy"] = make_value(
-                "slot_accuracy",
-                hits / len(case.must_contain),
-                extra={
-                    "required": list(case.must_contain),
-                    "missing": missing,
-                    "hypothesis": hypothesis,
-                },
-                detail=(f"missing from transcript: {', '.join(missing)}" if missing else None),
+            hits, missing, unverifiable = slot_evaluation(
+                hypothesis, case.must_contain, language=case.language
             )
+            verifiable = len(case.must_contain) - len(unverifiable)
+            if verifiable == 0:
+                # Every required token is in a script this ASR cannot emit (e.g.
+                # a Latin "OTP" through an Indic-only ASR). Scoring 0 here would
+                # read as "the model dropped every OTP" when the transcript simply
+                # cannot witness it — so report not-applicable, like the en/CER gap.
+                out["slot_accuracy"] = missing_value(
+                    "slot_accuracy",
+                    f"required token(s) {', '.join(unverifiable)} are in a script the "
+                    f"ASR ({self._asr.name}) does not emit for language {case.language!r}; "
+                    "round-trip slot verification is not possible",
+                    MetricStatus.NOT_APPLICABLE,
+                )
+            else:
+                details = []
+                if missing:
+                    details.append(f"missing from transcript: {', '.join(missing)}")
+                if unverifiable:
+                    details.append(
+                        f"unverifiable (ASR cannot emit their script): {', '.join(unverifiable)}"
+                    )
+                out["slot_accuracy"] = make_value(
+                    "slot_accuracy",
+                    hits / verifiable,
+                    extra={
+                        "required": list(case.must_contain),
+                        "missing": missing,
+                        "unverifiable": unverifiable,
+                        "hypothesis": hypothesis,
+                    },
+                    detail="; ".join(details) if details else None,
+                )
         return out
 
 

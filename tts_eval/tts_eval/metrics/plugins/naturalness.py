@@ -37,8 +37,12 @@ _UTMOS_TRAINED_MAX_S = 10.0
 class UTMOSBackend(UtteranceBackend):
     """UTMOS22 naturalness prediction (1-5) via torch.hub.
 
-    Weights come from ``sarulab-speech/UTMOS22`` and are cached by torch.hub, so
-    the first run needs network access. Set ``options.repo_dir`` to a local
+    Weights come from ``tarepan/SpeechMOS`` -- the hub-packaged UTMOS22, whose
+    ``hubconf.py`` exposes ``utmos22_strong`` and whose call signature is
+    ``model(wave, sample_rate)``. (The original ``sarulab-speech/UTMOS22`` is the
+    training repo; it ships no ``hubconf.py``, so ``torch.hub.load`` cannot use
+    it -- pointing there fails every run with a missing-hubconf error.) Cached by
+    torch.hub, so the first run needs network; set ``options.repo_dir`` to a local
     checkout for fully offline operation.
     """
 
@@ -55,7 +59,7 @@ class UTMOSBackend(UtteranceBackend):
     def prepare(self, ctx: MetricContext) -> None:
         import torch
 
-        repo = self.options.get("repo_dir") or "sarulab-speech/UTMOS22"
+        repo = self.options.get("repo_dir") or "tarepan/SpeechMOS"
         source = "local" if self.options.get("repo_dir") else "github"
         self._device = self.options.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
         self._torch = torch
@@ -107,9 +111,21 @@ class DNSMOSBackend(UtteranceBackend):
     name = "dnsmos"
     provides = ("dnsmos_ovrl", "dnsmos_sig", "dnsmos_bak")
 
-    # DNSMOS scores fixed-length segments; the reference implementation uses 9 s
-    # with a hop, and averages. Shorter audio is zero-padded, as upstream does.
-    _SEGMENT_S = 9.0
+    # DNSMOS scores fixed-length windows and averages. Match Microsoft's reference
+    # ComputeScore exactly: 9.01 s windows, 1 s hop, audio repeated (not zero-
+    # padded) until it fills one window, and the raw ONNX outputs mapped through
+    # the published P.835 polynomial before averaging. Skipping that polyfit — as
+    # an earlier version did — leaves scores on a different scale than published
+    # DNSMOS numbers.
+    _SEGMENT_S = 9.01
+    _HOP_S = 1.0
+
+    # Non-personalised P.835 polynomial coefficients from Microsoft's DNS-Challenge
+    # dnsmos_local.py get_polyfit_val(). These map the sig_bak_ovr.onnx raw outputs
+    # onto the calibrated 1-5 MOS scale.
+    _P_SIG = np.poly1d([-0.08397278, 1.22083953, 0.0052439])
+    _P_BAK = np.poly1d([-0.13166888, 1.60915514, -0.39604546])
+    _P_OVR = np.poly1d([-0.06766283, 1.11546468, 0.04602535])
 
     def available(self) -> tuple[bool, str]:
         try:
@@ -145,16 +161,26 @@ class DNSMOSBackend(UtteranceBackend):
         assert audio is not None
         wav = resample(audio, _MOS_SAMPLE_RATE).samples
         seg_len = int(self._SEGMENT_S * _MOS_SAMPLE_RATE)
-        if wav.size < seg_len:
-            wav = np.pad(wav, (0, seg_len - wav.size))
+        hop_len = int(self._HOP_S * _MOS_SAMPLE_RATE)
+        # Upstream repeats the clip (not zero-pad) until it fills a window; silence
+        # padding would drag the noise/overall scores down on short utterances.
+        while wav.size < seg_len:
+            wav = np.concatenate([wav, wav])
 
-        # Average over non-overlapping segments: a single leading segment would
-        # miss a collapse that happens late in a long utterance.
+        # Overlapping 1 s-hop windows, each mapped through the P.835 polyfit, then
+        # averaged — the reference DNSMOS procedure. Overlap also catches a late
+        # collapse a single leading window would miss.
         scores: list[np.ndarray] = []
-        for start in range(0, wav.size - seg_len + 1, seg_len):
+        for start in range(0, wav.size - seg_len + 1, hop_len):
             chunk = wav[start : start + seg_len].astype(np.float32)[None, :]
             out = self._session.run(None, {self._input_name: chunk})[0]
-            scores.append(np.asarray(out).reshape(-1)[:3])
+            raw_sig, raw_bak, raw_ovr = np.asarray(out).reshape(-1)[:3]
+            scores.append(
+                np.array(
+                    [self._P_SIG(raw_sig), self._P_BAK(raw_bak), self._P_OVR(raw_ovr)],
+                    dtype=np.float64,
+                )
+            )
         if not scores:
             return {
                 name: missing_value(name, "audio too short to score") for name in self.provides
