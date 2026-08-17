@@ -1071,7 +1071,8 @@ export default function AssistantsPage() {
                 stt_model: sttModel,
                 tts_model: ttsModel,
               },
-        telephony_provider: config.telephonyProvider,
+        telephony_provider:
+          config.telephonyProvider === "none" ? "" : config.telephonyProvider,
         ...(config.telephonyProvider === "Vobiz" && {
           vobiz_app_id: vobizAppId,
           vobiz_answer_url: vobizAnswerUrl,
@@ -2242,6 +2243,9 @@ export default function AssistantsPage() {
                         </div>
                       </SelectTrigger>
                       <SelectContent className="rounded-lg">
+                        <SelectItem value="none" className="py-3">
+                          <span className="font-medium">None (link later)</span>
+                        </SelectItem>
                         <SelectItem value="Vobiz" className="py-3">
                           <span className="font-medium">Vobiz</span>
                         </SelectItem>
@@ -2251,7 +2255,8 @@ export default function AssistantsPage() {
                       </SelectContent>
                     </Select>
                     <p className="text-sm text-slate-500">
-                      Choose the telephone provider for your agent calls.
+                      Choose the telephone provider for your agent calls. Pick
+                      &quot;None&quot; to create the agent now and link a provider later.
                     </p>
                   </div>
                 </div>
