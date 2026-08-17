@@ -1,0 +1,27 @@
+tts_eval/scripts/multirun.py
+  s_aca6690157a052::t_51a8faa03149b6 324
+  s_aca6690157a052::t_43f16254a0fb3c 163-166,190,219-220,407-420,423-430
+  s_aca6690157a052::t_0c4b49d4bc9fb3 167-189,191,193-195,199-201,204-218,221-323,325-406
+  s_aca6690157a052::t_74f5dc78e2ed04 462-465
+  s_aca6690157a052::t_64b30e203060f2 192
+  s_aca6690157a052::t_0e57767fbceb00 30
+  s_aca6690157a052::t_fd903ee538c46f 440
+  s_aca6690157a052::t_b705e0d88e7b8e 196-198,202-203
+  s_aca6690157a052::t_94da4779d48723 421-422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "c5027b1cb7c8f64540dc5d8f119283c59f000f64",
+  "prompts": {},
+  "sessions": {
+    "s_aca6690157a052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "935e33a2-9866-435b-bdb5-14dafaa6017f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
