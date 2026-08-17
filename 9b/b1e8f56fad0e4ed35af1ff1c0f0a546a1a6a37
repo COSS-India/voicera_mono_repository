@@ -1,0 +1,19 @@
+tts_eval/scripts/multirun.py
+  s_aca6690157a052::t_4d594e9ffc0c48 1-195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "9bb1e8f56fad0e4ed35af1ff1c0f0a546a1a6a37",
+  "prompts": {},
+  "sessions": {
+    "s_aca6690157a052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "935e33a2-9866-435b-bdb5-14dafaa6017f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
