@@ -1,0 +1,65 @@
+tts_eval/configs/models/ai4bharat-parler.yaml
+  s_d27d044ea2933a::t_b98305470506c9 46-52
+  s_d27d044ea2933a::t_1e3e694a5f5c6a 1-45,53-55
+tts_eval/tts_eval/metrics/plugins/naturalness.py
+  s_aca6690157a052::t_000b89cbbb39a4 164-172,174,177-183
+  s_aca6690157a052::t_254e824027839c 114-128
+  s_aca6690157a052::t_258e78087c3e24 40-45
+  s_aca6690157a052::t_cf8e82c215a4f0 62
+tts_eval/tts_eval/metrics/intelligibility.py
+  s_aca6690157a052::t_d6efce95997775 139-140,142-173
+  s_aca6690157a052::t_a5c839ffc758fb 23-29
+tts_eval/tts_eval/report/markdown.py
+  s_aca6690157a052::t_7164a5ef5ec40f 117-124,130
+tts_eval/configs/suites/indic-full.yaml
+  s_d27d044ea2933a::t_017369501a52a3 1-50,62-70,78-87
+  s_d27d044ea2933a::t_c99e8383411e1d 51-61
+  s_d27d044ea2933a::t_63583d0e481ce2 71-77
+tts_eval/tts_eval/report/html.py
+  s_d27d044ea2933a::t_fce0a670eb6a8d 273,275-277
+  s_92c2b689798a02::t_f3c701529d529e 128,249-270
+  s_92c2b689798a02::t_71eef3ec8b3845 130-132,138
+  s_aca6690157a052::t_c850a14b429613 355-362,369-370,375
+  s_d27d044ea2933a::t_533e7ea0714c08 289-292
+  s_92c2b689798a02::t_e40a237f6190df 129,133-137,139-146
+  s_92c2b689798a02::t_55f553e39b31f9 443-445,448-449,458
+  s_d27d044ea2933a::t_186987577a3e23 213-217
+  s_92c2b689798a02::t_e2c0d9551f1e17 157
+  s_92c2b689798a02::t_e33dc2bc28672b 488,498
+  s_92c2b689798a02::t_e434c3539ee90f 179,181-187,191
+  s_92c2b689798a02::t_11928e5c7125e0 274
+tts_eval/tts_eval/asr/base.py
+  s_aca6690157a052::t_3b0914ee087a37 170-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "ffa6b2e4b411025491229e959e78d9feb025feff",
+  "prompts": {},
+  "sessions": {
+    "s_92c2b689798a02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64d56aea-61d9-4278-8f24-70922dd86eb6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_aca6690157a052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "935e33a2-9866-435b-bdb5-14dafaa6017f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_d27d044ea2933a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "006df9d7-b314-48dd-ae76-1ab421460b9f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
