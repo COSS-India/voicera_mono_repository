@@ -1,0 +1,22 @@
+ai4bharat_stt_server/server.py
+  s_aca6690157a052::t_48a38030b1824c 230-251,253-254
+  s_aca6690157a052::t_22aca1fb358844 134-152
+  s_aca6690157a052::t_92072dabe27f1b 296
+  s_aca6690157a052::t_4d466f0dcd226e 310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "497c67d17140da538b8bfd3742d8b1adf9a075e6",
+  "prompts": {},
+  "sessions": {
+    "s_aca6690157a052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "935e33a2-9866-435b-bdb5-14dafaa6017f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
