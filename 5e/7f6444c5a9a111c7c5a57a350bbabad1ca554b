@@ -1,0 +1,21 @@
+tts_eval/configs/suites/indic-full.yaml
+  s_aca6690157a052::t_28b43351fa1358 28-31
+tts_eval/.gitignore
+  s_aca6690157a052::t_d4a18d25ce0704 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "5e7f6444c5a9a111c7c5a57a350bbabad1ca554b",
+  "prompts": {},
+  "sessions": {
+    "s_aca6690157a052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "935e33a2-9866-435b-bdb5-14dafaa6017f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
