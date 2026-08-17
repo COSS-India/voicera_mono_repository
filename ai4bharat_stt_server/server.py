@@ -131,6 +131,25 @@ def _enqueue_request(request_queue: queue.Queue, audio_np: np.ndarray, language_
 
     return response_queue
 
+
+def _raise_if_error(result, language_id: str) -> None:
+    """Turn a worker-side inference failure into an HTTP error.
+
+    The worker hands an Exception back on the response queue when a group fails
+    (see ``batch_worker``). An unsupported ``language_id`` surfaces as a KeyError
+    from the model's per-language decoder head -- that is a client error (400);
+    anything else is a genuine server-side inference failure (500). Either way the
+    caller gets a fast, explicit response instead of a request that hangs forever.
+    """
+    if not isinstance(result, BaseException):
+        return
+    if isinstance(result, KeyError):
+        raise HTTPException(
+            status_code=400,
+            detail=f"unsupported language_id={language_id!r} for the loaded model",
+        )
+    raise HTTPException(status_code=500, detail=f"transcription failed: {result}")
+
 # =========================
 # Queues and batching config
 # =========================
@@ -208,15 +227,31 @@ def batch_worker(request_queue, infer_fn):
                 last_empty_cache = now
             continue
 
-        # Unpack batch
-        audio_arrays = [item["audio_np"] for item in batch]
-        language_ids = [item["language_id"] for item in batch]
+        # Group by language before inference. The model selects a per-language
+        # decoder head and a single infer call decodes the whole batch under one
+        # language_id, so a mixed-language batch would transcribe every item under
+        # the first item's language. Split into same-language groups.
+        by_language: dict = {}
+        for item in batch:
+            by_language.setdefault(item["language_id"], []).append(item)
 
-        transcriptions = infer_fn(audio_arrays, language_ids)
+        for items in by_language.values():
+            audio_arrays = [item["audio_np"] for item in items]
+            language_ids = [item["language_id"] for item in items]
+            try:
+                transcriptions = infer_fn(audio_arrays, language_ids)
+            except Exception as exc:
+                # A bad request -- e.g. an unsupported language_id raising KeyError
+                # deep in the model -- must NOT escape and kill this worker thread.
+                # If it did, the queue would lose its only consumer and every later
+                # request would block on response_queue.get() forever. Fail just
+                # this group, hand the error back to its callers, keep serving.
+                for item in items:
+                    item["response_queue"].put(exc)
+                continue
 
-        # Return results
-        for item, text in zip(batch, transcriptions):
-            item["response_queue"].put(text)
+            for item, text in zip(items, transcriptions):
+                item["response_queue"].put(text)
 
 
 def _start_workers():
@@ -258,6 +293,7 @@ async def transcribe(request: TranscribeRequest):
     audio_np = _decode_audio_b64(request.audio_b64)
     response_queue = _enqueue_request(main_request_queue, audio_np, request.language_id)
     result = await asyncio.to_thread(response_queue.get)
+    _raise_if_error(result, request.language_id)
     return TranscribeResponse(text=result)
 
 
@@ -271,6 +307,7 @@ async def transcribe_bhili(request: TranscribeRequest):
     audio_np = _decode_audio_b64(request.audio_b64)
     response_queue = _enqueue_request(bhili_request_queue, audio_np, request.language_id)
     result = await asyncio.to_thread(response_queue.get)
+    _raise_if_error(result, request.language_id)
     return TranscribeResponse(text=result)
 
 
