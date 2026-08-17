@@ -1,0 +1,61 @@
+tts_eval/tts_eval/runner.py
+  s_d27d044ea2933a::t_27aef6f62622d1 294-303,317-318
+tts_eval/tts_eval/store.py
+  s_92c2b689798a02::t_9caae055e7b92f 331-348
+tts_eval/tts_eval/ui/server.py
+  s_92c2b689798a02::t_6ba4ba2527e752 789,931-954
+  s_92c2b689798a02::t_a3c468d7d51474 810-813
+  s_92c2b689798a02::t_0711957632bc1d 903-914
+  s_92c2b689798a02::t_3cc4008ac131fe 57,60-66
+  s_92c2b689798a02::t_95aef2db4acd0e 927
+  s_92c2b689798a02::t_aad8f838b111cb 645-647,654-657
+  s_aca6690157a052::t_e386e677d7380f 67,955
+  s_92c2b689798a02::t_f78d14ab1f7b02 11-13
+  s_92c2b689798a02::t_5e619375769996 787-788
+  s_92c2b689798a02::t_78cbb7c31f1586 162-163,184-196
+  s_92c2b689798a02::t_bb5946a03730c8 30,32-35
+tts_eval/tts_eval/report/style.py
+  s_92c2b689798a02::t_cfe1cba9f5ee9d 450-456
+  s_92c2b689798a02::t_56f7d15207f794 160-161,168
+  s_92c2b689798a02::t_08af020d5e372b 458-461
+  s_92c2b689798a02::t_298f1712c51566 187-188
+  s_d27d044ea2933a::t_b47deeae234b0c 287-333
+  s_92c2b689798a02::t_4a25e5e4866a75 473-482
+  s_92c2b689798a02::t_d0bcf26e10c59c 167
+  s_92c2b689798a02::t_04d4e7bda3c26d 443,462-471
+  s_92c2b689798a02::t_9838a6f39649aa 438-442
+  s_92c2b689798a02::t_a27bde52bf1c6a 414-437,444-449,457,472,483-488
+  s_aca6690157a052::t_2b93150e4909a3 191,334,489
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "f910ec8071dc041e292ec5302439afd65c88363f",
+  "prompts": {},
+  "sessions": {
+    "s_92c2b689798a02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64d56aea-61d9-4278-8f24-70922dd86eb6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_aca6690157a052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "935e33a2-9866-435b-bdb5-14dafaa6017f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_d27d044ea2933a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "006df9d7-b314-48dd-ae76-1ab421460b9f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
