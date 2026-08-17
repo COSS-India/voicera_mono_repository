@@ -1,0 +1,22 @@
+tts_eval/scripts/multirun.py
+  s_aca6690157a052::t_74f5dc78e2ed04 264-267
+  s_aca6690157a052::t_fd903ee538c46f 242
+  s_aca6690157a052::t_94da4779d48723 223-224
+  s_aca6690157a052::t_43f16254a0fb3c 162-222,225-232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "43409baa00fc3d24e3abe849ec8276480792f607",
+  "prompts": {},
+  "sessions": {
+    "s_aca6690157a052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "935e33a2-9866-435b-bdb5-14dafaa6017f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
