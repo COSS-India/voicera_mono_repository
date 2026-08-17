@@ -25,7 +25,10 @@ metric_options:
     device: null
   dnsmos:
     # Download sig_bak_ovr.onnx from the DNS-Challenge repo; see docs/STANDARDS.md.
-    model_path: ${DNSMOS_MODEL_PATH:-}
+    # Default resolves to the local copy under models/dnsmos/ (git-ignored, not
+    # redistributable); override with DNSMOS_MODEL_PATH. Absent file -> backend
+    # reports not-computed and the run proceeds.
+    model_path: ${DNSMOS_MODEL_PATH:-models/dnsmos/sig_bak_ovr.onnx}
   ttsds2:
     # A corpus of REAL speech in the same languages (e.g. an IndicVoices-R subset).
     # Scores are comparable only between runs using the same reference_dir.
