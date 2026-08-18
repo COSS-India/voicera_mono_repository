@@ -679,9 +679,21 @@ export default function AssistantsPage() {
     return provider?.models || []
   }, [config.llmProvider])
 
+  // Default telephony provider for a new agent: prefer an integrated provider,
+  // otherwise "None" so agents can be created without telephony credentials.
+  const defaultTelephonyProvider = useMemo(() => {
+    const hasPlivo =
+      integratedProviders.has("plivoauthid") && integratedProviders.has("plivoauthtoken")
+    const hasVobiz =
+      integratedProviders.has("vobizauthid") && integratedProviders.has("vobizauthtoken")
+    if (hasPlivo) return "Plivo"
+    if (hasVobiz) return "Vobiz"
+    return "none"
+  }, [integratedProviders])
+
   // Handle create new agent
   const handleCreateNew = () => {
-    setConfig({ ...defaultConfig, id: "new", telephonyProvider: "Plivo" })
+    setConfig({ ...defaultConfig, id: "new", telephonyProvider: defaultTelephonyProvider })
     setCreateStep(1)
     setInteractionModeLocked(false)
     setView("create")
@@ -692,7 +704,7 @@ export default function AssistantsPage() {
     setView("list")
     setCreateStep(1)
     setInteractionModeLocked(false)
-    setConfig({ ...defaultConfig, telephonyProvider: "Plivo" })
+    setConfig({ ...defaultConfig, telephonyProvider: defaultTelephonyProvider })
   }
 
 
@@ -1072,7 +1084,8 @@ export default function AssistantsPage() {
                 stt_model: sttModel,
                 tts_model: ttsModel,
               },
-        telephony_provider: config.telephonyProvider,
+        telephony_provider:
+          config.telephonyProvider === "none" ? "" : config.telephonyProvider,
         ...(config.telephonyProvider === "Vobiz" && {
           vobiz_app_id: vobizAppId,
           vobiz_answer_url: vobizAnswerUrl,
@@ -2243,6 +2256,9 @@ export default function AssistantsPage() {
                         </div>
                       </SelectTrigger>
                       <SelectContent className="rounded-lg">
+                        <SelectItem value="none" className="py-3">
+                          <span className="font-medium">None</span>
+                        </SelectItem>
                         <SelectItem value="Vobiz" className="py-3">
                           <span className="font-medium">Vobiz</span>
                         </SelectItem>
