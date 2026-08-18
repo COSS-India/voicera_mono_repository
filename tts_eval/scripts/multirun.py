@@ -338,7 +338,6 @@ def _rich_report(rows: list[dict], run_dirs: list[Path]) -> str:
         meta_item("Runs aggregated", str(n_runs)),
         meta_item("Determinism", m0.get("determinism", "")),
         meta_item("Fingerprint", (next(iter(fps)) if fps else "")[:16]),
-        meta_item("Framework", m0.get("framework_version", "")),
     ])
 
     comparability = "" if comparable else (
