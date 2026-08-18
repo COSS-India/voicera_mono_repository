@@ -1,0 +1,115 @@
+tts_eval/tests/test_metrics.py
+  s_346e49a784f5fa::t_1882610339e904 16
+  s_346e49a784f5fa::t_5c44afb7e2ee1f 113-134
+tts_eval/tts_eval/metrics/plugins/ttsds2.py
+  s_346e49a784f5fa::t_31c02c0b14ebf8 37-53,60-61
+tts_eval/tts_eval/store.py
+  s_92c2b689798a02::t_9caae055e7b92f 354-371
+  s_346e49a784f5fa::t_83de9d6febf910 39
+  s_346e49a784f5fa::t_70673dde3b0510 205,207
+  s_346e49a784f5fa::t_5561a2b6af9189 324-353
+tts_eval/tts_eval/report/style.py
+  s_92c2b689798a02::t_56f7d15207f794 160-161,168
+  s_92c2b689798a02::t_cfe1cba9f5ee9d 473-477,479
+  s_78074201863064::t_2005b9421b9191 92
+  s_92c2b689798a02::t_08af020d5e372b 481-484
+  s_92c2b689798a02::t_4a25e5e4866a75 496-505
+  s_d27d044ea2933a::t_b47deeae234b0c 287-333
+  s_92c2b689798a02::t_d0bcf26e10c59c 167
+  s_92c2b689798a02::t_9838a6f39649aa 461-465
+  s_346e49a784f5fa::t_6ffaddfee3b06c 478
+  s_92c2b689798a02::t_298f1712c51566 187-188
+  s_346e49a784f5fa::t_0ccdee44f36b7c 359-360,372-373,376-393
+  s_92c2b689798a02::t_a27bde52bf1c6a 437-460,467-472,480,495,506-511
+  s_92c2b689798a02::t_04d4e7bda3c26d 466,485-494
+  s_346e49a784f5fa::t_1f6e69d7a7fae6 191,334,394,512
+tts_eval/tts_eval/datasets/builtin/indic_conversational_v1.meta.yaml
+  s_346e49a784f5fa::t_31c02c0b14ebf8 2,4-12,18,26-28,51-61
+tts_eval/scripts/multirun.py
+  s_346e49a784f5fa::t_1e61744ecd14e0 12,18-22
+  s_346e49a784f5fa::t_53d5b5de27f4c1 545-549
+  s_346e49a784f5fa::t_3c281bd6cd8c0b 558-563,566-567
+  s_78074201863064::t_26e957fc823d83 468
+  s_346e49a784f5fa::t_8db0ecb0e4a5cf 86-106
+tts_eval/tests/test_datasets.py
+  s_346e49a784f5fa::t_0026eaea28ddb9 15-17
+tts_eval/README.md
+  s_346e49a784f5fa::t_382f0aa94e8406 64,67-68,71-72,80-81,92-147
+  s_346e49a784f5fa::t_7df4616b4e26e4 297-300
+  s_346e49a784f5fa::t_8a1de989e1011f 168-209
+  s_346e49a784f5fa::t_f417b6b671e54c 148
+tts_eval/tts_eval/ui/server.py
+  s_346e49a784f5fa::t_a85affebf71d7e 195-208
+  s_92c2b689798a02::t_3cc4008ac131fe 58,61-67
+  s_346e49a784f5fa::t_a755fb5dae9976 826-834
+  s_92c2b689798a02::t_6ba4ba2527e752 801,977-1000
+  s_92c2b689798a02::t_0711957632bc1d 924-935
+  s_92c2b689798a02::t_aad8f838b111cb 657-659,666-669
+  s_346e49a784f5fa::t_101c015b3f069f 30
+  s_92c2b689798a02::t_a3c468d7d51474 822-825
+  s_346e49a784f5fa::t_9cf9397c17bcb2 152-155
+  s_92c2b689798a02::t_78cbb7c31f1586 160-161,182-194
+  s_92c2b689798a02::t_bb5946a03730c8 31,33-36
+  s_346e49a784f5fa::t_ef688658266eb7 936-960
+  s_346e49a784f5fa::t_31c02c0b14ebf8 1001
+  s_92c2b689798a02::t_5e619375769996 799-800
+  s_92c2b689798a02::t_95aef2db4acd0e 973
+  s_92c2b689798a02::t_f78d14ab1f7b02 11-13
+  s_346e49a784f5fa::t_31f06ba5437650 68
+tts_eval/tts_eval/datasets/builtin/indic_conversational_v1.jsonl
+  s_346e49a784f5fa::t_2ad7eb80042250 97
+  s_346e49a784f5fa::t_7e241fc79cfa57 107
+  s_346e49a784f5fa::t_383daab1ddf291 7
+  s_346e49a784f5fa::t_3cad960d2664c2 112
+  s_346e49a784f5fa::t_31c02c0b14ebf8 70-96,98-106,108-111,113-116,118-120
+  s_346e49a784f5fa::t_732b82f65eba35 117
+  s_346e49a784f5fa::t_c3cc3475b74a78 2,12,17,22,27,32,37,42,47,52,57,62,66-69
+tts_eval/tts_eval/cli.py
+  s_346e49a784f5fa::t_b29fd59237ba78 139
+tts_eval/tests/test_compare.py
+  s_346e49a784f5fa::t_c798b19ebb382f 7,10-19
+  s_346e49a784f5fa::t_b450362f081e0c 54-59
+  s_346e49a784f5fa::t_d402eaaed0517a 20
+tts_eval/tts_eval/runner.py
+  s_d27d044ea2933a::t_27aef6f62622d1 294-303,317-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "70b7ec4e8ff8352df49deeac086883e45eaadfb5",
+  "prompts": {},
+  "sessions": {
+    "s_346e49a784f5fa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f17b4dc5-c8ed-4c83-8b73-3fbb60bf1498",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_78074201863064": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52682ef7-1d26-465e-8b6f-b3940e444b74",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_92c2b689798a02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64d56aea-61d9-4278-8f24-70922dd86eb6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_d27d044ea2933a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "006df9d7-b314-48dd-ae76-1ab421460b9f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
