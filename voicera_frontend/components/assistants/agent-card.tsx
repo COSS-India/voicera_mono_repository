@@ -55,8 +55,12 @@ export function AgentCard({
     ? (agent.agent_config?.greeting_message ?? "").trim()
     : (agent.agent_config?.system_prompt ?? "").trim()
 
-  const isViAgent = agent?.telephony_provider === "VI"
-  const isConnected = Boolean(agent?.phone_number) || isViAgent
+  const isConnected = Boolean(agent.phone_number?.trim())
+  const linkedLabel = agent.phone_number?.trim()
+    ? agent.telephony_provider
+      ? `${agent.phone_number} (${agent.telephony_provider})`
+      : agent.phone_number
+    : ""
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -135,7 +139,7 @@ export function AgentCard({
             className="h-1.5 w-1.5 rounded-full"
             style={{ backgroundColor: isConnected ? "#3B6D11" : "#A32D2D" }}
           />
-          {isConnected ? (agent.phone_number || (isViAgent ? "VI (DNI from API)" : "")) : "Not linked"}
+          {isConnected ? linkedLabel : "Not linked"}
         </button>
         {callCount > 0 && (
           <span className="ml-2 inline-flex h-8 items-center rounded-full bg-slate-100 px-2.5 text-[13px] font-medium text-slate-700">
@@ -250,9 +254,7 @@ export function AgentCard({
           title={
             !isConnected
               ? "Please attach a phone number to this agent first"
-              : isViAgent
-                ? "Queue a VI OBD test call (dials within campaign window)"
-                : "Make a test call"
+              : "Make a test call"
           }
         >
           <PhoneCall className="mr-1.5 h-3.5 w-3.5" />
