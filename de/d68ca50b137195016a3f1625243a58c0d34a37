@@ -1,0 +1,97 @@
+tts_eval/tts_eval/report/style.py
+  s_d27d044ea2933a::t_b47deeae234b0c 287-333
+  s_92c2b689798a02::t_04d4e7bda3c26d 443,462-471
+  s_92c2b689798a02::t_a27bde52bf1c6a 414-437,444-449,457,472,483-488
+  s_92c2b689798a02::t_cfe1cba9f5ee9d 450-456
+  s_92c2b689798a02::t_d0bcf26e10c59c 167
+  s_b72f68d1360c0e::t_78bb33d29a356a 334
+  s_92c2b689798a02::t_4a25e5e4866a75 473-482
+  s_92c2b689798a02::t_298f1712c51566 187-188
+  s_d27d044ea2933a::t_3bac0d6cd8c6df 489
+  s_92c2b689798a02::t_56f7d15207f794 160-161,168
+  s_b72f68d1360c0e::t_515f91c82919b3 191
+  s_92c2b689798a02::t_9838a6f39649aa 438-442
+  s_92c2b689798a02::t_08af020d5e372b 458-461
+tts_eval/tts_eval/runner.py
+  s_d27d044ea2933a::t_27aef6f62622d1 294-303,317-318
+tts_eval/scripts/multirun.py
+  s_aca6690157a052::t_aa2ee2dd252b77 31
+  s_aca6690157a052::t_e6dba3235f3a10 249-251
+  s_aca6690157a052::t_94da4779d48723 503-504
+  s_aca6690157a052::t_faf5163fff9d24 270-272,277-278,284-286,292-293,301,308-309,321
+  s_aca6690157a052::t_74f5dc78e2ed04 544-547
+  s_aca6690157a052::t_b705e0d88e7b8e 197-199,203-204
+  s_aca6690157a052::t_51a8faa03149b6 335
+  s_aca6690157a052::t_0e57767fbceb00 30
+  s_aca6690157a052::t_39fefceb411b14 355-373,375,378-419,421-430,444,446,448-449,459,462,464
+  s_aca6690157a052::t_64b30e203060f2 193
+  s_aca6690157a052::t_fd903ee538c46f 522
+  s_aca6690157a052::t_0c4b49d4bc9fb3 168-190,192,194-196,200-202,205-219,222-248,252-269,273-276,279-283,287-291,294-300,302-307,310-320,322-334,336-352,420,431-443,445,447,450-455,457-458,460-461,463,465-488
+  s_aca6690157a052::t_43f16254a0fb3c 164-167,191,220-221,353,489-502,505-512
+  s_aca6690157a052::t_1df9f1be911084 456
+  s_aca6690157a052::t_4087ec5b73c7a5 354
+  s_aca6690157a052::t_0ca5b51100bf62 374,376-377
+tts_eval/tts_eval/ui/server.py
+  s_92c2b689798a02::t_bb5946a03730c8 30,32-35
+  s_92c2b689798a02::t_78cbb7c31f1586 162-163,184-196
+  s_92c2b689798a02::t_95aef2db4acd0e 927
+  s_92c2b689798a02::t_6ba4ba2527e752 931-954
+  s_92c2b689798a02::t_3cc4008ac131fe 57,60-66
+  s_92c2b689798a02::t_5e619375769996 787-788
+  s_92c2b689798a02::t_aad8f838b111cb 645-647,654-657
+  s_92c2b689798a02::t_f78d14ab1f7b02 11-13
+  s_92c2b689798a02::t_a3c468d7d51474 810-813
+  s_92c2b689798a02::t_0711957632bc1d 903-910,912-914
+  s_d27d044ea2933a::t_e0d20758f7a974 911,955
+  s_894cdd1eb2ecef::t_6551a9bc65b977 67,789
+tts_eval/tts_eval/store.py
+  s_92c2b689798a02::t_9caae055e7b92f 331-348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "ded68ca50b137195016a3f1625243a58c0d34a37",
+  "prompts": {},
+  "sessions": {
+    "s_894cdd1eb2ecef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "880885b1-d9f5-4453-96ff-d81da7871354",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    },
+    "s_92c2b689798a02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64d56aea-61d9-4278-8f24-70922dd86eb6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_aca6690157a052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "935e33a2-9866-435b-bdb5-14dafaa6017f",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    },
+    "s_b72f68d1360c0e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39c7f3fd-2944-46ff-8a74-9a1b7c92ff4a",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_d27d044ea2933a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "006df9d7-b314-48dd-ae76-1ab421460b9f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
