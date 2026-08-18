@@ -473,13 +473,15 @@ def _get_agent_call_config(org_id: str, agent_type: str) -> Dict[str, Any]:
     if not agent_id:
         raise ValueError("Agent has no agent_id configured")
 
+    telephony_provider = str(agent.get("telephony_provider") or "Vobiz").strip()
     caller_id = agent.get("phone_number")
-    if not caller_id:
+    if telephony_provider.upper() != "VI" and not caller_id:
         raise ValueError("Please attach a phone number to this agent before running batch calls")
 
     return {
         "agent_id": agent_id,
         "caller_id": caller_id,
+        "telephony_provider": telephony_provider,
     }
 
 
@@ -774,6 +776,127 @@ def report_contact_execution_result(
 
 def get_agent_call_config_for_batch(org_id: str, agent_type: str) -> Dict[str, Any]:
     return _get_agent_call_config(org_id, agent_type)
+
+
+def get_queued_contacts_for_batch(org_id: str, batch_id: str) -> List[Dict[str, Any]]:
+    db = get_database()
+    contacts = db[BATCH_CONTACT_COLLECTION]
+    cursor = contacts.find(
+        {
+            "batch_id": batch_id,
+            "org_id": org_id,
+            "is_valid": True,
+            "status": "queued",
+        },
+        sort=[("row_number", 1)],
+    )
+    out: List[Dict[str, Any]] = []
+    for doc in cursor:
+        doc.pop("_id", None)
+        out.append(doc)
+    return out
+
+
+def mark_contacts_dialing(org_id: str, batch_id: str, row_numbers: List[int]) -> None:
+    if not row_numbers:
+        return
+    db = get_database()
+    contacts = db[BATCH_CONTACT_COLLECTION]
+    now = _now_iso()
+    contacts.update_many(
+        {
+            "batch_id": batch_id,
+            "org_id": org_id,
+            "row_number": {"$in": row_numbers},
+            "status": "queued",
+        },
+        {"$set": {"status": "dialing", "updated_at": now}},
+    )
+
+
+def update_batch_vi_campaign(
+    *,
+    org_id: str,
+    batch_id: str,
+    vi_campaign_ref_id: Any,
+    vi_campain_key: str,
+    vi_current_status: Optional[str] = None,
+) -> None:
+    db = get_database()
+    update: Dict[str, Any] = {
+        "vi_campaign_ref_id": vi_campaign_ref_id,
+        "vi_campain_key": vi_campain_key,
+        "updated_at": _now_iso(),
+    }
+    if vi_current_status is not None:
+        update["vi_current_status"] = vi_current_status
+    db[BATCH_COLLECTION].update_one(
+        {"batch_id": batch_id, "org_id": org_id},
+        {"$set": update},
+    )
+
+
+def update_batch_vi_progress(
+    *,
+    org_id: str,
+    batch_id: str,
+    vi_current_status: Optional[str] = None,
+    vi_base_details: Optional[Dict[str, Any]] = None,
+    attempted_calls: Optional[int] = None,
+    successful_calls: Optional[int] = None,
+    failed_calls: Optional[int] = None,
+) -> None:
+    db = get_database()
+    update: Dict[str, Any] = {"updated_at": _now_iso()}
+    if vi_current_status is not None:
+        update["vi_current_status"] = vi_current_status
+    if vi_base_details is not None:
+        update["vi_base_details"] = vi_base_details
+    if attempted_calls is not None:
+        update["attempted_calls"] = attempted_calls
+    if successful_calls is not None:
+        update["successful_calls"] = successful_calls
+    if failed_calls is not None:
+        update["failed_calls"] = failed_calls
+    db[BATCH_COLLECTION].update_one(
+        {"batch_id": batch_id, "org_id": org_id},
+        {"$set": update},
+    )
+
+
+def submit_vi_batch_contacts(org_id: str, batch_id: str, row_numbers: List[int]) -> None:
+    """Mark VI batch contacts as submitted to campaign (queued for VI dialer)."""
+    if not row_numbers:
+        return
+    db = get_database()
+    contacts = db[BATCH_CONTACT_COLLECTION]
+    batches = db[BATCH_COLLECTION]
+    now = _now_iso()
+    contacts.update_many(
+        {
+            "batch_id": batch_id,
+            "org_id": org_id,
+            "row_number": {"$in": row_numbers},
+        },
+        {
+            "$set": {
+                "status": "called",
+                "updated_at": now,
+                "error_message": None,
+            }
+        },
+    )
+    batches.update_one(
+        {"batch_id": batch_id, "org_id": org_id},
+        {
+            "$set": {
+                "attempted_calls": len(row_numbers),
+                "successful_calls": 0,
+                "failed_calls": 0,
+                "updated_at": now,
+            }
+        },
+    )
 
 
 def finalize_batch_execution(org_id: str, batch_id: str, stopped: bool = False) -> Dict[str, Any]:

@@ -388,3 +388,91 @@ async def worker_finalize_batch(
         batch_id=batch_id,
         stopped=stopped,
     )
+
+
+@router.post("/worker/queued-contacts", status_code=status.HTTP_200_OK)
+async def worker_get_queued_contacts(
+    payload: Dict[str, Any] = Body(default={}),
+    _: bool = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    org_id = str(payload.get("org_id") or "").strip()
+    batch_id = str(payload.get("batch_id") or "").strip()
+    if not org_id or not batch_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="org_id and batch_id are required",
+        )
+    contacts = batch_service.get_queued_contacts_for_batch(org_id=org_id, batch_id=batch_id)
+    return {"contacts": contacts}
+
+
+@router.post("/worker/vi-campaign", status_code=status.HTTP_200_OK)
+async def worker_update_vi_campaign(
+    payload: Dict[str, Any] = Body(default={}),
+    _: bool = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    org_id = str(payload.get("org_id") or "").strip()
+    batch_id = str(payload.get("batch_id") or "").strip()
+    if not org_id or not batch_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="org_id and batch_id are required",
+        )
+    batch_service.update_batch_vi_campaign(
+        org_id=org_id,
+        batch_id=batch_id,
+        vi_campaign_ref_id=payload.get("vi_campaign_ref_id"),
+        vi_campain_key=str(payload.get("vi_campain_key") or ""),
+        vi_current_status=payload.get("vi_current_status"),
+    )
+    return {"updated": True}
+
+
+@router.post("/worker/vi-progress", status_code=status.HTTP_200_OK)
+async def worker_update_vi_progress(
+    payload: Dict[str, Any] = Body(default={}),
+    _: bool = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    org_id = str(payload.get("org_id") or "").strip()
+    batch_id = str(payload.get("batch_id") or "").strip()
+    if not org_id or not batch_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="org_id and batch_id are required",
+        )
+    batch_service.update_batch_vi_progress(
+        org_id=org_id,
+        batch_id=batch_id,
+        vi_current_status=payload.get("vi_current_status"),
+        vi_base_details=payload.get("vi_base_details"),
+        attempted_calls=payload.get("attempted_calls"),
+        successful_calls=payload.get("successful_calls"),
+        failed_calls=payload.get("failed_calls"),
+    )
+    return {"updated": True}
+
+
+@router.post("/worker/vi-submit-contacts", status_code=status.HTTP_200_OK)
+async def worker_submit_vi_contacts(
+    payload: Dict[str, Any] = Body(default={}),
+    _: bool = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    org_id = str(payload.get("org_id") or "").strip()
+    batch_id = str(payload.get("batch_id") or "").strip()
+    row_numbers = payload.get("row_numbers") or []
+    if not org_id or not batch_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="org_id and batch_id are required",
+        )
+    batch_service.mark_contacts_dialing(
+        org_id=org_id,
+        batch_id=batch_id,
+        row_numbers=[int(x) for x in row_numbers],
+    )
+    batch_service.submit_vi_batch_contacts(
+        org_id=org_id,
+        batch_id=batch_id,
+        row_numbers=[int(x) for x in row_numbers],
+    )
+    return {"updated": True}

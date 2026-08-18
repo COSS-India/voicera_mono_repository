@@ -1197,6 +1197,10 @@ export interface Batch {
   scheduled_by?: string | null
   created_at?: string | null
   updated_at?: string | null
+  vi_campaign_ref_id?: number | string | null
+  vi_campain_key?: string | null
+  vi_current_status?: string | null
+  vi_base_details?: Record<string, unknown> | null
 }
 
 export interface BatchUploadResponse {

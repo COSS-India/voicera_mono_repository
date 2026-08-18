@@ -64,6 +64,12 @@ type PreviewContact = {
   isValid: boolean
 }
 
+const isViAgent = (agent: Agent | undefined): boolean =>
+  agent?.telephony_provider === "VI"
+
+const agentReadyForBatch = (agent: Agent | undefined): boolean =>
+  Boolean(agent) && (Boolean(agent?.phone_number) || isViAgent(agent))
+
 const formatCreatedAt = (dateValue?: string | null): string => {
   if (!dateValue) return "—"
   const parsedDate = new Date(dateValue)
@@ -451,12 +457,18 @@ export default function BatchesPage() {
       return
     }
     const targetAgent = agents.find((agent) => agent.agent_type === agentType)
-    if (!targetAgent?.phone_number) {
-      alert("Please attach a number to the selected agent before running batch calls.")
+    if (!targetAgent || !agentReadyForBatch(targetAgent)) {
+      alert(
+        isViAgent(targetAgent)
+          ? "Please select a valid VI agent."
+          : "Please attach a number to the selected agent before running batch calls."
+      )
       return
     }
-    const parsedConcurrency = parseConcurrency(concurrencyInput)
-    if (!parsedConcurrency) {
+    const parsedConcurrency = isViAgent(targetAgent)
+      ? 1
+      : parseConcurrency(concurrencyInput)
+    if (!isViAgent(targetAgent) && !parsedConcurrency) {
       alert(`Concurrency must be between ${MIN_CONCURRENCY} and ${MAX_CONCURRENCY}.`)
       return
     }
@@ -496,12 +508,18 @@ export default function BatchesPage() {
       return
     }
     const targetAgent = agents.find((agent) => agent.agent_type === agentType)
-    if (!targetAgent?.phone_number) {
-      alert("Please attach a number to the selected agent before scheduling batch calls.")
+    if (!targetAgent || !agentReadyForBatch(targetAgent)) {
+      alert(
+        isViAgent(targetAgent)
+          ? "Please select a valid VI agent."
+          : "Please attach a number to the selected agent before scheduling batch calls."
+      )
       return
     }
-    const parsedConcurrency = parseConcurrency(concurrencyInput)
-    if (!parsedConcurrency) {
+    const parsedConcurrency = isViAgent(targetAgent)
+      ? 1
+      : parseConcurrency(concurrencyInput)
+    if (!isViAgent(targetAgent) && !parsedConcurrency) {
       alert(`Concurrency must be between ${MIN_CONCURRENCY} and ${MAX_CONCURRENCY}.`)
       return
     }
@@ -700,6 +718,11 @@ export default function BatchesPage() {
                         </TableCell>
                         <TableCell className="whitespace-normal break-words px-2 py-2">
                           <p>{formatStatusLabel(batch.execution_status)}</p>
+                          {batch.vi_current_status ? (
+                            <Badge variant="outline" className="mt-1 text-xs">
+                              VI: {batch.vi_current_status}
+                            </Badge>
+                          ) : null}
                           {batch.schedule_mode === "scheduled" && batch.scheduled_at_utc ? (
                             <p className="mt-1 text-xs text-slate-500">
                               Scheduled: {formatScheduledAt(batch.scheduled_at_utc)}
@@ -1118,6 +1141,9 @@ export default function BatchesPage() {
             <DialogTitle>Batch Controls</DialogTitle>
             <DialogDescription>
               Select an agent, set concurrency, and control execution for this batch.
+              {isViAgent(agents.find((a) => a.agent_type === selectedBatchAgentType))
+                ? " VI batches use one OBD campaign — dial rate is managed by VI."
+                : ""}
             </DialogDescription>
           </DialogHeader>
 
@@ -1151,6 +1177,15 @@ export default function BatchesPage() {
                   {selectedBatch.failed_calls || 0} failed /{" "}
                   {selectedBatch.attempted_calls || 0} attempted
                 </p>
+                {selectedBatch.vi_current_status ? (
+                  <p className="text-slate-700 mt-1">
+                    <span className="font-medium">VI Campaign:</span>{" "}
+                    {selectedBatch.vi_current_status}
+                    {selectedBatch.vi_campaign_ref_id
+                      ? ` (ref ${selectedBatch.vi_campaign_ref_id})`
+                      : ""}
+                  </p>
+                ) : null}
                 {selectedBatch.error_message ? (
                   <p className="text-red-600 mt-2">
                     <span className="font-medium">Error:</span>{" "}
@@ -1185,13 +1220,19 @@ export default function BatchesPage() {
                   <p className="text-sm font-medium text-slate-900 mb-2">
                     Concurrency ({MIN_CONCURRENCY} - {MAX_CONCURRENCY})
                   </p>
-                  <Input
-                    type="number"
-                    min={MIN_CONCURRENCY}
-                    max={MAX_CONCURRENCY}
-                    value={selectedBatchConcurrency}
-                    onChange={(event) => setSelectedBatchConcurrency(event.target.value)}
-                  />
+                  {isViAgent(agents.find((a) => a.agent_type === selectedBatchAgentType)) ? (
+                    <p className="text-sm text-slate-600 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                      VI manages dial rate internally — concurrency is not applicable.
+                    </p>
+                  ) : (
+                    <Input
+                      type="number"
+                      min={MIN_CONCURRENCY}
+                      max={MAX_CONCURRENCY}
+                      value={selectedBatchConcurrency}
+                      onChange={(event) => setSelectedBatchConcurrency(event.target.value)}
+                    />
+                  )}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-slate-900 mb-2">Run at (local)</p>

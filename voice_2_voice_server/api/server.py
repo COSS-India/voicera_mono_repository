@@ -26,6 +26,7 @@ from utils.backend_utils import (
     fetch_integration_key,
 )
 from utils.batching import create_batch_router
+from utils.vi_obd_client import ViObdClient, ViObdError, resolve_vi_agent_id_full
 
 
 load_dotenv()
@@ -216,6 +217,33 @@ async def make_outbound_call_plivo(
     return result
 
 
+async def make_outbound_call_vi(
+    customer_number: str,
+    agent_id: str,
+    caller_id: Optional[str] = None,
+) -> dict:
+    """Queue a single outbound call via VI OBD createCampaign + ingestion."""
+    del caller_id  # DNI resolved via getActiveDNIList / VI_DNI
+
+    def _run() -> dict:
+        client = ViObdClient.from_env()
+        return client.place_single_outbound_call(customer_number, agent_id=agent_id)
+
+    try:
+        result = await asyncio.to_thread(_run)
+    except ViObdError as e:
+        raise ValueError(str(e)) from e
+
+    logger.info(
+        "VI OBD call queued: agent=%s msisdn=%s campaign_Ref_ID=%s dni=%s",
+        agent_id,
+        result.get("msisdn"),
+        result.get("campaign_Ref_ID"),
+        result.get("dni"),
+    )
+    return result
+
+
 async def make_outbound_call_provider(
     customer_number: str,
     agent_id: str,
@@ -228,10 +256,7 @@ async def make_outbound_call_provider(
     provider = (agent_config.get("telephony_provider") or "Vobiz").strip().lower()
     logger.info(f"Outbound provider={provider} agent_id={agent_id}")
     if provider == "vi":
-        raise ValueError(
-            "VI outbound calls are initiated via VI CPaaS APIs and DIY call flows, "
-            "not through this endpoint."
-        )
+        return await make_outbound_call_vi(customer_number, agent_id, caller_id)
     if provider == "plivo":
         return await make_outbound_call_plivo(customer_number, agent_id, caller_id)
     return await make_outbound_call_vobiz(customer_number, agent_id, caller_id)
@@ -281,24 +306,6 @@ async def _read_vi_start_message(websocket: WebSocket) -> tuple[dict, str, str]:
             return data, str(call_sid), str(stream_sid)
         logger.warning(f"VI WebSocket expected connected/start, got event={event}")
     raise TimeoutError("VI start event not received")
-
-
-def _resolve_vi_agent_id(path_agent_id: Optional[str], start_info: Dict[str, Any]) -> Optional[str]:
-    """Resolve which agent to run for a VI stream.
-
-    VI's proxy may not preserve the URL path, so fall back to the custom
-    parameters configured on the Streaming object, then to a server default.
-    """
-    if path_agent_id:
-        return path_agent_id
-
-    custom_parameters = start_info.get("custom_parameters") or {}
-    for key in ("agent_id", "agentId", "agent"):
-        value = custom_parameters.get(key)
-        if value:
-            return str(value).strip()
-
-    return (os.environ.get("VI_DEFAULT_AGENT_ID") or "").strip() or None
 
 
 def _apply_vi_custom_parameters(
@@ -635,14 +642,16 @@ async def _run_vi_session(websocket: WebSocket, path_agent_id: Optional[str] = N
         start_info = start_data.get("start", {}) or {}
         custom_parameters = start_info.get("custom_parameters") or {}
 
-        agent_id = _resolve_vi_agent_id(path_agent_id, start_info)
+        agent_id, route_source = await resolve_vi_agent_id_full(path_agent_id, start_info)
         if not agent_id:
             logger.error(
-                "❌ VI stream has no agent_id (URL path, custom_parameters, "
-                "and VI_DEFAULT_AGENT_ID are all empty)"
+                "❌ VI stream has no agent_id (path, custom_parameters, dni/cli lookup, "
+                "and VI_DEFAULT_AGENT_ID all failed)"
             )
             await websocket.close(code=1008, reason="Missing agent_id")
             return
+
+        logger.info(f"VI agent resolution: agent_id={agent_id} source={route_source}")
 
         agent_config = await fetch_agent_config_from_backend(agent_id)
         if not agent_config:

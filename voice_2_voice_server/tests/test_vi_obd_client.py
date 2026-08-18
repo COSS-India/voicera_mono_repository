@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Unit tests for VI OBD client (mocked HTTP — no live calls)."""
+"""Unit tests for VI OBD client and WebSocket agent routing (mocked — no live calls)."""
 
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+# backend_utils pulls MinIO at import time; stub for routing unit tests.
+sys.modules.setdefault("minio", MagicMock())
+_minio_client = MagicMock()
+_minio_client.MinIOStorage = MagicMock
+sys.modules.setdefault("storage.minio_client", _minio_client)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -14,6 +20,10 @@ from utils.vi_obd_client import (
     ViObdError,
     _normalize_cpaas_base,
     get_dni_from_env,
+    get_flow_id,
+    normalize_msisdn,
+    resolve_vi_agent_id,
+    resolve_vi_agent_id_full,
 )
 
 
@@ -152,6 +162,178 @@ class TestViObdClient(unittest.TestCase):
 
     def test_default_base_includes_cpaas(self):
         self.assertIn("/Cpaas/api/v1/obdcampaignapi", OBD_BASE)
+
+    def test_normalize_msisdn_strips_country_code(self):
+        self.assertEqual(normalize_msisdn("+919876543210"), "9876543210")
+        self.assertEqual(normalize_msisdn("919876543210"), "9876543210")
+
+    def test_get_flow_id_uses_env_override(self):
+        with patch.dict(os.environ, {"VI_FLOW_ID": "custom-flow=="}):
+            self.assertEqual(get_flow_id(), "custom-flow==")
+
+    def test_get_active_dni_success(self):
+        with patch.object(
+            self.client,
+            "_request",
+            return_value=({"dniList": ["9899384310", "9899383920"]}, 200),
+        ):
+            body = self.client.get_active_dni("token", "flow123==")
+        self.assertEqual(body["dniList"], ["9899384310", "9899383920"])
+
+    def test_get_active_dni_raises_on_error(self):
+        with patch.object(
+            self.client,
+            "_request",
+            return_value=({"message": "Unauthorized"}, 401),
+        ):
+            with self.assertRaises(ViObdError):
+                self.client.get_active_dni("token", "flow123==")
+
+    def test_resolve_dni_uses_api_first(self):
+        with patch.object(
+            self.client,
+            "get_active_dni",
+            return_value={"dniList": ["9899384310", "9899383920"]},
+        ):
+            dni, source, dni_list = self.client.resolve_dni("token")
+        self.assertEqual(dni, "9899384310")
+        self.assertEqual(source, "getActiveDNIList")
+        self.assertEqual(len(dni_list), 2)
+
+    def test_resolve_dni_falls_back_to_env(self):
+        with patch.object(
+            self.client,
+            "get_active_dni",
+            side_effect=ViObdError("lookup failed"),
+        ):
+            with patch.dict(os.environ, {"VI_DNI": "9769554706"}):
+                dni, source, dni_list = self.client.resolve_dni("token")
+        self.assertEqual(dni, "9769554706")
+        self.assertEqual(source, "VI_DNI")
+        self.assertEqual(dni_list, ["9769554706"])
+
+    def test_modify_campaign_accepts_207(self):
+        with patch.object(
+            self.client,
+            "_request",
+            return_value=({"data": {"status": "partial_success"}}, 207),
+        ):
+            body = self.client.modify_campaign(
+                "token",
+                "abc123==",
+                from_date="2026-08-17",
+                to_date="2026-08-17",
+                from_time="12:00:00",
+                to_time="13:00:00",
+            )
+        self.assertEqual(body["_http_status"], 207)
+
+    def test_upload_call_list_bulk_single_chunk(self):
+        with patch.object(
+            self.client,
+            "_request",
+            return_value=({"data": {"rowsAffected": 2}}, 200),
+        ) as mock_req:
+            result = self.client.upload_call_list_bulk(
+                "token", "abc123==", "9769554706", ["9876543210", "+919123456789"]
+            )
+        self.assertEqual(result["data"]["rowsAffected"], 2)
+        mock_req.assert_called_once()
+        payload = mock_req.call_args.kwargs["json_body"]
+        self.assertEqual(len(payload["Records"]), 2)
+        self.assertEqual(payload["Records"][0]["msisdn"], "9876543210")
+
+
+class TestResolveViAgentIdSync(unittest.TestCase):
+    def test_path_agent_id_takes_priority(self):
+        start = {"custom_parameters": {"agent_id": "from_custom"}}
+        self.assertEqual(resolve_vi_agent_id("from_path", start), "from_path")
+
+    def test_custom_parameters_agent_id(self):
+        start = {"custom_parameters": {"agent_id": "mahavistaar"}}
+        self.assertEqual(resolve_vi_agent_id(None, start), "mahavistaar")
+
+    def test_custom_parameters_agentId_alias(self):
+        start = {"custom_parameters": {"agentId": "agent_b"}}
+        self.assertEqual(resolve_vi_agent_id(None, start), "agent_b")
+
+    def test_returns_none_when_unresolved(self):
+        self.assertIsNone(resolve_vi_agent_id(None, {}))
+
+
+class TestResolveViAgentIdFull(unittest.IsolatedAsyncioTestCase):
+    async def test_two_dnis_route_to_two_agents(self):
+        """Inbound /vi/stream: DNI A → agent A, DNI B → agent B."""
+        agents_by_dni = {
+            "9769554706": {"agent_id": "agent_a", "agent_type": "Agent A"},
+            "9876543210": {"agent_id": "agent_b", "agent_type": "Agent B"},
+        }
+
+        async def mock_fetch(phone):
+            return agents_by_dni.get(phone)
+
+        with patch("utils.backend_utils.fetch_agent_by_phone_number", side_effect=mock_fetch):
+            agent_id, source = await resolve_vi_agent_id_full(
+                None, {"dni": "9769554706"}
+            )
+            self.assertEqual(agent_id, "agent_a")
+            self.assertIn("dni", source)
+
+            agent_id_b, source_b = await resolve_vi_agent_id_full(
+                None, {"dni": "9876543210"}
+            )
+            self.assertEqual(agent_id_b, "agent_b")
+            self.assertIn("dni", source_b)
+
+    async def test_cli_fallback_when_dni_missing(self):
+        async def mock_fetch(phone):
+            if phone == "919000000001":
+                return {"agent_id": "agent_cli"}
+            return None
+
+        with patch("utils.backend_utils.fetch_agent_by_phone_number", side_effect=mock_fetch):
+            agent_id, source = await resolve_vi_agent_id_full(
+                None, {"cli": "919000000001"}
+            )
+            self.assertEqual(agent_id, "agent_cli")
+            self.assertIn("cli", source)
+
+    async def test_path_beats_dni_lookup(self):
+        with patch(
+            "utils.backend_utils.fetch_agent_by_phone_number",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            agent_id, source = await resolve_vi_agent_id_full(
+                "path_agent", {"dni": "9769554706"}
+            )
+            self.assertEqual(agent_id, "path_agent")
+            self.assertEqual(source, "path")
+            mock_fetch.assert_not_called()
+
+    async def test_env_default_when_lookup_fails(self):
+        with patch(
+            "utils.backend_utils.fetch_agent_by_phone_number",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            with patch.dict(os.environ, {"VI_DEFAULT_AGENT_ID": "fallback_agent"}):
+                agent_id, source = await resolve_vi_agent_id_full(
+                    None, {"dni": "0000000000"}
+                )
+                self.assertEqual(agent_id, "fallback_agent")
+                self.assertEqual(source, "VI_DEFAULT_AGENT_ID")
+
+    async def test_returns_none_when_all_sources_fail(self):
+        with patch(
+            "utils.backend_utils.fetch_agent_by_phone_number",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            with patch.dict(os.environ, {}, clear=True):
+                os.environ.pop("VI_DEFAULT_AGENT_ID", None)
+                agent_id, source = await resolve_vi_agent_id_full(None, {})
+                self.assertIsNone(agent_id)
+                self.assertEqual(source, "")
 
 
 if __name__ == "__main__":

@@ -456,10 +456,113 @@ def finalize_batch_execution(org_id: str, batch_id: str, stopped: bool) -> None:
         ).raise_for_status()
     except Exception as e:
         logger.error(f"Failed to finalize batch execution: {e}")
+
+
+def fetch_batch_queued_contacts(org_id: str, batch_id: str) -> list[Dict[str, Any]]:
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/batches/worker/queued-contacts"
+    headers = _get_api_headers()
+    try:
+        response = requests.post(
+            api_endpoint,
+            json={"org_id": org_id, "batch_id": batch_id},
+            headers=headers,
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json() if response.text else {}
+        contacts = data.get("contacts") if isinstance(data, dict) else []
+        return contacts if isinstance(contacts, list) else []
     except Exception as e:
-        logger.error(f"❌ Error updating meeting end time: {e}")
-        logger.debug(traceback.format_exc())
-        return False
+        logger.error(f"Failed to fetch queued batch contacts: {e}")
+        return []
+
+
+def submit_vi_batch_contacts(
+    org_id: str,
+    batch_id: str,
+    row_numbers: list[int],
+) -> None:
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/batches/worker/vi-submit-contacts"
+    headers = _get_api_headers()
+    try:
+        requests.post(
+            api_endpoint,
+            json={
+                "org_id": org_id,
+                "batch_id": batch_id,
+                "row_numbers": row_numbers,
+            },
+            headers=headers,
+            timeout=30,
+        ).raise_for_status()
+    except Exception as e:
+        logger.error(f"Failed to submit VI batch contacts: {e}")
+        raise
+
+
+def update_batch_vi_campaign(
+    *,
+    org_id: str,
+    batch_id: str,
+    vi_campaign_ref_id: Any,
+    vi_campain_key: str,
+    vi_current_status: Optional[str] = None,
+) -> None:
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/batches/worker/vi-campaign"
+    headers = _get_api_headers()
+    try:
+        requests.post(
+            api_endpoint,
+            json={
+                "org_id": org_id,
+                "batch_id": batch_id,
+                "vi_campaign_ref_id": vi_campaign_ref_id,
+                "vi_campain_key": vi_campain_key,
+                "vi_current_status": vi_current_status,
+            },
+            headers=headers,
+            timeout=10,
+        ).raise_for_status()
+    except Exception as e:
+        logger.error(f"Failed to update VI batch campaign metadata: {e}")
+
+
+def update_batch_vi_progress(
+    *,
+    org_id: str,
+    batch_id: str,
+    vi_current_status: Optional[str] = None,
+    vi_base_details: Optional[Dict[str, Any]] = None,
+    attempted_calls: Optional[int] = None,
+    successful_calls: Optional[int] = None,
+    failed_calls: Optional[int] = None,
+) -> None:
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/batches/worker/vi-progress"
+    headers = _get_api_headers()
+    payload: Dict[str, Any] = {"org_id": org_id, "batch_id": batch_id}
+    if vi_current_status is not None:
+        payload["vi_current_status"] = vi_current_status
+    if vi_base_details is not None:
+        payload["vi_base_details"] = vi_base_details
+    if attempted_calls is not None:
+        payload["attempted_calls"] = attempted_calls
+    if successful_calls is not None:
+        payload["successful_calls"] = successful_calls
+    if failed_calls is not None:
+        payload["failed_calls"] = failed_calls
+    try:
+        requests.post(
+            api_endpoint,
+            json=payload,
+            headers=headers,
+            timeout=10,
+        ).raise_for_status()
+    except Exception as e:
+        logger.error(f"Failed to update VI batch progress: {e}")
 
 
 async def fetch_agent_by_phone_number(phone_number: str) -> Optional[Dict[str, Any]]:

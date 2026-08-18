@@ -4,7 +4,8 @@
 Usage:
     python test_outbound_call.py 919876543210
 
-Requires VI_OBD_USERNAME, VI_OBD_PASSWORD, and VI_DNI in .env
+Requires VI_OBD_USERNAME and VI_OBD_PASSWORD in .env
+(VI_DNI used only if getActiveDNIList lookup fails or returns empty)
 """
 
 from __future__ import annotations
@@ -18,11 +19,11 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from utils.vi_obd_client import (
-    FLOW_ID,
     OBD_BASE,
     ViObdClient,
     ViObdError,
-    get_dni_from_env,
+    get_flow_id,
+    normalize_msisdn,
 )
 
 
@@ -40,28 +41,34 @@ def main() -> int:
         print(f"Usage: python {Path(__file__).name} <msisdn>", file=sys.stderr)
         return 1
 
-    msisdn = sys.argv[1].strip()
+    msisdn = normalize_msisdn(sys.argv[1].strip())
     if not msisdn:
         print("Error: msisdn must not be empty", file=sys.stderr)
         return 1
 
+    flow_id = get_flow_id()
+
     try:
         client = ViObdClient.from_env()
-        dni = get_dni_from_env()
     except ViObdError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    print(f"Flow ID: {FLOW_ID}")
+    print(f"Flow ID: {flow_id}")
     print(f"OBD base: {OBD_BASE}")
-    print(f"DNI (from VI_DNI): {dni}")
     print(f"Target msisdn: {msisdn}")
 
     try:
         token, auth_response = client.get_auth_token()
         _print_step("AUTH — POST obdcampaignapi/AuthToken", auth_response)
 
-        create_response = client.create_campaign(token)
+        dni, dni_source, dni_list = client.resolve_dni(token, flow_id)
+        _print_step(
+            f"DNI — POST obdcampaignapi/getActiveDNIList (using {dni_source})",
+            {"dniList": dni_list, "chosen_dni": dni, "source": dni_source},
+        )
+
+        create_response = client.create_campaign(token, flow_id=flow_id)
         _print_step("STEP 1 — POST obdcampaignapi/createCampaign", create_response)
 
         ingest_response, winning_shape = client.upload_call_list_with_fallback(
@@ -89,7 +96,7 @@ def main() -> int:
         print(f"  Campaign name : {window.get('name')}")
         print(f"  Date window   : {window.get('fromdate')} → {window.get('todate')}")
         print(f"  Time window   : {window.get('fromtime')} → {window.get('totime')} (IST)")
-        print(f"  DNI (caller)  : {dni}")
+        print(f"  DNI (caller)  : {dni} (from {dni_source})")
         print(f"  MSISDN (callee): {msisdn}")
         print(f"  campaign_ID   : campainKey (raw)")
         print(f"  campaign_Ref_ID: {create_response.get('campaign_Ref_ID')}")

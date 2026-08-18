@@ -1878,17 +1878,6 @@ export default function AgentDetailPage() {
                   </div>
                 </div>
               </div>
-              {agent.telephony_provider === "VI" && (
-                <div className="mt-4 p-4 rounded-lg border border-blue-200 bg-blue-50">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                    VI WebSocket URL (for VI Streaming Object / whitelisting)
-                  </div>
-                  <code className="block text-xs break-all text-slate-800">
-                    {(agent as Agent & { vi_websocket_url?: string }).vi_websocket_url ||
-                      `wss://vobiz.johnaic.com/vi/agent/${agent.agent_id}`}
-                  </code>
-                </div>
-              )}
             </div>
             <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${currentEditStepKey === "call_mgmt" ? "" : "hidden"}`}>
               <h2 className="text-lg font-semibold text-slate-900 mb-1 flex items-center gap-2">

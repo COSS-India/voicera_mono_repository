@@ -333,18 +333,44 @@ def delete_agent(agent_type: str, org_id: Optional[str] = None) -> Dict[str, Any
 def fetch_agent_by_phone_number(phone_number: str) -> Optional[Dict[str, Any]]:
     """
     Fetch agent config by phone number.
-    
-    Args:
-        phone_number: Phone number to search for
-        
-    Returns:
-        Agent config document or None
+
+    Tries several normalizations (E.164, 10-digit Indian, leading zero) so VI
+    DNI values from the WebSocket start event match Numbers-page attachments.
     """
     try:
         db = get_database()
         agent_table = db["AgentConfig"]
-        agent = agent_table.find_one({"phone_number": phone_number})
-        return agent
+
+        def _variants(value: str) -> list[str]:
+            raw = str(value or "").strip()
+            if not raw:
+                return []
+            out: list[str] = []
+            seen: set[str] = set()
+
+            def add(v: str) -> None:
+                if v and v not in seen:
+                    seen.add(v)
+                    out.append(v)
+
+            add(raw)
+            if raw.startswith("0") and len(raw) == 11:
+                add("+91" + raw[1:])
+            digits = raw.lstrip("+")
+            if digits.startswith("91") and len(digits) == 12:
+                add("+" + digits)
+                add(digits[2:])
+            if len(digits) == 10 and digits.isdigit():
+                add("+91" + digits)
+            if not raw.startswith("+") and raw.isdigit():
+                add("+" + raw)
+            return out
+
+        for candidate in _variants(phone_number):
+            agent = agent_table.find_one({"phone_number": candidate})
+            if agent:
+                return agent
+        return None
     except Exception as e:
         logger.error(f"Error fetching agent by phone number: {str(e)}")
         return None

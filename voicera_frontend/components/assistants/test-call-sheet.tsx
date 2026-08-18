@@ -78,6 +78,9 @@ export function TestCallSheet({
     if (!touched) setTouched(true)
   }
 
+  const isViAgent = agent?.telephony_provider === "VI"
+  const requiresPhoneNumber = !isViAgent
+
   const handleMakeTestCall = async () => {
     // Prevent double calls
     if (isCallInProgress.current || isLoading || success || !agent) {
@@ -105,15 +108,17 @@ export function TestCallSheet({
     setError("")
     setSuccess(false)
 
-    if (!agent.phone_number) {
+    if (requiresPhoneNumber && !agent.phone_number) {
       setError("Agent does not have a phone number configured. Please attach a phone number to this agent first.")
+      setIsLoading(false)
+      isCallInProgress.current = false
       return
     }
 
     const payload = {
       customer_number: trimmedNumber,
       agent_id: agent.agent_id,
-      caller_id: agent.phone_number,
+      ...(agent.phone_number ? { caller_id: agent.phone_number } : {}),
     }
 
     try {
@@ -170,8 +175,16 @@ export function TestCallSheet({
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-green-900">Test call initiated successfully!</p>
-                    
+                    <p className="text-sm font-semibold text-green-900">
+                      {isViAgent
+                        ? "Call queued in VI campaign!"
+                        : "Test call initiated successfully!"}
+                    </p>
+                    {isViAgent && (
+                      <p className="text-xs text-green-700 mt-1">
+                        VI will dial within the active campaign time window (typically within 1 hour IST).
+                      </p>
+                    )}
                   </div>
                 </div>
                 
@@ -270,7 +283,11 @@ export function TestCallSheet({
                 <Input
                   id="caller-id"
                   type="text"
-                  value={agent?.phone_number || "No phone number configured"}
+                  value={
+                    isViAgent && !agent?.phone_number
+                      ? "Resolved from VI getActiveDNIList (or VI_DNI fallback)"
+                      : agent?.phone_number || "No phone number configured"
+                  }
                   readOnly
                   disabled
                   tabIndex={-1}
@@ -287,7 +304,11 @@ export function TestCallSheet({
               <p className="text-xs text-slate-500 flex items-start gap-1.5">
                 <Info className="h-3 w-3 mt-0.5 shrink-0" />
                 <span>
-                  {agent?.phone_number ? (
+                  {isViAgent && !agent?.phone_number ? (
+                    <>
+                      VI outbound caller ID (DNI) is resolved server-side from your flow&apos;s active DNI list.
+                    </>
+                  ) : agent?.phone_number ? (
                     <>
                       This is the phone number that will appear on your caller ID when you receive the test call.&nbsp;
                       <span className="text-slate-400 font-medium">
@@ -319,7 +340,13 @@ export function TestCallSheet({
           <Button
             type="button"
             onClick={handleMakeTestCall}
-            disabled={!customerNumber.trim() || !isValidPhone || !agent?.phone_number || isLoading || success}
+            disabled={
+              !customerNumber.trim() ||
+              !isValidPhone ||
+              (requiresPhoneNumber && !agent?.phone_number) ||
+              isLoading ||
+              success
+            }
             className="flex-1"
           >
             {isLoading ? (

@@ -431,8 +431,8 @@ export default function NumbersPage() {
         } finally {
           setIsLoadingVobizNumbers(false)
         }
-      } else if (selectedProvider !== "Vobiz") {
-        // Clear Vobiz numbers when switching away from Vobiz
+      } else if (selectedProvider !== "Vobiz" && selectedProvider !== "Plivo") {
+        // Clear provider inventory when switching to VI or other manual entry
         setVobizNumbers([])
         setSelectedVobizNumber("")
       }
@@ -444,15 +444,21 @@ export default function NumbersPage() {
   const handleAddNewNumber = async () => {
     if (!selectedProvider) return
 
-    // For telephony providers using provider inventory, validate a number is selected
+    // Vobiz/Plivo: pick from provider inventory. VI: manual 10-digit DNI entry.
     if (selectedProvider === "Vobiz" || selectedProvider === "Plivo") {
       if (!selectedVobizNumber) {
         setErrorMessage("Please select a phone number")
         setErrorDialogOpen(true)
         return
       }
+    } else if (selectedProvider === "VI") {
+      const digits = newPhoneNumber.slice(3)
+      if (digits.length !== 10) {
+        setErrorMessage("VI DNI must be exactly 10 digits")
+        setErrorDialogOpen(true)
+        return
+      }
     } else {
-      // For Plivo, validate phone number is exactly +91 followed by 10 digits
       const digits = newPhoneNumber.slice(3)
       if (digits.length !== 10) {
         setErrorMessage("Phone number must be exactly 10 digits after +91")
@@ -461,7 +467,6 @@ export default function NumbersPage() {
       }
     }
 
-    // Check if phone number already exists
     const phoneNumberToAdd = (selectedProvider === "Vobiz" || selectedProvider === "Plivo")
       ? selectedVobizNumber
       : newPhoneNumber
@@ -647,6 +652,8 @@ export default function NumbersPage() {
                                 ? "bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100"
                                 : phone.provider === "Plivo"
                                 ? "bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100"
+                                : phone.provider === "VI"
+                                ? "bg-red-100 text-red-700 border-red-200 hover:bg-red-100"
                                 : "bg-neutral-100 text-neutral-700 border-neutral-200 hover:bg-neutral-100"
                             }
                           >
@@ -937,9 +944,8 @@ export default function NumbersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Vobiz">Vobiz</SelectItem>
-                    <SelectItem value="Plivo">
-                      Plivo
-                    </SelectItem>
+                    <SelectItem value="Plivo">Plivo</SelectItem>
+                    <SelectItem value="VI">Vodafone Idea (VI)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -978,6 +984,21 @@ export default function NumbersPage() {
                       Select a phone number from your {selectedProvider} account
                     </p>
                   </>
+                ) : selectedProvider === "VI" ? (
+                  <>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+919876543210"
+                      value={newPhoneNumber}
+                      onChange={(e) => handlePhoneNumberChange(e.target.value)}
+                      disabled={isAddingNumber}
+                      className="h-10"
+                    />
+                    <p className="text-xs text-neutral-500">
+                      Enter the VI DNI (10-digit Indian number) as configured in the VI portal
+                    </p>
+                  </>
                 ) : (
                   <p className="text-sm text-neutral-500 py-2">
                     Please select a provider to continue
@@ -1004,7 +1025,11 @@ export default function NumbersPage() {
                 disabled={
                   !selectedProvider || 
                   isAddingNumber ||
-                  ((selectedProvider === "Vobiz" || selectedProvider === "Plivo") ? !selectedVobizNumber : newPhoneNumber.length !== 13) ||
+                  ((selectedProvider === "Vobiz" || selectedProvider === "Plivo")
+                    ? !selectedVobizNumber
+                    : selectedProvider === "VI"
+                      ? newPhoneNumber.length !== 13
+                      : true) ||
                   isLoadingVobizNumbers
                 }
                 className="bg-neutral-900 hover:bg-neutral-800"

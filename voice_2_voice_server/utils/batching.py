@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import os
 import threading
+import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import Any, Awaitable, Callable, Dict, Optional
 
@@ -15,9 +17,16 @@ import requests
 from .backend_utils import (
     claim_next_batch_contact,
     fetch_batch_agent_call_config,
+    fetch_batch_queued_contacts,
     finalize_batch_execution,
     report_batch_contact_result,
+    submit_vi_batch_contacts,
+    update_batch_vi_campaign,
+    update_batch_vi_progress,
 )
+from .vi_obd_client import ViObdClient, ViObdError, get_flow_id, normalize_msisdn
+
+VI_STATUS_POLL_SECS = 30
 
 
 class BatchRunRequest(BaseModel):
@@ -93,6 +102,17 @@ class BatchWorker:
             self._cleanup_runner(batch_id)
             return
 
+        provider = str(agent_call_config.get("telephony_provider") or "Vobiz").strip().lower()
+        if provider == "vi":
+            self._run_vi_worker(
+                org_id=org_id,
+                batch_id=batch_id,
+                agent_type=agent_type,
+                agent_call_config=agent_call_config,
+                stop_event=stop_event,
+            )
+            return
+
         agent_id = str(agent_call_config.get("agent_id") or "").strip()
         caller_id = agent_call_config.get("caller_id")
         if not agent_id:
@@ -166,6 +186,140 @@ class BatchWorker:
                             ok=ok,
                             error=error,
                         )
+        finally:
+            self._cleanup_runner(batch_id)
+
+    def _run_vi_worker(
+        self,
+        *,
+        org_id: str,
+        batch_id: str,
+        agent_type: str,
+        agent_call_config: Dict[str, Any],
+        stop_event: threading.Event,
+    ) -> None:
+        agent_id = str(agent_call_config.get("agent_id") or "").strip()
+        stopped = False
+        try:
+            contacts = fetch_batch_queued_contacts(org_id=org_id, batch_id=batch_id)
+            if not contacts:
+                finalize_batch_execution(org_id=org_id, batch_id=batch_id, stopped=False)
+                return
+
+            row_numbers: list[int] = []
+            msisdns: list[str] = []
+            for contact in contacts:
+                row_number = int(contact.get("row_number"))
+                raw_number = str(contact.get("contact_number") or "").strip()
+                normalized = normalize_msisdn(raw_number)
+                if not normalized:
+                    report_batch_contact_result(
+                        org_id=org_id,
+                        batch_id=batch_id,
+                        row_number=row_number,
+                        ok=False,
+                        error="Invalid contact_number",
+                    )
+                    continue
+                row_numbers.append(row_number)
+                msisdns.append(normalized)
+
+            if not msisdns:
+                finalize_batch_execution(org_id=org_id, batch_id=batch_id, stopped=False)
+                return
+
+            client = ViObdClient.from_env()
+            token, _ = client.get_auth_token()
+            flow_id = get_flow_id()
+            dni, dni_source, _ = client.resolve_dni(token, flow_id)
+            logger.info(
+                "VI batch %s: resolved DNI %s via %s for %d contacts",
+                batch_id[:8],
+                dni,
+                dni_source,
+                len(msisdns),
+            )
+
+            window_hours = max(1.0, math.ceil(len(msisdns) / 50.0))
+            create_response = client.create_campaign(
+                token,
+                flow_id=flow_id,
+                name=f"batch-{batch_id[:8]}-{agent_type}",
+                description=f"VoicERA batch {batch_id}",
+                window_hours=window_hours,
+            )
+            campain_key = ViObdClient._campain_key_from_response(create_response)
+            campaign_ref_id = create_response.get("campaign_Ref_ID")
+
+            update_batch_vi_campaign(
+                org_id=org_id,
+                batch_id=batch_id,
+                vi_campaign_ref_id=campaign_ref_id,
+                vi_campain_key=campain_key,
+                vi_current_status="Created",
+            )
+
+            client.upload_call_list_bulk(token, campain_key, dni, msisdns)
+            submit_vi_batch_contacts(org_id, batch_id, row_numbers)
+
+            logger.info(
+                "VI batch %s: campaign_Ref_ID=%s ingested %d numbers",
+                batch_id[:8],
+                campaign_ref_id,
+                len(msisdns),
+            )
+
+            while not stop_event.is_set():
+                try:
+                    status_body, _ = client.get_campaign_status_with_fallback(
+                        token,
+                        campaign_ref_id,
+                        campain_key=campain_key,
+                    )
+                    data = status_body.get("data") or {}
+                    base_details = data.get("baseDetails") or {}
+                    current_status = data.get("currentStatus")
+
+                    attempted = int(base_details.get("totalCallInitiated") or 0)
+                    successful = int(base_details.get("totalCallsConnected") or 0)
+                    failed = int(base_details.get("totalCallsNotConnected") or 0)
+                    remaining = int(base_details.get("remainingNumbersInQueue") or 0)
+
+                    update_batch_vi_progress(
+                        org_id=org_id,
+                        batch_id=batch_id,
+                        vi_current_status=current_status,
+                        vi_base_details=base_details,
+                        attempted_calls=max(attempted, len(msisdns)),
+                        successful_calls=successful,
+                        failed_calls=failed,
+                    )
+
+                    if remaining == 0 and attempted >= len(msisdns):
+                        break
+                except ViObdError as e:
+                    logger.warning("VI batch status poll failed: %s", e)
+
+                if stop_event.wait(VI_STATUS_POLL_SECS):
+                    stopped = True
+                    break
+
+            finalize_batch_execution(org_id=org_id, batch_id=batch_id, stopped=stopped)
+
+        except ViObdError as e:
+            logger.error("VI batch worker failed: %s", e)
+            for contact in fetch_batch_queued_contacts(org_id=org_id, batch_id=batch_id):
+                report_batch_contact_result(
+                    org_id=org_id,
+                    batch_id=batch_id,
+                    row_number=int(contact.get("row_number")),
+                    ok=False,
+                    error=str(e),
+                )
+            finalize_batch_execution(org_id=org_id, batch_id=batch_id, stopped=False)
+        except Exception as e:
+            logger.error("VI batch worker unexpected error: %s", e)
+            finalize_batch_execution(org_id=org_id, batch_id=batch_id, stopped=False)
         finally:
             self._cleanup_runner(batch_id)
 

@@ -488,6 +488,10 @@ class BatchResponse(BaseModel):
     scheduled_by: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    vi_campaign_ref_id: Optional[Any] = None
+    vi_campain_key: Optional[str] = None
+    vi_current_status: Optional[str] = None
+    vi_base_details: Optional[Dict[str, Any]] = None
 
 
 class BatchUploadResponse(BaseModel):
