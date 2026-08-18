@@ -9,13 +9,17 @@ does NOT capture run-to-run synthesis noise. This wrapper measures that noise
 directly -- the between-run standard deviation is the error bar you should judge a
 go/no-go decision against.
 
-Two modes:
+Three modes:
 
     # Execute N fresh runs, then aggregate:
     ./venv/bin/python scripts/multirun.py --model ai4bharat-parler \
         --suite indic-full --runs 5 --label parler-multi
 
-    # Aggregate runs you already have (no synthesis):
+    # Aggregate an existing batch by its label (what --label wrote above), so you
+    # need not hunt for timestamped dirs:
+    ./venv/bin/python scripts/multirun.py --from-label parler-multi
+
+    # Aggregate runs you already have, by directory glob (no synthesis):
     ./venv/bin/python scripts/multirun.py --from runs/20260817T10*
 
 For each metric it reports across-run mean, sample stdev, min, max, and CV%
@@ -77,6 +81,27 @@ def _parse_run_dir(stdout: str) -> Path | None:
         if stripped.startswith("dir:"):
             return Path(stripped.split(":", 1)[1].strip())
     return None
+
+
+def dirs_from_label(label: str, runs_root: Path) -> list[Path]:
+    """Run dirs whose record label is ``label`` or ``label-NN``.
+
+    The batch multirun writes is labelled ``<label>-01 .. -NN``, so this matches
+    both the exact label and that numbered family — letting you re-aggregate a
+    batch by the name you gave it instead of chasing timestamped directories.
+    Reads each ``run.json`` directly, so it works even if the store index is
+    stale or absent.
+    """
+    pattern = re.compile(rf"{re.escape(label)}(-\d+)?$")
+    dirs: list[Path] = []
+    for record in sorted(runs_root.glob("*/run.json")):
+        try:
+            found = json.loads(record.read_text(encoding="utf-8")).get("label") or ""
+        except (OSError, json.JSONDecodeError):
+            continue
+        if pattern.fullmatch(found):
+            dirs.append(record.parent)
+    return dirs
 
 
 def read_aggregates(run_dir: Path) -> dict[str, dict]:
@@ -440,7 +465,7 @@ reference points, not a formal pass/fail gate.</p>
 table.report{width:100%;border-collapse:collapse;margin:.4rem 0 1.6rem}
 table.report th,table.report td{border-bottom:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
 table.report th.num,table.report td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.mname{font-weight:550}.pol{font-size:.85em}
+.mname{font-weight:400}.pol{font-size:.85em}
 .cv-hi{color:var(--bad);font-weight:600}
 .glossary td{vertical-align:top}.glossary td:last-child{max-width:52ch}
 .report-foot{margin-top:2rem;color:var(--text-secondary);font-size:.85rem}
@@ -517,6 +542,11 @@ def main() -> None:
     ap.add_argument("--label", default="multirun", help="label prefix for executed runs")
     ap.add_argument("--from", dest="from_globs", nargs="+",
                     help="aggregate existing run dirs (globs) instead of executing")
+    ap.add_argument("--from-label", dest="from_label",
+                    help="aggregate existing runs whose label is LABEL or LABEL-NN "
+                         "(the batch multirun writes) instead of executing")
+    ap.add_argument("--runs-root", type=Path, default=Path("runs"),
+                    help="directory holding run dirs, used by --from-label (default: runs)")
     ap.add_argument("--out", type=Path, help="summary CSV path (default: <first run>/multirun_summary.csv)")
     ap.add_argument("--pdf", action="store_true", help="also export a PDF (needs Chrome/Chromium)")
     args = ap.parse_args()
@@ -525,9 +555,16 @@ def main() -> None:
         run_dirs = [Path(p) for g in args.from_globs for p in sorted(glob.glob(g)) if Path(p).is_dir()]
         if not run_dirs:
             sys.exit("no run directories matched --from")
+    elif args.from_label:
+        run_dirs = dirs_from_label(args.from_label, args.runs_root)
+        if not run_dirs:
+            sys.exit(
+                f"no runs labelled {args.from_label!r} (or {args.from_label}-NN) under {args.runs_root}"
+            )
     else:
         if not (args.model and args.suite):
-            sys.exit("provide --model and --suite to execute runs, or --from to aggregate existing")
+            sys.exit("provide --model and --suite to execute, --from-label to aggregate a batch, "
+                     "or --from to aggregate by directory glob")
         run_dirs = execute_runs(args.model, args.suite, args.runs, args.label)
 
     print(f"\naggregating {len(run_dirs)} run(s):")

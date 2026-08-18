@@ -1,20 +1,21 @@
 id: indic_conversational_v1
-version: "1.0.0"
+version: "1.1.0"
 description: >-
-  Conversational voice-agent seed set: 69 utterances across 13 languages
-  (en, hi, bn, ta, te, mr, gu, kn, ml, pa, or, as, ur) in native scripts,
-  spanning greeting, question, numeric, code_switch, long_form and two edge
-  categories. Sized so a full run on one model is minutes, not hours, while
-  still touching every metric family: long_form drives RTF and streaming
-  stability, numeric and edge_symbols drive text normalisation, code_switch
-  drives the Hindi-English mixing that is the common Indic TTS failure mode,
-  and edge_short exposes the fixed latency floor.
+  Conversational voice-agent seed set: 124 utterances across 24 languages
+  (en, hi, bn, ta, te, mr, gu, kn, ml, pa, or, as, ur, ne, mai, doi, hne,
+  kok, sa, ks, sd, mni, brx, sat) in native scripts, spanning greeting,
+  question, numeric, code_switch, long_form and two edge categories. Sized
+  so a full run on one model is minutes, not hours, while still touching
+  every metric family: long_form drives RTF and streaming stability, numeric
+  and edge_symbols drive text normalisation, code_switch drives the
+  Hindi-English mixing that is the common Indic TTS failure mode, and
+  edge_short exposes the fixed latency floor.
 
 # Pinned so an accidental edit fails the load instead of silently producing
 # numbers that are not comparable with previous runs. To change the set:
 # edit the .jsonl, bump `version`, then run `tts-eval dataset hash <file>`
 # and paste the new value here.
-content_hash: 21757ffc35e7c842150400f9a8c3f09a3e1c84dee6f5ce752cfef12883a2a964
+content_hash: 9af5d8a5beb880834312397861b39b6fff603f19e33592e30ad0815887332aa6
 manifest_hash: e8e257d341a31a9a09982e9182b1468d7d15bbc6b699ecacb897ab2f93fe41a2
 
 # --- provenance and limitations -------------------------------------------
@@ -22,8 +23,9 @@ manifest_hash: e8e257d341a31a9a09982e9182b1468d7d15bbc6b699ecacb897ab2f93fe41a2
 # stating plainly in any report built on it:
 #
 #   1. The sentences have not been verified by native speakers of every one of
-#      the 13 languages. Treat per-language CER from this set as indicative and
-#      have a speaker review the language you are about to ship.
+#      the 24 languages. Treat per-language CER from this set as indicative and
+#      have a speaker review the language you are about to ship. In particular
+#      ks, mni, brx, and sat utterances need native speaker validation.
 #   2. It carries no reference recordings, so reference-based metrics
 #      (speaker similarity to a target voice, TTSDS2 distributional scores)
 #      report `not_computed` on it by design.
@@ -46,3 +48,14 @@ languages:
   - or
   - as
   - ur
+  - ne
+  - mai
+  - doi
+  - hne
+  - kok
+  - sa
+  - ks
+  - sd
+  - mni
+  - brx
+  - sat

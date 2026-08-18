@@ -447,13 +447,6 @@ def merge_into_run(record: RunRecord, scores: Sequence[SubjectiveScore]) -> RunR
         for language, aggs in aggregate_per_language(record.utterances, [metric_name]).items():
             record.per_language.setdefault(language, {})[metric_name] = aggs[metric_name]
 
-    # A signoff attests to a specific report; adding ratings changes the report, so
-    # prior signoffs no longer describe what is on disk.
-    if record.signoffs:
-        record.warnings.append(
-            f"subjective scores were added after {len(record.signoffs)} signoff(s); those "
-            "signoffs refer to an earlier report and should be renewed"
-        )
     return record
 
 

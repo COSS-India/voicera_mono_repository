@@ -89,7 +89,7 @@ html[data-theme="dark"] {
 html { background: var(--bg); }
 
 body {
-  font: 15px/1.6 -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+  font: 15px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
   max-width: 68rem;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 4rem;
@@ -157,13 +157,15 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 /* -- stat tiles ----------------------------------------------------------- */
 
 .meta-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: .75rem;
   margin: 0 0 1.5rem;
 }
 
 .meta-grid > div {
+  flex: 1 1 auto;
+  min-width: 11.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -182,7 +184,10 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   margin: .2rem 0 0;
   font-family: ui-monospace, monospace;
   font-size: .88rem;
+  overflow-wrap: break-word;
+  word-break: break-all;
 }
+
 
 /* -- tables ---------------------------------------------------------------*/
 
@@ -279,6 +284,54 @@ tbody tr:hover td { background: var(--surface-subtle); }
 .callout.good { border-left-color: var(--good); background: var(--good-bg); }
 .callout ul { margin: .4rem 0 0; padding-left: 1.2rem; }
 
+/* Collapsible callout (Warnings / Not computed): de-emphasised provenance at the
+   foot of the report, not an alarm at the top. Neutral, closed by default. */
+details.callout.collapsible {
+  border-left-color: var(--border);
+  background: var(--surface);
+  padding: 0;
+}
+
+details.callout.collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .7rem 1.1rem;
+  color: var(--text-secondary);
+  font-size: .9rem;
+}
+
+details.callout.collapsible > summary::-webkit-details-marker { display: none; }
+details.callout.collapsible > summary::before {
+  content: "\\25B8";  /* ▸ */
+  color: var(--muted);
+  font-size: .8em;
+  transition: transform .12s ease;
+}
+details.callout.collapsible[open] > summary::before { transform: rotate(90deg); }
+details.callout.collapsible[open] > summary { border-bottom: 1px solid var(--border); }
+details.callout.collapsible > summary:hover { color: var(--text); }
+
+details.callout.collapsible .count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 600;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .05rem .5rem;
+}
+
+details.callout.collapsible > ul {
+  margin: .6rem 0 .7rem;
+  padding-left: 2.3rem;
+  color: var(--text-secondary);
+  font-size: .88rem;
+}
+
 .muted { color: var(--muted); }
 .small { font-size: .82rem; }
 .mono { font-family: ui-monospace, monospace; }
@@ -303,6 +356,8 @@ code {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   transition: box-shadow .12s ease, border-color .12s ease;
+  display: flex;
+  align-items: stretch;
 }
 
 .run-list li:hover { box-shadow: var(--shadow-sm); border-color: var(--accent); }
@@ -314,7 +369,28 @@ code {
   gap: 1rem;
   padding: .85rem 1.1rem;
   color: var(--text);
+  flex: 1 1 auto;
+  min-width: 0;
 }
+
+/* Per-run delete. Sits outside the run's <a> so it is not a nested control;
+   muted until hover, then reads as the destructive action it is. Kept hidden
+   from view until the row is hovered/focused to avoid an accidental click. */
+.run-del {
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 0 .8rem 0 0;
+  padding: .3rem .7rem;
+  font-size: .8rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  opacity: 0;
+  transition: opacity .12s ease, color .12s ease, border-color .12s ease, background .12s ease;
+}
+.run-list li:hover .run-del,
+.run-del:focus { opacity: 1; }
+.run-del:hover { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
 
 .run-list .run-link:hover { text-decoration: none; }
 .run-main { min-width: 0; }
@@ -357,6 +433,82 @@ code {
 .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .audio-cell audio { height: 30px; width: 12rem; }
+
+/* -- export bar ---------------------------------------------------------- */
+
+.export-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin: 0 0 1.5rem;
+}
+
+.export-bar .export-label {
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-right: .1rem;
+}
+
+.export-bar a.btn { text-decoration: none; }
+.export-bar a.btn:hover { text-decoration: none; }
+
+/* -- print / save-as-PDF ------------------------------------------------- */
+
+/* @page owns only the vertical margins (they repeat on every page); the left/
+   right space is body padding instead, because horizontal @page margins get
+   dropped on some print paths — padding is honoured regardless, and splitting
+   the two axes avoids the doubled indent you'd get if both applied. */
+@page { margin: 1.5cm 0; }
+
+@media print {
+  /* Chrome that only makes sense on screen; a printed/PDF'd report is a static
+     archival snapshot, so drop the interactive controls and force light ink. */
+  html[data-theme="dark"] { color-scheme: light; }
+  .topbar nav, .export-bar, .theme-toggle, .run-filter { display: none !important; }
+
+  /* An archival PDF snapshot: sign-off is workflow state, not a benchmark
+     result, and the full per-utterance table duplicates the CSV export — both
+     just add pages. Warnings are the opposite case: provenance worth reading
+     without a click, so force the <details> open regardless of its collapsed
+     default on screen. */
+  .utterances-section { display: none !important; }
+
+  html, body { background: #fff; color: #000; }
+  /* max-width/auto-margins centre on screen; reset them so every block spans the
+     same printable width. Horizontal padding here is the actual left/right page
+     space (see @page note above); vertical padding stays 0 so @page owns it. */
+  body { max-width: none; width: auto; margin: 0; padding: 0 1.5cm; }
+
+  .topbar {
+    position: static;
+    box-shadow: none;
+    display: block;   /* space-between flex leaves a lone h1 pushed right; stack it */
+    padding: 0 0 .75rem;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  /* Screen uses flex-grow, which adds equal FREE SPACE to each card, not equal
+     width — so a short card ("Concurrency: 1") stays narrow and rows end ragged.
+     For print, an equal-column grid gives uniform cards with aligned edges that
+     span the full printable width. */
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
+  }
+  .meta-grid > div { min-width: 0; }
+
+  /* Keep a stat card, a table row, or a callout from being split across a page
+     boundary — a benchmark table halved between pages is unreadable. */
+  .meta-grid > div, tr, .callout, details { break-inside: avoid; }
+  table, h2, h3 { break-after: avoid; }
+  a { color: inherit; text-decoration: none; }
+}
 
 footer {
   margin-top: 3rem;

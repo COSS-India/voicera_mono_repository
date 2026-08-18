@@ -4,7 +4,19 @@ from __future__ import annotations
 import copy
 
 from tts_eval.compare import compare_runs, direction_of_change, repeatability
+from tts_eval.metrics.catalog import AC_INFERENCE_TIME, AC_LATENCY, spec as metric_spec
 from tts_eval.runner import build_plan, run_sync
+
+# Wall-clock criteria: measured from real elapsed time, so two identical runs
+# still differ by scheduling jitter of a few ms. The framework treats them as
+# load-dependent and excludes them from the fingerprint, so they are not part of
+# the reproducibility guarantee.
+_WALL_CLOCK_CRITERIA = {AC_LATENCY, AC_INFERENCE_TIME}
+
+
+def _reproducible(comparisons):
+    """Drop wall-clock metrics; keep the ones identical input must reproduce."""
+    return [c for c in comparisons if metric_spec(c.metric).criterion not in _WALL_CLOCK_CRITERIA]
 
 
 def _run(card, suite, tmp_path, label="test", **card_overrides):
@@ -39,8 +51,12 @@ class TestComparison:
         a = _run(mock_card, smoke_suite, tmp_path / "a")
         b = _run(mock_card, smoke_suite, tmp_path / "b")
         comparison = compare_runs(a, b)
-        assert comparison.improvements() == []
-        assert comparison.regressions() == []
+        # The mock is bit-identical for identical input, so every reproducible
+        # metric must tie. Wall-clock latency/inference-time legitimately differ
+        # by a few ms of scheduling jitter run to run — that is measurement noise,
+        # not a winner, so it is excluded here rather than asserted away.
+        assert _reproducible(comparison.improvements()) == []
+        assert _reproducible(comparison.regressions()) == []
 
     def test_different_dataset_blocks_comparison(self, mock_card, smoke_suite, tmp_path):
         baseline = _run(mock_card, smoke_suite, tmp_path / "a")

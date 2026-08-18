@@ -61,11 +61,14 @@ on these five calls.
 ## Evaluate a real model
 
 Point a model card's `adapter_config.url` at your server (via env var or
-directly), then run the same suite:
+directly), then run the same suite. The CLI is the fast path:
 
 ```bash
-export INDIC_MIO_SERVER_URL=ws://your-gpu-box:8003
+export INDIC_MIO_TTS_URL=ws://your-gpu-box:8003       # the indic-mio card reads this
+tts-eval run --model indic-mio --suite indic-full --label mio-run-1
 ```
+
+The equivalent Python API:
 
 ```python
 from tts_eval.config import load_model_card, load_suite
@@ -74,8 +77,8 @@ from tts_eval.store import RunStore
 from tts_eval.report import write_run_report
 
 store = RunStore("runs")
-card = load_model_card("indic-mio")            # reads INDIC_MIO_SERVER_URL
-suite = load_suite("indic-full")               # full 69-utterance, all metrics
+card = load_model_card("indic-mio")            # reads INDIC_MIO_TTS_URL
+suite = load_suite("indic-full")               # full 124-utterance set, all metrics
 
 record = run_sync(build_plan(card, suite, output_dir=store.root))
 run_dir = store.save(record)
@@ -85,6 +88,63 @@ write_run_report(record, run_dir)
 Bundled model cards (`configs/models/`): `mock`, `indic-mio`, `ai4bharat-parler`,
 `sarvam`. Bundled suites (`configs/suites/`): `smoke`, `indic-full`, `latency`,
 `offline-rescore`.
+
+### Server URLs are env vars
+
+Each card resolves its endpoint from an environment variable (with a localhost
+default), so the same card works against a tunnel, a published port, or an
+in-cluster host without editing YAML:
+
+| Card | Env var | Default |
+|---|---|---|
+| `indic-mio` | `INDIC_MIO_TTS_URL` | `ws://localhost:8003` |
+| `ai4bharat-parler` | `AI4BHARAT_TTS_URL` | `ws://localhost:8002` |
+| ASR (any suite's `asr:` block) | `TTS_EVAL_ASR_URL` | `http://localhost:8001/transcribe` |
+
+### Reaching on-prem servers over an SSH tunnel
+
+The TTS/STT servers usually run in Docker on a GPU box and aren't published to
+the host, so forward each container's port to a local port and point the env
+vars at `localhost`. Get a container's IP on the box:
+
+```bash
+# on the GPU box — repeat per server (stt, tts, mio)
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' voicera-prod-stt-1
+```
+
+Open the tunnel (one `-L` per server; pick distinct local ports if two TTS
+servers must be live at once):
+
+```bash
+ssh -i KEY.pem -N \
+  -L 127.0.0.1:8003:<MIO_IP>:8003 \
+  -L 127.0.0.1:8002:<PARLER_IP>:8002 \
+  -L 127.0.0.1:8001:<STT_IP>:8001 \
+  ubuntu@<gpu-box>
+```
+
+Then point the eval at the tunnel and run:
+
+```bash
+export INDIC_MIO_TTS_URL=ws://localhost:8003
+export AI4BHARAT_TTS_URL=ws://localhost:8002
+export TTS_EVAL_ASR_URL=http://localhost:8001/transcribe
+
+tts-eval run --model indic-mio       --suite indic-full --label mio-1
+tts-eval run --model ai4bharat-parler --suite indic-full --label parler-1
+```
+
+Verify the STT tunnel before a long run (a non-hang reply means it's reachable):
+
+```bash
+curl -s -m 10 -X POST http://localhost:8001/transcribe \
+  -H 'Content-Type: application/json' -d '{"audio_b64":"","language_id":"hi"}'; echo
+```
+
+Keep the tunnel process alive for the whole run, and don't recreate the
+containers mid-run — their IPs change and the tunnel targets go stale. Local
+port must match the env var (e.g. if you forward MIO to local `8002`, set
+`INDIC_MIO_TTS_URL=ws://localhost:8002`).
 
 ### Suite tiers (`metrics:` in the suite YAML)
 
@@ -104,6 +164,48 @@ asr:
   url: http://localhost:8001/transcribe
   transcript_path: text
 ```
+
+## Repeat runs for best-effort models (mean ± stdev)
+
+Stochastic models (`determinism: best_effort`, e.g. Indic-Mio and Parler)
+synthesise different audio each run, so a single run is one noisy sample — the
+report's bootstrap CI captures variance *within* a run (across utterances), not
+run-to-run synthesis noise. `scripts/multirun.py` runs a suite N times and
+reports the **between-run** mean, stdev, min, max and CV% per metric — the error
+bar to judge a go/no-go decision against.
+
+```bash
+# execute N fresh runs, then aggregate (writes the summary automatically):
+./venv/bin/python scripts/multirun.py \
+  --model indic-mio --suite indic-full --runs 5 --label mio-multi
+```
+
+Each run is labelled `<label>-01 … -NN`. It writes, next to the first run's dir
+(or `--out`):
+
+- `multirun_summary.csv` — mean, stdev, min, max, CV% (= stdev/mean), and how
+  many runs produced each metric
+- `multirun_summary.html` — sectioned report (`--pdf` also writes a PDF; needs
+  Chrome/Chromium)
+
+To (re)aggregate runs you already have — no re-synthesis — select them by label
+or by directory glob:
+
+```bash
+# by label: matches the exact label and the LABEL-NN batch above
+./venv/bin/python scripts/multirun.py --from-label mio-multi
+
+# by directory glob:
+./venv/bin/python scripts/multirun.py --from 'runs/20260818T10*'
+
+# control output location + PDF:
+./venv/bin/python scripts/multirun.py --from-label mio-multi \
+  --out runs/mio-summary.csv --pdf
+```
+
+`--from-label` scans the whole runs root (`--runs-root`, default `runs`) and
+reads each `run.json`, so it works even if the store index is stale. It matches
+across all sessions, so keep batch labels unique if you reuse a prefix.
 
 ## Add a new model
 
@@ -192,8 +294,10 @@ python -m tts_eval.ui --runs runs --port 8765
 
 Open `http://127.0.0.1:8765`. Lists all runs, click through to a report, play
 back individual utterance audio, or use `/compare` to pick two runs and get a
-side-by-side comparison. Read-only, no auth, stdlib `http.server` only — binds
-to `127.0.0.1` by default, don't expose it beyond your machine as-is.
+side-by-side comparison. Hover a run to reveal a **Delete** button (removes that
+run's directory and index rows); the run list also has a **Clear all runs**
+link. Otherwise read-only, no auth, stdlib `http.server` only — binds to
+`127.0.0.1` by default, don't expose it beyond your machine as-is.
 
 ## Human listening tests (MOS / MUSHRA / CMOS / SMOS)
 

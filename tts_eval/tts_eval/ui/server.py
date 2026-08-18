@@ -8,6 +8,9 @@ framework nobody on the team needs to install to look at a report.
 Routes:
     GET /                                  run list
     GET /run/<run_id>                      run report (same renderer as the file)
+    GET /run/<run_id>/run.json             source-of-truth record (download)
+    GET /run/<run_id>/report.md            Markdown report (download)
+    GET /run/<run_id>/report.html          standalone HTML report (download)
     GET /run/<run_id>/utterances.csv       CSV export
     GET /run/<run_id>/aggregates.csv
     GET /run/<run_id>/coverage.csv
@@ -24,11 +27,13 @@ Routes:
     POST /api/model/<name>                 save model card YAML
     POST /api/suite/<name>                 save suite YAML
     POST /api/launch                       start evaluation run
+    POST /api/runs/<run_id>/delete         delete one run (irreversible)
+    POST /api/runs/clear                   delete every run (irreversible)
 
-Everything is read-only GET: the UI never mutates a run, so there is no CSRF
-surface and no reason to run it behind auth for a local/internal reviewer tool.
-It is not hardened for exposure on an untrusted network — see ``serve()``'s
-docstring.
+Most routes are read-only GET; the mutating POST routes (launch, config saves,
+clear-all) exist for local/internal reviewer convenience, not multi-user
+safety — there is no auth or CSRF surface. It is not hardened for exposure on
+an untrusted network — see ``serve()``'s docstring.
 """
 from __future__ import annotations
 
@@ -50,7 +55,16 @@ from .. import __version__
 from ..report.csv_export import aggregates_csv, coverage_csv, utterances_csv
 from ..report.html import _page  # shared page chrome, kept private to report.html
 from ..report.html import render_comparison_html, render_run_html
+from ..report.markdown import render_run_markdown
 from ..report.style import CSS
+
+# Per-run archival downloads served at /run/<id>/<name>, mapping the requested
+# name to (content-type, download-filename-suffix). CSVs have their own route.
+_RUN_DOWNLOADS: dict[str, tuple[str, str]] = {
+    "run.json": ("application/json; charset=utf-8", "run.json"),
+    "report.md": ("text/markdown; charset=utf-8", "report.md"),
+    "report.html": ("text/html; charset=utf-8", "report.html"),
+}
 
 # ---------------------------------------------------------------------------
 # Background run state
@@ -120,11 +134,6 @@ def render_index(store: RunStore) -> str:
     for summary in summaries:
         success = f"{summary.success_rate:.0%}" if summary.success_rate is not None else "—"
         band = _success_band(summary.success_rate)
-        reviewed = (
-            '<span class="badge good">reviewed</span>'
-            if summary.reviewed
-            else '<span class="badge neutral">unreviewed</span>'
-        )
         # data-search backs the client-side filter box: one lowercase haystack so
         # a reviewer scanning dozens of runs can jump to one by name, label or id.
         haystack = _e(
@@ -140,13 +149,16 @@ def render_index(store: RunStore) -> str:
             f'<div class="run-stats">'
             f'<span class="run-count">{summary.n_ok}/{summary.n_utterances}</span>'
             f'<span class="badge {band}">{success}</span>'
-            f"{reviewed}"
-            f"</div></a></li>"
+            f"</div></a>"
+            f'<button class="run-del" title="Delete this run" aria-label="Delete run"'
+            f' onclick="return deleteRun(event, \'{_e(summary.run_id)}\')">Delete</button>'
+            f"</li>"
         )
 
     body = f"""
 <div class="topbar"><h1>tts_eval</h1><nav>{_nav(active="runs")}</nav></div>
-<p class="subtitle">{len(summaries)} run(s) under <code>{_e(store.root)}</code></p>
+<p class="subtitle">{len(summaries)} run(s) under <code>{_e(store.root)}</code>
+  &middot; <a href="#" class="small" onclick="return clearAllRuns()">Clear all runs</a></p>
 <input class="run-filter" id="run-filter" type="search" autocomplete="off"
   placeholder="Filter runs by name, label or id…" aria-label="Filter runs">
 <ul class="run-list" id="run-list">{''.join(items)}</ul>
@@ -167,6 +179,33 @@ def render_index(store: RunStore) -> str:
     empty.hidden = shown > 0;
   }});
 }})();
+
+async function clearAllRuns() {{
+  const n = {len(summaries)};
+  if (!confirm('Delete all ' + n + ' run(s) permanently? This cannot be undone.')) return false;
+  if (!confirm('Really sure? Audio and reports for every run will be deleted from disk.')) return false;
+  try {{
+    const r = await fetch('/api/runs/clear', {{ method: 'POST' }});
+    const d = await r.json();
+    if (d.status === 'ok') {{ location.reload(); }}
+    else {{ alert(d.message || 'Failed to clear runs'); }}
+  }} catch(e) {{ alert('Failed to clear runs: ' + e); }}
+  return false;
+}}
+
+async function deleteRun(ev, id) {{
+  // The button sits outside the run's <a>, so there is nothing to navigate,
+  // but stop the event anyway in case the markup changes later.
+  ev.preventDefault(); ev.stopPropagation();
+  if (!confirm('Delete run ' + id + ' permanently? Its audio and report are removed from disk.')) return false;
+  try {{
+    const r = await fetch('/api/runs/' + encodeURIComponent(id) + '/delete', {{ method: 'POST' }});
+    const d = await r.json();
+    if (d.status === 'ok') {{ location.reload(); }}
+    else {{ alert(d.message || 'Failed to delete run'); }}
+  }} catch(e) {{ alert('Failed to delete run: ' + e); }}
+  return false;
+}}
 </script>
 """
     return _page("tts_eval — runs", body)
@@ -615,13 +654,19 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     # -- helpers ------------------------------------------------------------
-    def _send(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
+    def _send(
+        self, status: HTTPStatus, body: bytes, content_type: str, *, download: str | None = None
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         # Audio and CSV are static once a run finishes; HTML is cheap to
         # regenerate and always reflects the current run.json, so it is not cached.
         self.send_header("Cache-Control", "no-store")
+        if download is not None:
+            # Force a "save as" with a stable filename rather than rendering the
+            # artefact inline in the browser tab.
+            self.send_header("Content-Disposition", f'attachment; filename="{download}"')
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -751,6 +796,9 @@ class Handler(BaseHTTPRequestHandler):
         if len(segments) == 3 and segments[0] == "run" and segments[2].endswith(".csv"):
             self._handle_run_csv(segments[1], segments[2])
             return
+        if len(segments) == 3 and segments[0] == "run" and segments[2] in _RUN_DOWNLOADS:
+            self._handle_run_download(segments[1], segments[2])
+            return
 
         self._error_page(HTTPStatus.NOT_FOUND, f"No route for {path}")
 
@@ -769,6 +817,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if len(segments) == 2 and segments[0] == "api" and segments[1] == "launch":
             self._api_launch()
+            return
+
+        if len(segments) == 3 and segments[0] == "api" and segments[1] == "runs" and segments[2] == "clear":
+            self._api_clear_runs()
+            return
+
+        if (
+            len(segments) == 4
+            and segments[0] == "api"
+            and segments[1] == "runs"
+            and segments[3] == "delete"
+        ):
+            self._api_delete_run(segments[2])
             return
 
         self._send_json(HTTPStatus.NOT_FOUND, {"status": "error", "message": "unknown endpoint"})
@@ -860,6 +921,43 @@ class Handler(BaseHTTPRequestHandler):
 
         self._send_json(HTTPStatus.OK, {"status": "started", "message": f"Started {model_name} / {suite_name}"})
 
+    def _api_clear_runs(self) -> None:
+        with _run_lock:
+            if _run_state["running"]:
+                self._send_json(HTTPStatus.CONFLICT, {
+                    "status": "error",
+                    "message": "Cannot clear runs while an evaluation is in progress",
+                })
+                return
+
+        count = self.store.clear_all()
+        self._send_json(HTTPStatus.OK, {"status": "ok", "removed": count})
+
+    def _api_delete_run(self, run_id_raw: str) -> None:
+        run_id = self._safe_name(run_id_raw)
+        if run_id is None:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"status": "error", "message": "invalid run id"})
+            return
+        # Deleting the run that is still being written would race its save; refuse
+        # while it is the one in progress. Other completed runs are fine to remove
+        # mid-evaluation.
+        with _run_lock:
+            if _run_state["running"] and _run_state.get("run_id") == run_id:
+                self._send_json(HTTPStatus.CONFLICT, {
+                    "status": "error",
+                    "message": "Cannot delete a run while it is still in progress",
+                })
+                return
+        try:
+            removed = self.store.delete(run_id)
+        except StoreError as e:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"status": "error", "message": str(e)})
+            return
+        if not removed:
+            self._send_json(HTTPStatus.NOT_FOUND, {"status": "error", "message": f"run {run_id} not found"})
+            return
+        self._send_json(HTTPStatus.OK, {"status": "ok", "removed": run_id})
+
     # -- existing page handlers ---------------------------------------------
     def _handle_run(self, run_id_raw: str) -> None:
         run_id = self._safe_name(run_id_raw)
@@ -872,8 +970,34 @@ class Handler(BaseHTTPRequestHandler):
             inline_css=False,
             audio_base=f"/audio/{record.run_id}/",
             nav_html=_nav(),
+            export_base=f"/run/{record.run_id}/",
         )
         self._send_html(HTTPStatus.OK, document)
+
+    def _handle_run_download(self, run_id_raw: str, filename: str) -> None:
+        """Serve a run's archival artefacts as file downloads.
+
+        JSON is streamed straight from the source-of-truth ``run.json``; the
+        Markdown and standalone-HTML reports are rendered fresh from the loaded
+        record so a download always reflects the current run.json (post-hoc
+        subjective scores or sign-offs included), not a stale on-disk copy.
+        """
+        run_id = self._safe_name(run_id_raw)
+        if run_id is None:
+            self._error_page(HTTPStatus.BAD_REQUEST, "invalid run id")
+            return
+        record = self.store.load(run_id)
+        content_type, disposition = _RUN_DOWNLOADS[filename]
+        if filename == "run.json":
+            body = self.store.path_for(record.run_id).read_bytes()
+        elif filename == "report.md":
+            body = render_run_markdown(record).encode("utf-8")
+        else:  # report.html — standalone, inline CSS, audio via the server routes
+            body = render_run_html(
+                record, audio_base=f"/audio/{record.run_id}/"
+            ).encode("utf-8")
+        download_name = f"{record.run_id}-{disposition}"
+        self._send(HTTPStatus.OK, body, content_type, download=download_name)
 
     def _handle_run_csv(self, run_id_raw: str, filename: str) -> None:
         run_id = self._safe_name(run_id_raw)

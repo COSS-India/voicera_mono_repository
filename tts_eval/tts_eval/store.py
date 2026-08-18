@@ -36,7 +36,7 @@ from typing import Any, Iterable, Sequence
 
 from . import SCHEMA_VERSION
 from .errors import StoreError
-from .types import ReviewSignoff, RunRecord, SubjectiveScore
+from .types import RunRecord, SubjectiveScore
 
 INDEX_FILENAME = "index.sqlite3"
 RECORD_FILENAME = "run.json"
@@ -63,7 +63,6 @@ CREATE TABLE IF NOT EXISTS runs (
     n_utterances    INTEGER,
     n_ok            INTEGER,
     success_rate    REAL,
-    n_signoffs      INTEGER DEFAULT 0,
     n_subjective    INTEGER DEFAULT 0,
     path            TEXT NOT NULL
 );
@@ -106,17 +105,12 @@ class RunSummary:
     n_ok: int
     success_rate: float | None
     concurrency: int
-    n_signoffs: int
     n_subjective: int
     path: Path
 
     @property
     def display_name(self) -> str:
         return f"{self.model_id}@{self.model_version}"
-
-    @property
-    def reviewed(self) -> bool:
-        return self.n_signoffs > 0
 
 
 class RunStore:
@@ -208,9 +202,9 @@ class RunStore:
                     """INSERT INTO runs (run_id, created_at, finished_at, label, model_id,
                            model_version, provider, adapter, dataset_id, dataset_version,
                            dataset_hash, dataset_size, concurrency, seed, fingerprint,
-                           schema_version, n_utterances, n_ok, success_rate, n_signoffs,
+                           schema_version, n_utterances, n_ok, success_rate,
                            n_subjective, path)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         record.run_id,
                         record.created_at,
@@ -231,7 +225,6 @@ class RunStore:
                         len(record.utterances),
                         record.n_ok,
                         record.success_rate,
-                        len(record.signoffs),
                         len(record.subjective),
                         str(path),
                     ),
@@ -328,6 +321,54 @@ class RunStore:
         """
         return self.list_runs(fingerprint=fingerprint)
 
+    def delete(self, run_id: str) -> bool:
+        """Delete one run: its directory (run.json + audio) and its index rows.
+
+        Exact run-id match only — unlike :meth:`load`, no prefix resolution,
+        because a fuzzy match on an irreversible delete is a footgun. Returns
+        True if a run directory was removed, False if nothing matched. The index
+        rows are cleaned either way, so a dangling row left by a hand-deleted
+        directory is also swept.
+        """
+        import shutil
+
+        if not run_id or run_id in (".", "..") or "/" in run_id or "\\" in run_id:
+            raise StoreError(f"invalid run id for delete: {run_id!r}")
+        run_dir = self.root / run_id
+        # Defence in depth over the caller's own checks: never let a crafted id
+        # escape the run root or target the index database itself.
+        if run_dir.resolve().parent != self.root.resolve() or run_id == INDEX_FILENAME:
+            raise StoreError(f"invalid run id for delete: {run_id!r}")
+
+        removed = run_dir.is_dir()
+        if removed:
+            shutil.rmtree(run_dir)
+
+        with closing(self._connect()) as conn:
+            conn.execute("DELETE FROM run_metrics WHERE run_id = ?", (run_id,))
+            conn.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+            conn.commit()
+
+        return removed
+
+    def clear_all(self) -> int:
+        """Delete every run directory and reset index. Returns count removed.
+
+        Irreversible — audio and run.json go with it, not just the index row.
+        """
+        import shutil
+
+        run_dirs = [p for p in self.root.iterdir() if p.is_dir()]
+        for run_dir in run_dirs:
+            shutil.rmtree(run_dir)
+
+        with closing(self._connect()) as conn:
+            conn.execute("DELETE FROM run_metrics")
+            conn.execute("DELETE FROM runs")
+            conn.commit()
+
+        return len(run_dirs)
+
     def reindex(self) -> int:
         """Rebuild the index from the JSON records. Returns the number indexed."""
         with closing(self._connect()) as conn:
@@ -367,12 +408,6 @@ class RunStore:
         self.save(record)
         return record
 
-    def add_signoff(self, run_id: str, signoff: ReviewSignoff) -> RunRecord:
-        record = self.load(run_id)
-        record.signoffs.append(signoff)
-        self.save(record)
-        return record
-
     def audio_dir(self, run_id: str) -> Path:
         return self.root / run_id / "audio"
 
@@ -395,7 +430,6 @@ def _summary(row: sqlite3.Row) -> RunSummary:
         n_ok=row["n_ok"] or 0,
         success_rate=row["success_rate"],
         concurrency=row["concurrency"] or 1,
-        n_signoffs=row["n_signoffs"] or 0,
         n_subjective=row["n_subjective"] or 0,
         path=Path(row["path"]),
     )

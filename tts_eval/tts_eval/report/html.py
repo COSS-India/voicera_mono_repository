@@ -208,7 +208,6 @@ def render_run_html(
         parts.append(_subjective_section(record))
 
     parts.append(_reliability_section(record, audio_base))
-    parts.append(_signoff_section(record))
     parts.append(_utterances_section(record, audio_base))
     # Warnings and not-computed notes live at the bottom, collapsed: they are
     # provenance to consult when a number looks off, not the headline of the run.
@@ -437,25 +436,6 @@ def _reliability_section(record: RunRecord, audio_base: str) -> str:
             f"<th>Reason</th><th>Audio</th></tr></thead><tbody>{rows}</tbody></table>"
         )
     return "\n".join(parts)
-
-
-def _signoff_section(record: RunRecord) -> str:
-    # Wrapped in a div (rather than a bare <h2>) so the print stylesheet can hide
-    # the whole section by selector — an in-progress review has nothing to show
-    # in an archival PDF snapshot.
-    if not record.signoffs:
-        return (
-            '<div class="signoff-section"><h2>Review Sign-off</h2>'
-            '<p class="callout small">Not yet reviewed.</p></div>'
-        )
-    rows = "".join(
-        f"<li>{_badge(s.verdict, 'good' if s.verdict == 'approved' else 'bad')} "
-        f"by {_e(s.reviewer)} on {_e(s.reviewed_at)}"
-        + (f" — {_e(s.notes)}" if s.notes else "")
-        + "</li>"
-        for s in record.signoffs
-    )
-    return f'<div class="signoff-section"><h2>Review Sign-off</h2><ul>{rows}</ul></div>'
 
 
 def _audio_tag(utterance: UtteranceRecord, audio_base: str) -> str:

@@ -552,42 +552,6 @@ class SubjectiveScore:
 
 
 @dataclass
-class ReviewSignoff:
-    """Explicit human sign-off on a benchmark report.
-
-    The acceptance criterion "Benchmark reports have been reviewed and verified"
-    is a process fact, so it is stored as data rather than left implicit: who
-    reviewed, when, verdict, and the report hash they actually looked at (so a
-    later edit to the report invalidates the signoff).
-    """
-
-    reviewer: str
-    reviewed_at: str
-    verdict: str  # "approved" | "rejected" | "changes_requested"
-    report_sha256: str
-    notes: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "reviewer": self.reviewer,
-            "reviewed_at": self.reviewed_at,
-            "verdict": self.verdict,
-            "report_sha256": self.report_sha256,
-            "notes": self.notes,
-        }
-
-    @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> "ReviewSignoff":
-        return cls(
-            reviewer=str(d["reviewer"]),
-            reviewed_at=str(d["reviewed_at"]),
-            verdict=str(d["verdict"]),
-            report_sha256=str(d.get("report_sha256") or ""),
-            notes=d.get("notes"),
-        )
-
-
-@dataclass
 class RunRecord:
     """The unit of storage and comparison: one evaluation of one model.
 
@@ -632,7 +596,6 @@ class RunRecord:
     per_language: dict[str, dict[str, Aggregate]] = field(default_factory=dict)
     coverage: list[LanguageCoverage] = field(default_factory=list)
     subjective: list[SubjectiveScore] = field(default_factory=list)
-    signoffs: list[ReviewSignoff] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     # ---- convenience -----------------------------------------------------
@@ -693,7 +656,6 @@ class RunRecord:
             },
             "coverage": [c.to_dict() for c in self.coverage],
             "subjective": [s.to_dict() for s in self.subjective],
-            "signoffs": [s.to_dict() for s in self.signoffs],
             "warnings": list(self.warnings),
             "utterances": [u.to_dict() for u in self.utterances],
         }
@@ -732,7 +694,6 @@ class RunRecord:
             },
             coverage=[LanguageCoverage.from_dict(c) for c in d.get("coverage") or []],
             subjective=[SubjectiveScore.from_dict(s) for s in d.get("subjective") or []],
-            signoffs=[ReviewSignoff.from_dict(s) for s in d.get("signoffs") or []],
             warnings=list(d.get("warnings") or []),
         )
 

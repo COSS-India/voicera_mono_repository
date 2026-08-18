@@ -291,6 +291,16 @@ async def execute(
         # runs in a thread: doing it inline on the event loop would serialise
         # scoring against synthesis and inflate every latency measurement of the
         # utterances still in flight.
+        #
+        # It gets its OWN semaphore, though. Scoring can include a round-trip ASR
+        # call to a single shared STT server, and `asyncio.to_thread` uses the
+        # default executor (~min(32, cpu+4) workers). Synthesis is usually much
+        # faster than transcription, so without this bound every finished
+        # synthesis fires an ASR call almost at once and floods that one server
+        # into timing out. Sizing it to the suite concurrency keeps ASR load at the
+        # level the operator already chose, and it does not touch latency numbers:
+        # those are measured inside `adapter.synthesize`, before scoring begins.
+        scoring_semaphore = asyncio.Semaphore(plan.suite.concurrency)
         completed = 0
         lock = asyncio.Lock()
 
@@ -304,7 +314,8 @@ async def execute(
                 await asyncio.to_thread(write_wav, path, result.audio)
                 result.audio_path = str(path)
 
-            metrics = await asyncio.to_thread(engine.score_utterance, case, result)
+            async with scoring_semaphore:
+                metrics = await asyncio.to_thread(engine.score_utterance, case, result)
             record = UtteranceRecord(result=result, metrics=dict(metrics))
             # Drop the waveform now that it is persisted and scored. Everything
             # downstream (reports, comparison, subjective bundles) reads the WAV.

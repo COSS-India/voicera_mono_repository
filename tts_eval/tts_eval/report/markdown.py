@@ -143,19 +143,6 @@ def render_run_markdown(record: RunRecord, *, title: str | None = None) -> str:
             f"ratings: {len(record.subjective)}")
         add("")
 
-    if record.signoffs:
-        add("## Review Sign-off")
-        add("")
-        for signoff in record.signoffs:
-            add(f"- **{signoff.verdict}** by {signoff.reviewer} on {signoff.reviewed_at}"
-                + (f" — {signoff.notes}" if signoff.notes else ""))
-        add("")
-    else:
-        add("## Review Sign-off")
-        add("")
-        add("*Not yet reviewed. See `tts-eval review` / `store.add_signoff(...)`.*")
-        add("")
-
     add("---")
     add(f"*tts_eval {record.framework_version}, schema v{record.schema_version}, "
         f"generated from run `{record.run_id}`.*")

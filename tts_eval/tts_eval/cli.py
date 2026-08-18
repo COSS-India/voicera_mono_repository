@@ -136,7 +136,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         print(json.dumps([{
             "run_id": r.run_id, "model": r.display_name, "created_at": r.created_at,
             "n_ok": r.n_ok, "n_utterances": r.n_utterances, "success_rate": r.success_rate,
-            "concurrency": r.concurrency, "fingerprint": r.fingerprint, "reviewed": r.reviewed,
+            "concurrency": r.concurrency, "fingerprint": r.fingerprint,
         } for r in runs], indent=2))
         return EXIT_OK
 

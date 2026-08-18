@@ -12,9 +12,9 @@ DATASET = "indic_conversational_v1"
 class TestDatasetIdentity:
     def test_builtin_loads_with_pinned_hash(self):
         ds = load_dataset(DATASET)
-        assert len(ds) == 69
-        assert len(ds.languages) == 13
-        assert ds.version == "1.0.0"
+        assert len(ds) == 124
+        assert len(ds.languages) == 24
+        assert ds.version == "1.1.0"
 
     def test_content_hash_is_stable_across_loads(self):
         assert load_dataset(DATASET).content_hash == load_dataset(DATASET).content_hash

@@ -34,12 +34,31 @@ class TTSDS2Backend(RunBackend):
 
     def available(self) -> tuple[bool, str]:
         try:
+            # s3prl (a ttsds dependency) calls torchaudio.set_audio_backend()
+            # and imports torchaudio.sox_effects at import time, but both were
+            # removed in torchaudio ≥ 2.1. Provide harmless stubs so the import
+            # chain doesn't crash.
+            try:
+                import sys as _sys
+                import types as _types
+                import torchaudio
+                if not hasattr(torchaudio, "set_audio_backend"):
+                    torchaudio.set_audio_backend = lambda *_a, **_kw: None
+                if "torchaudio.sox_effects" not in _sys.modules:
+                    _sox = _types.ModuleType("torchaudio.sox_effects")
+                    _sox.apply_effects_file = lambda *_a, **_kw: None  # type: ignore[attr-defined]
+                    _sox.apply_effects_tensor = lambda *_a, **_kw: None  # type: ignore[attr-defined]
+                    _sys.modules["torchaudio.sox_effects"] = _sox
+            except ImportError:
+                pass
             import ttsds  # noqa: F401
         except ImportError:
             return False, (
                 "ttsds not installed — see docs/STANDARDS.md; needs system deps "
                 "(ffmpeg, automake) before `pip install ttsds`"
             )
+        except Exception as exc:  # noqa: BLE001
+            return False, f"ttsds installed but failed to import: {exc}"
         reference_dir = self.options.get("reference_dir")
         if not reference_dir:
             return False, (

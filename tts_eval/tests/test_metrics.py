@@ -13,7 +13,7 @@ import pytest
 
 from tts_eval.audio import AudioBuffer, write_wav
 from tts_eval.config import load_model_card, load_suite
-from tts_eval.datasets import load_dataset
+from tts_eval.datasets import dataset_from_cases, load_dataset
 from tts_eval.metrics import CATALOG, ac_matrix, available_backends, resolve_backend_names
 from tts_eval.metrics.aggregate import summarise
 from tts_eval.metrics.catalog import criteria_order
@@ -110,9 +110,28 @@ class TestDegeneracyDetection:
         assert record.aggregates["length_ratio"].mean < 0.6
 
     def test_short_utterance_truncation_is_detected(self, tmp_path):
-        """Regression guard: a purely proportional duration model missed this."""
-        record = self._score(tmp_path, truncate_rate=1.0)
-        short = next(u for u in record.utterances if u.utterance_id == "en-edge-short-01")
+        """Regression guard: a purely proportional duration model missed this.
+
+        Runs over an explicit dataset with a deliberately short utterance rather
+        than the smoke sample. The smoke sample is seeded by the dataset content
+        hash, so growing the built-in set would otherwise silently drop the short
+        case this regression is about. The expected-duration model is a fixed
+        language table with an intercept (Thresholds.duration_overhead_s), so a
+        single short utterance is enough to exercise it.
+        """
+        from dataclasses import replace
+
+        card = load_model_card("mock")
+        card.adapter_config.update({"ttfb_ms": 0, "truncate_rate": 1.0})
+        suite = replace(load_suite("smoke"), sample=None)
+        dataset = dataset_from_cases([
+            {"id": "en-short", "text": "Yes.", "language": "en", "category": "edge_short"},
+            {"id": "en-mid", "text": "Could you confirm the appointment time?", "language": "en"},
+        ])
+        record = run_sync(
+            build_plan(card, suite, output_dir=tmp_path / "runs", dataset=dataset)
+        )
+        short = next(u for u in record.utterances if u.utterance_id == "en-short")
         assert short.value("length_ratio") < 0.55
         assert short.value("degeneracy_score") > 0.5
 
