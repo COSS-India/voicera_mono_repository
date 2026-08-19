@@ -191,14 +191,14 @@ export function MemberCard({
         </DialogContent>
       </Dialog>
 
-      {/* Transfer Ownership Dialog */}
+      {/* Promote to owner dialog */}
       <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Transfer ownership</DialogTitle>
+            <DialogTitle>Make owner</DialogTitle>
             <DialogDescription className="pt-2">
-              Make <span className="font-medium text-slate-700">"{member.name}"</span> the organization owner?
-              You will become a regular member and lose owner privileges.
+              Make <span className="font-medium text-slate-700">"{member.name}"</span> an organization owner?
+              They will gain owner privileges. You will remain an owner.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-1 w-full">
@@ -215,7 +215,7 @@ export function MemberCard({
               disabled={isTransferring}
               className="flex-1 sm:flex-none"
             >
-              {isTransferring ? "Transferring..." : "Make owner"}
+              {isTransferring ? "Promoting..." : "Make owner"}
             </Button>
           </DialogFooter>
         </DialogContent>

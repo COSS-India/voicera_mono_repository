@@ -14,8 +14,23 @@ from app.models.schemas import (
     CustomLLMIntegrationUpdate,
 )
 from app.services import custom_llm_integration_service
+from app.services.member_service import is_org_owner
 
 router = APIRouter(prefix="/custom-llm-integrations", tags=["custom-llm-integrations"])
+
+
+def _require_org_owner(current_user: Dict[str, Any]) -> str:
+    org_id = current_user["org_id"]
+    if not is_org_owner(current_user["email"], org_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only organization owners can manage integration credentials",
+        )
+    return org_id
+
+
+def _mask_keys_for_user(current_user: Dict[str, Any]) -> bool:
+    return not is_org_owner(current_user["email"], current_user["org_id"])
 
 
 @router.post("/bot/get-config", response_model=CustomLLMBotResponse)
@@ -41,7 +56,10 @@ async def list_custom_llm_integrations(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     org_id = current_user["org_id"]
-    return custom_llm_integration_service.get_custom_llm_integrations_by_org(org_id)
+    mask_key = _mask_keys_for_user(current_user)
+    return custom_llm_integration_service.get_custom_llm_integrations_by_org(
+        org_id, mask_key=mask_key
+    )
 
 
 @router.post("", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
@@ -54,6 +72,8 @@ async def create_custom_llm_integration(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to create integrations for this organization",
         )
+
+    _require_org_owner(current_user)
 
     result = custom_llm_integration_service.create_custom_llm_integration(integration_data)
     if result["status"] == "fail":
@@ -70,7 +90,7 @@ async def update_custom_llm_integration(
     update_data: CustomLLMIntegrationUpdate,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    org_id = current_user["org_id"]
+    org_id = _require_org_owner(current_user)
     result = custom_llm_integration_service.update_custom_llm_integration(
         org_id,
         custom_llm_id,
@@ -91,7 +111,7 @@ async def delete_custom_llm_integration(
     custom_llm_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    org_id = current_user["org_id"]
+    org_id = _require_org_owner(current_user)
     result = custom_llm_integration_service.delete_custom_llm_integration(org_id, custom_llm_id)
     if result["status"] == "fail":
         status_code = (

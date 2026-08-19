@@ -12,6 +12,11 @@ import {
 } from "@/components/ui/dialog"
 import { Orb, type AgentState as OrbAgentState } from "@/components/ui/orb"
 import type { Agent } from "@/lib/api"
+import {
+  playConnectedChime,
+  playDisconnectedChime,
+  resumeConnectionChimeContext,
+} from "@/lib/browser-test-connection-audio"
 import { getBrowserAgentWebSocketUrl } from "@/lib/johnaic-config"
 import { Loader2, Mic, MicOff, PhoneOff, Radio } from "lucide-react"
 
@@ -121,6 +126,7 @@ export function TestBrowserDialog({
   const outputVolumeRef = useRef(0)
   const lastOutputAtRef = useRef(0)
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
+  const prevConnectedRef = useRef(false)
 
   const sessionLabel = useMemo(() => {
     if (isConnected) return "Live"
@@ -199,6 +205,8 @@ export function TestBrowserDialog({
 
   const startSession = async () => {
     if (!agent?.agent_id || isConnecting || isConnected) return
+
+    void resumeConnectionChimeContext()
 
     setError("")
     setIsConnecting(true)
@@ -310,6 +318,19 @@ export function TestBrowserDialog({
       setError(err instanceof Error ? err.message : "Failed to start browser test")
     }
   }
+
+  useEffect(() => {
+    const wasConnected = prevConnectedRef.current
+    const nowConnected = isConnected
+
+    if (!wasConnected && nowConnected) {
+      playConnectedChime()
+    } else if (wasConnected && !nowConnected) {
+      playDisconnectedChime()
+    }
+
+    prevConnectedRef.current = nowConnected
+  }, [isConnected])
 
   useEffect(() => {
     const id = window.setInterval(() => {

@@ -12,13 +12,17 @@ load_dotenv(dotenv_path=env_path)
 class Settings:
     """Application settings loaded from environment variables."""
     
-    # MongoDB Configuration
+    # Mongo-compatible DB (FerretDB; same env names as former MongoDB setup)
     MONGODB_HOST: str = os.getenv("MONGODB_HOST", "localhost")
     MONGODB_PORT: int = int(os.getenv("MONGODB_PORT", "27017"))
     MONGODB_USER: str = os.getenv("MONGODB_USER", "admin")
     MONGODB_PASSWORD: str = os.getenv("MONGODB_PASSWORD", "admin123")
     MONGODB_DATABASE: str = os.getenv("MONGODB_DATABASE", "voicera")
-    MONGODB_AUTH_SOURCE: str = os.getenv("MONGODB_AUTH_SOURCE", "admin")
+    # FerretDB uses PostgreSQL users (SCRAM-SHA-256). Leave authSource empty.
+    # Set MONGODB_AUTH_SOURCE=admin only if pointing at legacy MongoDB.
+    MONGODB_AUTH_SOURCE: str = os.getenv("MONGODB_AUTH_SOURCE", "")
+    # Optional override, e.g. SCRAM-SHA-256 (FerretDB default) or PLAIN
+    MONGODB_AUTH_MECHANISM: str = os.getenv("MONGODB_AUTH_MECHANISM", "")
     
     # Application Configuration
     API_V1_PREFIX: str = "/api/v1"
@@ -57,12 +61,19 @@ class Settings:
     
     @property
     def mongodb_uri(self) -> str:
-        """Build MongoDB connection URI."""
-        return (
+        """Build Mongo-compatible connection URI (FerretDB or MongoDB)."""
+        uri = (
             f"mongodb://{self.MONGODB_USER}:{self.MONGODB_PASSWORD}"
             f"@{self.MONGODB_HOST}:{self.MONGODB_PORT}/{self.MONGODB_DATABASE}"
-            f"?authSource={self.MONGODB_AUTH_SOURCE}"
         )
+        params = []
+        if self.MONGODB_AUTH_SOURCE:
+            params.append(f"authSource={self.MONGODB_AUTH_SOURCE}")
+        if self.MONGODB_AUTH_MECHANISM:
+            params.append(f"authMechanism={self.MONGODB_AUTH_MECHANISM}")
+        if params:
+            return f"{uri}?{'&'.join(params)}"
+        return uri
 
 # Global settings instance
 settings = Settings()

@@ -109,7 +109,7 @@ def delete_member(member_data: MemberDelete, caller_email: str) -> Dict[str, Any
         if not is_org_owner(caller_email, member_data.org_id):
             return {
                 "status": "fail",
-                "message": "Only the organization owner can remove members",
+                "message": "Only organization owners can remove members",
             }
 
         db = get_database()
@@ -127,7 +127,7 @@ def delete_member(member_data: MemberDelete, caller_email: str) -> Dict[str, Any
         
         # Don't allow deleting the org owner (is_member must be True)
         if not existing_user.get("is_member", False):
-            return {"status": "fail", "message": "Cannot delete the organization owner"}
+            return {"status": "fail", "message": "Cannot delete an organization owner"}
         
         # Delete from UserTable - only if is_member is True (extra safety)
         user_result = users_table.delete_one({
@@ -153,51 +153,48 @@ def delete_member(member_data: MemberDelete, caller_email: str) -> Dict[str, Any
         return {"status": "fail", "message": f"Error deleting member: {str(e)}"}
 
 
-def transfer_ownership(org_id: str, caller_email: str, new_owner_email: str) -> Dict[str, Any]:
+def promote_to_owner(org_id: str, caller_email: str, target_email: str) -> Dict[str, Any]:
     """
-    Transfer organization ownership to another member.
-    Only the current owner can transfer. Caller becomes a regular member.
+    Promote a member to organization owner. Caller remains an owner.
+    Multiple owners are allowed per organization.
     """
     try:
-        if caller_email == new_owner_email:
-            return {"status": "fail", "message": "Cannot transfer ownership to yourself"}
+        if caller_email == target_email:
+            return {"status": "fail", "message": "Cannot promote yourself to owner"}
 
         if not is_org_owner(caller_email, org_id):
             return {
                 "status": "fail",
-                "message": "Only the organization owner can transfer ownership",
+                "message": "Only organization owners can promote members to owner",
             }
 
         db = get_database()
         users_table = db["UserTable"]
 
-        new_owner = users_table.find_one({"email": new_owner_email, "org_id": org_id})
-        if not new_owner:
+        target = users_table.find_one({"email": target_email, "org_id": org_id})
+        if not target:
             return {"status": "fail", "message": "Member not found in this organization"}
-        if not new_owner.get("is_member", False):
-            return {"status": "fail", "message": "This user is already the organization owner"}
-
-        caller = users_table.find_one({"email": caller_email, "org_id": org_id})
-        if not caller:
-            return {"status": "fail", "message": "Caller not found in this organization"}
+        if not target.get("is_member", False):
+            return {"status": "success", "message": "User is already an organization owner"}
 
         users_table.update_one(
-            {"email": caller_email, "org_id": org_id},
-            {"$set": {"is_member": True}},
-        )
-        users_table.update_one(
-            {"email": new_owner_email, "org_id": org_id},
+            {"email": target_email, "org_id": org_id},
             {"$set": {"is_member": False}},
         )
 
         logger.info(
-            f"Ownership transferred in org {org_id}: {caller_email} -> {new_owner_email}"
+            f"Promoted to owner in org {org_id}: {target_email} (by {caller_email})"
         )
-        return {"status": "success", "message": "Ownership transferred successfully"}
+        return {"status": "success", "message": "Member promoted to owner successfully"}
 
     except Exception as e:
-        logger.error(f"Error transferring ownership: {str(e)}")
-        return {"status": "fail", "message": f"Error transferring ownership: {str(e)}"}
+        logger.error(f"Error promoting to owner: {str(e)}")
+        return {"status": "fail", "message": f"Error promoting to owner: {str(e)}"}
+
+
+def transfer_ownership(org_id: str, caller_email: str, new_owner_email: str) -> Dict[str, Any]:
+    """Legacy route name; promotes target to owner without demoting caller."""
+    return promote_to_owner(org_id, caller_email, new_owner_email)
 
 
 def validate_member_and_get_token(email: str, password: str) -> Optional[Dict[str, Any]]:

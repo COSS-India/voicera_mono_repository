@@ -27,7 +27,7 @@ import {
   useMeetingsQuery,
   useMeetingFilterOptionsQuery,
 } from "@/lib/queries/meetings"
-import { displayCallPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
+import { displayCallPhoneNumber, exportMeetingPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
 import { getCallTypeLabel, resolveCallType } from "@/lib/call-type"
 import { CallTypeBadge } from "@/components/history/call-type-badge"
 import { MeetingDetailSheet } from "@/components/history/meeting-detail-sheet"
@@ -287,8 +287,8 @@ function HistoryPageContent() {
   const prepareExportData = (meetingsToExport: Meeting[]) => {
     return meetingsToExport.map(meeting => ({
       "Agent Name": meeting.agent_type || "-",
-      "To Number": meeting.to_number || "-",
-      "From Number": meeting.from_number || "-",
+      "To Number": exportMeetingPhoneNumber(meeting, "to"),
+      "From Number": exportMeetingPhoneNumber(meeting, "from"),
       "Call Type": getCallTypeLabel(meeting),
       "Called On": formatDate(meeting.start_time_utc || meeting.created_at),
       "Call Status": meeting.call_busy
@@ -417,8 +417,8 @@ function HistoryPageContent() {
         return {
           "Meeting ID": meeting.meeting_id || "-",
           "Agent Name": meeting.agent_type || "-",
-          "To Number": meeting.to_number || "-",
-          "From Number": meeting.from_number || "-",
+          "To Number": exportMeetingPhoneNumber(meeting, "to"),
+          "From Number": exportMeetingPhoneNumber(meeting, "from"),
           "Call Type": getCallTypeLabel(meeting),
           "Called On": formatDate(meeting.start_time_utc || meeting.created_at),
           Transcript: transcriptText,
