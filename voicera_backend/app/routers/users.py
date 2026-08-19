@@ -32,7 +32,7 @@ async def sign_up(user_data: UserCreate):
 async def login(credentials: UserLogin):
     """
     Authenticate user and get JWT access token (public endpoint).
-    Token expires in 30 minutes.
+    Token lifetime is ACCESS_TOKEN_EXPIRE_MINUTES (default 30 days).
     """
     result = user_service.validate_user_and_get_token(
         credentials.email,

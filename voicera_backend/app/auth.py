@@ -25,7 +25,9 @@ if not SECRET_KEY:
     logger.warning("SECRET_KEY not set in environment. Generating a temporary key. Set SECRET_KEY in .env for production!")
     SECRET_KEY = secrets.token_urlsafe(32)
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+# Default 30 days so dashboard sessions last until the user logs out.
+# Override with ACCESS_TOKEN_EXPIRE_MINUTES if a shorter window is needed.
+ACCESS_TOKEN_EXPIRE_MINUTES = max(1, int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "43200")))
 
 # HTTP Bearer token security scheme
 security = HTTPBearer()

@@ -36,7 +36,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { getCurrentUser, clearAuth, type User } from "@/lib/api"
+import { getCurrentUser, getAuthToken, clearAuth, type User } from "@/lib/api"
 
 // Menu items for main navigation
 const mainNavItems = [
@@ -105,8 +105,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         setUser(userData)
       } catch (error) {
         console.error("Failed to fetch user:", error)
-        // If failed to fetch user, redirect to login
-        router.push("/")
+        // Only leave the dashboard if the session is actually gone.
+        // 401 already redirects in fetchWithAuth; network/5xx must not log the user out.
+        if (!getAuthToken()) {
+          router.push("/")
+        }
       } finally {
         setIsLoading(false)
       }

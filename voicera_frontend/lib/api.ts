@@ -43,6 +43,15 @@ export function clearAuth(): void {
   localStorage.removeItem("email")
 }
 
+let isRedirectingToLogin = false
+
+function redirectToLoginOnUnauthorized(): void {
+  if (typeof window === "undefined" || isRedirectingToLogin) return
+  isRedirectingToLogin = true
+  clearAuth()
+  window.location.href = "/"
+}
+
 /**
  * Make an authenticated fetch request to the backend API
  */
@@ -67,12 +76,8 @@ export async function fetchWithAuth(
     headers,
   })
 
-  // If unauthorized, clear auth and redirect to login
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   return response
@@ -101,12 +106,8 @@ export async function fetchApiRoute(
     headers,
   })
 
-  // If unauthorized, clear auth and redirect to login
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   return response
@@ -1132,10 +1133,7 @@ export async function uploadKnowledgePdf(
   })
 
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   if (!response.ok) {
@@ -1283,10 +1281,7 @@ export async function uploadBatchCsv(
   })
 
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   if (!response.ok) {
@@ -1349,10 +1344,7 @@ export async function runBatch(
   })
 
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   if (!response.ok) {
@@ -1385,10 +1377,7 @@ export async function stopBatch(batchId: string): Promise<BatchActionResponse> {
   })
 
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   if (!response.ok) {
@@ -1426,10 +1415,7 @@ export async function scheduleBatch(
   })
 
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   if (!response.ok) {
@@ -1462,10 +1448,7 @@ export async function cancelBatchSchedule(batchId: string): Promise<BatchActionR
   })
 
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   if (!response.ok) {
@@ -1503,10 +1486,7 @@ export async function rescheduleBatch(
   })
 
   if (response.status === 401) {
-    clearAuth()
-    if (typeof window !== "undefined") {
-      window.location.href = "/"
-    }
+    redirectToLoginOnUnauthorized()
   }
 
   if (!response.ok) {
