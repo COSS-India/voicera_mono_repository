@@ -1,0 +1,21 @@
+voicera_frontend/app/(dashboard)/assistants/[id]/page.tsx
+  s_c956b484118595::t_e69fd7b79b997c 412,420-430
+voicera_frontend/app/(dashboard)/assistants/page.tsx
+  s_c956b484118595::t_0fca1e750c6492 678-684
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "63a559641ce1f0bf79e5ae300aa5471eeb1d8dd2",
+  "prompts": {},
+  "sessions": {
+    "s_c956b484118595": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0fd2b60-4dcc-48a1-9069-602e4dfa0945",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
