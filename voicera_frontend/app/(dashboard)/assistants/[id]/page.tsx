@@ -409,6 +409,7 @@ export default function AgentDetailPage() {
   }, [isTranslationMode, activeTargetLanguages, ttsProvider])
 
   const toggleTargetLanguage = (code: string) => {
+    const isAdding = !getActiveLanguages(targetLanguages).includes(code)
     setTargetLanguages((prev) => {
       const current = getActiveLanguages(prev)
       return current.includes(code)
@@ -416,10 +417,17 @@ export default function AgentDetailPage() {
         : [...current, code]
     })
     setTargetVoices((prev) => {
-      if (!(code in prev)) return prev
-      const next = { ...prev }
-      delete next[code]
-      return next
+      if (!isAdding) {
+        if (!(code in prev)) return prev
+        const next = { ...prev }
+        delete next[code]
+        return next
+      }
+      // Auto-pick the first available voice for a newly added language.
+      if (prev[code]) return prev
+      const voices = getTTSVoicesForLanguage(code)
+      if (voices.length === 0) return prev
+      return { ...prev, [code]: voices[0] }
     })
   }
 

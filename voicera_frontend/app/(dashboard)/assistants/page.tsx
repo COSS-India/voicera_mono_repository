@@ -675,7 +675,13 @@ export default function AssistantsPage() {
         ? current.filter((c) => c !== code)
         : [...current, code]
       const targetVoices = { ...prev.targetVoices }
-      if (!next.includes(code)) delete targetVoices[code]
+      if (!next.includes(code)) {
+        delete targetVoices[code]
+      } else if (!targetVoices[code]) {
+        // Auto-pick the first available voice for a newly added language.
+        const voices = getTTSVoicesForLanguage(code)
+        if (voices.length > 0) targetVoices[code] = voices[0]
+      }
       return { ...prev, targetLanguages: next, targetVoices }
     })
   }
