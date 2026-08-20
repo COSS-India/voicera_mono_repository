@@ -90,3 +90,26 @@ async def submit_call_recording(
     except Exception as e:
         logger.error(f"❌ Error processing call recording data: {e}")
         logger.debug(traceback.format_exc())
+
+
+async def patch_call_recording_url(call_sid: str, recording_url: str) -> bool:
+    """Update only the recording URL for an existing call log (VI webhook ingest)."""
+    try:
+        backend_url = os.getenv("VOICERA_BACKEND_URL", "http://localhost:8000")
+        api_endpoint = f"{backend_url}/api/v1/call-recordings/{call_sid}/recording-url"
+        logger.info(f"Patching call recording URL in backend: {call_sid}")
+        response = requests.patch(
+            api_endpoint,
+            json={"recording_url": recording_url},
+            timeout=10,
+        )
+        response.raise_for_status()
+        logger.info(f"Call recording URL updated successfully: {call_sid}")
+        return True
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to patch call recording URL for {call_sid}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error patching call recording URL for {call_sid}: {e}")
+        logger.debug(traceback.format_exc())
+        return False

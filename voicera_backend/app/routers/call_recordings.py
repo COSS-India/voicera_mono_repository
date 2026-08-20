@@ -2,7 +2,7 @@
 Call recording API routes.
 """
 from fastapi import APIRouter, HTTPException, status
-from app.models.schemas import CallRecordingCreate
+from app.models.schemas import CallRecordingCreate, CallRecordingUrlPatch
 from app.services import call_recording_service
 from typing import Dict, Any
 
@@ -33,4 +33,25 @@ async def save_call_recording(recording_data: CallRecordingCreate):
             detail=result.get("message", "Failed to save call recording")
         )
     
+    return result
+
+
+@router.patch("/{call_sid}/recording-url", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
+async def patch_call_recording_url(call_sid: str, patch_data: CallRecordingUrlPatch):
+    """
+    Patch only the recording URL for a call log.
+
+    Used by the voice server when VI pushes a provider recording URL after hangup.
+    """
+    result = call_recording_service.patch_call_recording_url(
+        call_sid,
+        patch_data.recording_url,
+    )
+
+    if isinstance(result, dict) and result.get("status") == "fail":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("message", "Failed to patch call recording URL"),
+        )
+
     return result

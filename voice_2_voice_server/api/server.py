@@ -28,10 +28,12 @@ from utils.backend_utils import (
 from utils.batching import create_batch_router
 from utils.vi_obd_client import ViObdClient, ViObdError, resolve_vi_agent_id_full
 from utils.vi_recording_webhook import (
+    extract_call_id,
     extract_recording_url,
     format_raw_body_for_log,
     parse_webhook_body,
 )
+from utils.vi_recording import ingest_vi_recording_from_url
 
 
 load_dotenv()
@@ -765,7 +767,8 @@ async def vi_post_stream_callback(request: ViPostStreamRequest):
 async def vi_recording_webhook(request: Request):
     """VI flow-builder webhook: VI pushes recording file URL after hangup (ApiCall node).
 
-    V1 is log-only — full raw request is logged before parsing to confirm VI payload shape.
+    Downloads the provider recording, stores it in MinIO, and patches the backend
+    call log so the dashboard can play the VI-native recording.
     """
     raw_body = await request.body()
     content_type = request.headers.get("content-type")
@@ -797,13 +800,30 @@ async def vi_recording_webhook(request: Request):
 
     recording_url = extract_recording_url(parsed)
     if recording_url:
-        logger.info("VI recording webhook: recording_url={}", recording_url)
+        logger.info("VI recording webhook: recording_url={}", recording_url.split("?", 1)[0])
     else:
         logger.warning(
             "VI recording webhook: no recording URL found (checked keys: recording_url, RecordVoice, record_voice)"
         )
+        return {"status": "received", "ingest": "skipped", "reason": "no_recording_url"}
 
-    return {"status": "received"}
+    call_sid = extract_call_id(parsed, recording_url)
+    if call_sid:
+        logger.info("VI recording webhook: call_sid={}", call_sid)
+    else:
+        logger.warning("VI recording webhook: could not resolve call_sid; will try URL query params only")
+
+    async def _ingest():
+        try:
+            success = await ingest_vi_recording_from_url(recording_url, call_sid)
+            if not success:
+                logger.error("VI recording webhook ingest failed for call_sid={}", call_sid)
+        except Exception as e:
+            logger.error("VI recording webhook ingest error: {}", e)
+            logger.debug(traceback.format_exc())
+
+    asyncio.create_task(_ingest())
+    return {"status": "received", "ingest": "queued", "call_sid": call_sid}
 
 
 @app.websocket("/browser/agent/{agent_id}")

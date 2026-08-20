@@ -80,3 +80,33 @@ def save_call_recording(recording_data: CallRecordingCreate) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error saving call recording: {str(e)}")
         return {"status": "fail", "message": f"Error saving call recording: {str(e)}"}
+
+
+def patch_call_recording_url(call_sid: str, recording_url: str) -> Dict[str, Any]:
+    """Update only recording_url on an existing call log (VI webhook ingest)."""
+    try:
+        db = get_database()
+        meeting_table = db["CallLogs"]
+
+        result = meeting_table.update_one(
+            {"meeting_id": call_sid},
+            {
+                "$set": {"recording_url": recording_url},
+                "$setOnInsert": {
+                    "meeting_id": call_sid,
+                    "created_at": datetime.utcnow().isoformat(),
+                },
+            },
+            upsert=True,
+        )
+
+        updated_meeting = meeting_table.find_one({"meeting_id": call_sid})
+        if updated_meeting:
+            logger.info(f"Call recording URL patched successfully: {call_sid}")
+            return prepare_mongo_response(updated_meeting)
+
+        logger.warning(f"Call recording URL patch saved but document not found: {call_sid}")
+        return {"status": "fail", "message": "Recording URL patched but document not found"}
+    except Exception as e:
+        logger.error(f"Error patching call recording URL: {str(e)}")
+        return {"status": "fail", "message": f"Error patching call recording URL: {str(e)}"}

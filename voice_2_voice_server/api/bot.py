@@ -506,7 +506,9 @@ async def bot(
     patch_immediate_first_chunk(transport)
     
     use_vobiz_native_recording = normalized_provider == "vobiz"
-    audiobuffer = None if use_vobiz_native_recording else AudioBufferProcessor()
+    use_vi_native_recording = normalized_provider == "vi"
+    use_provider_native_recording = use_vobiz_native_recording or use_vi_native_recording
+    audiobuffer = None if use_provider_native_recording else AudioBufferProcessor()
 
     # Accumulate audio chunks and transcript lines in memory (deferred storage)
     call_data = {
@@ -626,6 +628,6 @@ async def bot(
             call_start_time=call_start_time,
             latency_metrics=latency_metrics,
             recording_url=recording_url,
-            omit_recording_url=use_vobiz_native_recording and not recording_url,
+            omit_recording_url=use_provider_native_recording and not recording_url,
         )
     return call_sid

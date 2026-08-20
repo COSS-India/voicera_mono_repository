@@ -16,6 +16,8 @@ _minio_client.MinIOStorage = MagicMock
 sys.modules.setdefault("storage.minio_client", _minio_client)
 
 from utils.vi_recording_webhook import (
+    extract_call_id,
+    extract_call_id_from_recording_url,
     extract_recording_url,
     format_raw_body_for_log,
     parse_webhook_body,
@@ -51,6 +53,20 @@ class TestExtractRecordingUrl(unittest.TestCase):
 
     def test_empty_string_ignored(self):
         self.assertIsNone(extract_recording_url({"recording_url": "   "}))
+
+
+class TestExtractCallId(unittest.TestCase):
+    def test_from_recording_url_query(self):
+        url = "https://cts.myvi.in:8443/Cpaas/api/voice/fetch-voice-recording?circle=TN&callid=23580729&recid=1"
+        self.assertEqual(extract_call_id_from_recording_url(url), "23580729")
+
+    def test_from_payload(self):
+        payload = {"callid": "23580729", "recording_url": "https://vi.example/rec.wav"}
+        self.assertEqual(extract_call_id(payload), "23580729")
+
+    def test_prefers_url_over_payload(self):
+        payload = {"callid": "111", "recording_url": "https://vi.example/rec?callid=222"}
+        self.assertEqual(extract_call_id(payload, payload["recording_url"]), "222")
 
 
 class TestParseWebhookBody(unittest.TestCase):
@@ -92,12 +108,18 @@ class TestRecordingWebhookRoute(unittest.TestCase):
         cls.client = TestClient(app)
 
     def test_json_payload_returns_200(self):
-        response = self.client.post(
-            "/vi/recording-webhook",
-            json={"recording_url": "https://vi.example/rec.wav"},
-        )
+        with unittest.mock.patch(
+            "utils.vi_recording.ingest_vi_recording_from_url",
+            new=unittest.mock.AsyncMock(return_value=True),
+        ):
+            response = self.client.post(
+                "/vi/recording-webhook",
+                json={"recording_url": "https://vi.example/rec?callid=123"},
+            )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "received"})
+        body = response.json()
+        self.assertEqual(body["status"], "received")
+        self.assertEqual(body["ingest"], "queued")
 
     def test_garbage_body_still_returns_200(self):
         response = self.client.post(
@@ -106,7 +128,8 @@ class TestRecordingWebhookRoute(unittest.TestCase):
             headers={"Content-Type": "text/plain"},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "received"})
+        self.assertEqual(response.json()["status"], "received")
+        self.assertEqual(response.json()["ingest"], "skipped")
 
 
 if __name__ == "__main__":

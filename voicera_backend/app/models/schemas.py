@@ -217,6 +217,11 @@ class CallRecordingCreate(BaseModel):
     org_id: Optional[str] = None
     latency_metrics: Optional[Dict[str, Any]] = None
 
+
+class CallRecordingUrlPatch(BaseModel):
+    """Schema for patching only the recording URL on an existing call log."""
+    recording_url: str
+
 class CallRecordingResponse(BaseModel):
     """Schema for call recording response."""
     call_sid: str

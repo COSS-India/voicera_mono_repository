@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 RECORDING_URL_KEYS = ("recording_url", "RecordVoice", "record_voice")
+CALL_ID_KEYS = ("callid", "call_id", "CallId", "CallUUID", "call_sid")
 
 
 def _coerce_url(value: Any) -> Optional[str]:
@@ -23,6 +24,44 @@ def _find_url_in_mapping(mapping: Dict[str, Any]) -> Optional[str]:
         url = _coerce_url(mapping.get(key))
         if url:
             return url
+    return None
+
+
+def extract_call_id_from_recording_url(recording_url: str) -> Optional[str]:
+    """Extract VI call id from fetch-voice-recording query string (callid=...)."""
+    if not recording_url:
+        return None
+    try:
+        query = parse_qs(urlparse(recording_url).query)
+        for key in CALL_ID_KEYS:
+            values = query.get(key)
+            if values:
+                call_id = _coerce_url(values[0])
+                if call_id:
+                    return call_id
+    except Exception:
+        return None
+    return None
+
+
+def extract_call_id(payload: Any, recording_url: Optional[str] = None) -> Optional[str]:
+    """Resolve call id from webhook payload and/or recording URL query params."""
+    if recording_url:
+        from_url = extract_call_id_from_recording_url(recording_url)
+        if from_url:
+            return from_url
+
+    if isinstance(payload, dict):
+        for key in CALL_ID_KEYS:
+            call_id = _coerce_url(payload.get(key))
+            if call_id:
+                return call_id
+        for value in payload.values():
+            if isinstance(value, dict):
+                for key in CALL_ID_KEYS:
+                    call_id = _coerce_url(value.get(key))
+                    if call_id:
+                        return call_id
     return None
 
 

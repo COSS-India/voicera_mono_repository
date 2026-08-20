@@ -52,4 +52,4 @@ Configure an **ApiCall** node after HangUp in the VI DIY flow to POST the record
 | Content-Type | `application/json` (assumed) |
 | Body key | `recording_url` → value `$RecordVoice` |
 
-V1 only **logs** the full raw request and extracted URL; payload shape is unconfirmed until a live call hits the webhook. Check voice-server logs for `VI recording webhook raw body`.
+On webhook receipt the voice server downloads the VI file, stores it in MinIO (`minio://recordings/{callid}.{ext}`), and patches the backend via `PATCH /api/v1/call-recordings/{call_sid}/recording-url`. VI calls use provider-native recording (no pipeline AudioBuffer), same pattern as Vobiz. Check logs for `VI recording ingest complete`.
