@@ -48,6 +48,12 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
   const audioContextRef = useRef<AudioContext | null>(null)
   const playbackTimeRef = useRef(0)
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
+  const wantConnectedRef = useRef(false)
+  const keepAliveRef = useRef<number | null>(null)
+  const reconnectRef = useRef<number | null>(null)
+  const reconnectAttemptsRef = useRef(0)
+  const languageRef = useRef("")
+  const openSocketRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     let cancelled = false
@@ -69,17 +75,35 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     }
   }, [token])
 
+  const clearTimers = useCallback(() => {
+    if (keepAliveRef.current !== null) {
+      window.clearInterval(keepAliveRef.current)
+      keepAliveRef.current = null
+    }
+    if (reconnectRef.current !== null) {
+      window.clearTimeout(reconnectRef.current)
+      reconnectRef.current = null
+    }
+  }, [])
+
   const teardown = useCallback(async () => {
+    // User-initiated stop (or unmount): stop wanting a connection so the socket's
+    // own close handler doesn't try to reconnect us.
+    wantConnectedRef.current = false
+    clearTimers()
     const ws = wsRef.current
     wsRef.current = null
-    if (ws) ws.close()
+    if (ws) {
+      ws.onclose = null
+      ws.close()
+    }
     const ctx = audioContextRef.current
     audioContextRef.current = null
     if (ctx && ctx.state !== "closed") await ctx.close()
     playbackTimeRef.current = 0
     setIsConnected(false)
     setIsConnecting(false)
-  }, [])
+  }, [clearTimers])
 
   useEffect(() => {
     return () => {
@@ -92,7 +116,7 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     if (viewport) viewport.scrollTop = viewport.scrollHeight
   }, [transcripts])
 
-  const handleIncomingAudio = (payloadB64: string, sampleRate: number) => {
+  const handleIncomingAudio = useCallback((payloadB64: string, sampleRate: number) => {
     const ctx = audioContextRef.current
     if (!ctx) return
     const int16 = base64ToInt16(payloadB64)
@@ -107,7 +131,105 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     const startAt = Math.max(now, playbackTimeRef.current)
     source.start(startAt)
     playbackTimeRef.current = startAt + buffer.duration
-  }
+  }, [])
+
+  const scheduleReconnect = useCallback(() => {
+    if (!wantConnectedRef.current) return
+    const attempt = reconnectAttemptsRef.current
+    reconnectAttemptsRef.current = attempt + 1
+    const delay = Math.min(15000, 1000 * 2 ** attempt) // capped exponential backoff
+    setIsConnected(false)
+    setIsConnecting(true)
+    setNotice("Connection lost — reconnecting…")
+    reconnectRef.current = window.setTimeout(() => openSocketRef.current(), delay)
+  }, [])
+
+  const openSocket = useCallback(() => {
+    if (!audioContextRef.current) return
+    const ws = new WebSocket(getTranslationListenWebSocketUrl(token, languageRef.current))
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      reconnectAttemptsRef.current = 0
+      setIsConnecting(false)
+      setIsConnected(true)
+      setError("")
+      if (keepAliveRef.current !== null) window.clearInterval(keepAliveRef.current)
+      // Keep the socket warm: an idle proxy (a Cloudflare quick tunnel drops
+      // idle connections ~100s) would otherwise cut a waiting listener before
+      // the presenter starts, or during a long pause.
+      keepAliveRef.current = window.setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ event: "ping" }))
+      }, 25000)
+    }
+
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data)
+        if (msg?.event === "playAudio" && msg?.media?.payload) {
+          handleIncomingAudio(
+            msg.media.payload,
+            Number(msg?.media?.sampleRate) || DEFAULT_SAMPLE_RATE,
+          )
+        } else if (msg?.event === "status") {
+          setNotice(
+            msg.presenter_online
+              ? ""
+              : "Connected — waiting for the presenter to start speaking.",
+          )
+        } else if (msg?.event === "presenter_live") {
+          setNotice("")
+        } else if (msg?.event === "session_ended") {
+          // Presenter ended on purpose — don't fight it with reconnects.
+          wantConnectedRef.current = false
+          setNotice("The presenter ended the broadcast.")
+        } else if (msg?.event === "transcript" && msg?.content) {
+          setTranscripts((prev) => {
+            const next = {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              source: msg.source ? String(msg.source) : undefined,
+              content: String(msg.content),
+            }
+            const merged = [...prev, next]
+            return merged.length > 120 ? merged.slice(merged.length - 120) : merged
+          })
+        }
+      } catch {
+        // ignore malformed frames
+      }
+    }
+
+    ws.onerror = () => setError("Connection error")
+    ws.onclose = (ev) => {
+      if (keepAliveRef.current !== null) {
+        window.clearInterval(keepAliveRef.current)
+        keepAliveRef.current = null
+      }
+      // Policy closes (unknown token / invalid language) are permanent; retrying
+      // would just loop. Everything else is treated as a transient drop.
+      if (ev.code === 4404 || ev.code === 4400) {
+        wantConnectedRef.current = false
+        setError("This live translation link is no longer available.")
+      }
+      if (wantConnectedRef.current) {
+        scheduleReconnect()
+      } else {
+        // Terminal close (presenter ended / bad link): release the audio context
+        // so a later re-Listen starts fresh instead of orphaning it.
+        const ctx = audioContextRef.current
+        audioContextRef.current = null
+        if (ctx && ctx.state !== "closed") void ctx.close()
+        wsRef.current = null
+        playbackTimeRef.current = 0
+        setIsConnected(false)
+        setIsConnecting(false)
+      }
+    }
+  }, [token, handleIncomingAudio, scheduleReconnect])
+
+  useEffect(() => {
+    openSocketRef.current = openSocket
+  }, [openSocket])
 
   const connect = async () => {
     if (!agent || !language || isConnecting || isConnected) return
@@ -119,51 +241,10 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
       const ctx = new AudioContext()
       audioContextRef.current = ctx
       await ctx.resume()
-
-      const ws = new WebSocket(getTranslationListenWebSocketUrl(token, language))
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        setIsConnecting(false)
-        setIsConnected(true)
-      }
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data)
-          if (msg?.event === "playAudio" && msg?.media?.payload) {
-            handleIncomingAudio(
-              msg.media.payload,
-              Number(msg?.media?.sampleRate) || DEFAULT_SAMPLE_RATE,
-            )
-          } else if (msg?.event === "status") {
-            setNotice(
-              msg.presenter_online
-                ? ""
-                : "Connected — waiting for the presenter to start speaking.",
-            )
-          } else if (msg?.event === "presenter_live") {
-            setNotice("")
-          } else if (msg?.event === "session_ended") {
-            setNotice("The presenter ended the broadcast.")
-          } else if (msg?.event === "transcript" && msg?.content) {
-            setTranscripts((prev) => {
-              const next = {
-                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                source: msg.source ? String(msg.source) : undefined,
-                content: String(msg.content),
-              }
-              const merged = [...prev, next]
-              return merged.length > 120 ? merged.slice(merged.length - 120) : merged
-            })
-          }
-        } catch {
-          // ignore malformed frames
-        }
-      }
-      ws.onerror = () => setError("Connection error")
-      ws.onclose = () => {
-        void teardown()
-      }
+      languageRef.current = language
+      wantConnectedRef.current = true
+      reconnectAttemptsRef.current = 0
+      openSocket()
     } catch (e) {
       await teardown()
       setError(e instanceof Error ? e.message : "Failed to connect")

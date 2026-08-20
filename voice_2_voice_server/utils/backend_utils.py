@@ -1,5 +1,6 @@
 """Backend API utility functions for voice bot integration."""
 
+import asyncio
 import os
 import time
 import traceback
@@ -169,7 +170,11 @@ async def fetch_agent_config_from_backend(agent_id: str) -> dict:
     
     try:
         logger.info(f"📥 Fetching agent config from backend: {agent_id}")
-        response = requests.get(api_endpoint, headers=headers, timeout=10)
+        # This coroutine runs on the voice server's event loop; requests is
+        # blocking, so offload it to a thread instead of stalling the loop.
+        response = await asyncio.to_thread(
+            requests.get, api_endpoint, headers=headers, timeout=10
+        )
         response.raise_for_status()
         
         agent_data = response.json()

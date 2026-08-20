@@ -285,6 +285,17 @@ class TranslationRoom:
 
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         self.agent_id = agent_id
+        self.publisher: Optional[WebSocket] = None
+        self.workers: "Dict[str, LangWorker]" = {}
+        self.lock = asyncio.Lock()
+        self._openai = None
+        self._model = _translation_model()
+        self._derive_from_config(config)
+
+    def _derive_from_config(self, config: Dict[str, Any]) -> None:
+        """(Re)derive room fields from a config. Called on create and whenever a
+        presenter claims the room, so a room first created by an early listener
+        picks up the presenter's freshly fetched config instead of a stale one."""
         self.config = config
         self.org_id = config.get("org_id")
         self.source_language = config.get("source_language") or config.get("language")
@@ -296,12 +307,7 @@ class TranslationRoom:
             if isinstance(target_voices, dict)
             else {}
         )
-        self.publisher: Optional[WebSocket] = None
-        self.workers: "Dict[str, LangWorker]" = {}
-        self.lock = asyncio.Lock()
         self.extra_instructions = str(config.get("system_prompt") or "").strip()
-        self._openai = None
-        self._model = _translation_model()
 
     async def on_source_text(self, text: str) -> None:
         """Fan a presenter transcript out to every active language worker."""
@@ -403,6 +409,30 @@ async def get_or_create_room(agent_id: str, config: Dict[str, Any]) -> Translati
         return room
 
 
+async def try_claim_publisher(
+    agent_id: str, config: Dict[str, Any], websocket: WebSocket
+) -> Optional[TranslationRoom]:
+    """Atomically reserve the presenter slot for a room.
+
+    Creating the room and setting ``publisher`` happen under a single lock so
+    two presenters can't both pass the "is anyone broadcasting?" check, and so a
+    concurrent listener teardown can't pop the room out of ``_ROOMS`` between the
+    presenter creating it and claiming it (which would silently split presenter
+    and listeners onto two different room objects). Returns None if a presenter
+    is already active.
+    """
+    async with _ROOMS_LOCK:
+        room = _ROOMS.get(agent_id)
+        if room is None:
+            room = TranslationRoom(agent_id, config)
+            _ROOMS[agent_id] = room
+        if room.publisher is not None:
+            return None
+        room.publisher = websocket
+        room._derive_from_config(config)  # presenter's config wins over any stale one
+        return room
+
+
 async def _maybe_cleanup_room(room: TranslationRoom) -> None:
     async with _ROOMS_LOCK:
         if room.publisher is None and not room.workers:
@@ -416,30 +446,30 @@ async def _maybe_cleanup_room(room: TranslationRoom) -> None:
 
 async def run_publisher(websocket: WebSocket, agent_id: str, config: Dict[str, Any]) -> None:
     """Run the presenter leg: transport.input → VAD → STT → source text bus."""
-    room = await get_or_create_room(agent_id, config)
-    if room.publisher is not None:
+    room = await try_claim_publisher(agent_id, config, websocket)
+    if room is None:
         await websocket.close(code=4409, reason="A presenter is already broadcasting")
         return
-    if not await try_acquire_call_slot(room.org_id):
-        await websocket.close(code=1013, reason="capacity or budget exceeded")
-        await _maybe_cleanup_room(room)
-        return
 
-    # Resolve the translation credential up front: without it every segment
-    # would fail mid-broadcast and listeners would just hear silence.
-    if room.get_openai_client() is None:
-        logger.error(
-            f"translation[{agent_id}]: no OpenAI key available for org={room.org_id} "
-            "(configure an OpenAI Integration or enable ALLOW_PLATFORM_KEY_FALLBACK)"
-        )
-        await websocket.close(code=4402, reason="translation credential not configured")
-        await release_call_slot(room.org_id, 0.0)
-        await _maybe_cleanup_room(room)
-        return
-
-    room.publisher = websocket
     start_time = time.monotonic()
+    slot_acquired = False
     try:
+        if not await try_acquire_call_slot(room.org_id):
+            await websocket.close(code=1013, reason="capacity or budget exceeded")
+            return
+        slot_acquired = True
+
+        # Resolve the translation credential up front: without it every segment
+        # would fail mid-broadcast and listeners would just hear silence. The
+        # lookup is blocking (sync requests), so keep it off the event loop.
+        if await asyncio.to_thread(room.get_openai_client) is None:
+            logger.error(
+                f"translation[{agent_id}]: no OpenAI key available for org={room.org_id} "
+                "(configure an OpenAI Integration or enable ALLOW_PLATFORM_KEY_FALLBACK)"
+            )
+            await websocket.close(code=4402, reason="translation credential not configured")
+            return
+
         first_message = await websocket.receive_text()
         data = json.loads(first_message)
         if data.get("event") != "start":
@@ -501,8 +531,12 @@ async def run_publisher(websocket: WebSocket, agent_id: str, config: Dict[str, A
     except Exception as e:
         logger.error(f"translation publish error: {e}")
     finally:
-        room.publisher = None
-        await release_call_slot(room.org_id, time.monotonic() - start_time)
+        # Compare-and-clear: never wipe a publisher that isn't us (defensive; the
+        # atomic claim already prevents a second presenter from taking over).
+        if room.publisher is websocket:
+            room.publisher = None
+        if slot_acquired:
+            await release_call_slot(room.org_id, time.monotonic() - start_time)
         await room.end_broadcast()
         await _maybe_cleanup_room(room)
 
@@ -545,7 +579,11 @@ async def run_listener(websocket: WebSocket, room: TranslationRoom, language: st
     finally:
         async with room.lock:
             worker.subscribers.discard(websocket)
-            if not worker.subscribers:
+            # Only tear down if THIS worker is still the registered one. A
+            # presenter restart (end_broadcast) or reconnect can replace it with
+            # a new worker for the same language; popping by key would orphan the
+            # replacement (leaking its slot and muting its listeners).
+            if not worker.subscribers and room.workers.get(language) is worker:
                 await worker.stop()
                 room.workers.pop(language, None)
         await _maybe_cleanup_room(room)

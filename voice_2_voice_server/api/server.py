@@ -616,7 +616,12 @@ async def translate_publish_endpoint(websocket: WebSocket, agent_id: str):
     logger.info(f"🔌 Translation publish connected: agent={agent_id}")
     try:
         token = websocket.query_params.get("token")
-        resolved = resolve_broadcast_token(token) if token else None
+        # resolve_broadcast_token is blocking (sync requests); run it off the
+        # event loop so one slow/hung backend call can't stall every other
+        # connection served by this worker.
+        resolved = (
+            await asyncio.to_thread(resolve_broadcast_token, token) if token else None
+        )
         if not resolved or resolved.get("agent_id") != agent_id:
             await websocket.close(code=4401, reason="unauthorized")
             return
@@ -640,7 +645,9 @@ async def translate_listen_endpoint(websocket: WebSocket, share_token: str):
     await websocket.accept()
     try:
         language = websocket.query_params.get("lang")
-        public = fetch_public_agent_by_token(share_token)
+        # Public, unauthenticated endpoint: keep the blocking backend lookup off
+        # the event loop so a connection flood can't starve the worker.
+        public = await asyncio.to_thread(fetch_public_agent_by_token, share_token)
         if not public or public.get("interaction_mode") != "translation":
             await websocket.close(code=4404, reason="share link not found")
             return

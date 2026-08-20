@@ -201,6 +201,9 @@ export function BroadcastDialog({
       ws.onclose = (ev) => {
         if (ev.code === 4409) setError("Someone else is already broadcasting this agent")
         else if (ev.code === 4401) setError("Not authorized to broadcast this agent")
+        else if (ev.code === 4402)
+          setError("Translation isn't configured for this agent (no OpenAI credential)")
+        else if (ev.code === 1013) setError("Capacity or usage limit reached — try again later")
         void teardown()
       }
     } catch (e) {
