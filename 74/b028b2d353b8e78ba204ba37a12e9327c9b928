@@ -1,0 +1,37 @@
+voicera_frontend/app/live/[token]/page.tsx
+  s_d38279a638efce::t_dd34652bbcbcd2 217-223
+  s_d38279a638efce::t_f19f322530bdaa 51-56
+  s_d38279a638efce::t_7d68d88084e5b3 78-88,90-93,96-99,106
+  s_d38279a638efce::t_0768f3348fea32 119,134-216,224-232,244-247
+voice_2_voice_server/api/server.py
+  s_d38279a638efce::t_4806224e7ce4b9 619-624
+  s_d38279a638efce::t_1f9bdc9ef51d04 648-650
+voice_2_voice_server/utils/backend_utils.py
+  s_d38279a638efce::t_948abe7efb4651 173-177
+  s_d38279a638efce::t_6cb58dd4f1e164 3
+voice_2_voice_server/api/translation_room.py
+  s_d38279a638efce::t_95ce06b9367961 463-465
+  s_d38279a638efce::t_28dbb13cafa98c 582-586
+  s_d38279a638efce::t_c32eda135dc1e3 288-298
+  s_d38279a638efce::t_58c73bd59a2210 412-435
+  s_d38279a638efce::t_22eef2a439cafd 449-450,455,457-462,466-472
+  s_d38279a638efce::t_d82856401cbc62 534-539
+voicera_frontend/components/assistants/broadcast-dialog.tsx
+  s_d38279a638efce::t_88abe4d0671c4a 204-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "74b028b2d353b8e78ba204ba37a12e9327c9b928",
+  "prompts": {},
+  "sessions": {
+    "s_d38279a638efce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d12cc4b5-72dd-4a6b-87f4-efb4800e8872",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
