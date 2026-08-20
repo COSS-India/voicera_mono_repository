@@ -1,29 +1,45 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: voicera_mongodb
+  # FerretDB (MongoDB wire protocol) backed by PostgreSQL + DocumentDB extension.
+  # Credentials match existing MONGODB_USER / MONGODB_PASSWORD defaults (admin/admin123).
+  postgres:
+    image: ghcr.io/ferretdb/postgres-documentdb:17-0.107.0-ferretdb-2.7.0
+    container_name: voicera_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: postgres
+    volumes:
+      - ferretdb_postgres_data:/var/lib/postgresql/data
+    networks:
+      - voicera_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  ferretdb:
+    image: ghcr.io/ferretdb/ferretdb:2.7.0
+    container_name: voicera_ferretdb
     restart: unless-stopped
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin123
-      MONGO_INITDB_DATABASE: voicera
-    volumes:
-      - mongodb_data:/data/db
+      FERRETDB_POSTGRESQL_URL: postgres://admin:admin123@postgres:5432/postgres
     networks:
       voicera_network:
+        # Keep alias so existing MONGODB_HOST=mongodb keeps working
         aliases:
           - mongodb
-    command: mongod --bind_ip_all
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Distroless image: no shell/wget for a custom probe. Podman also may not
+    # surface the image HEALTHCHECK; backend waits for service_started below.
 
   backend:
     build:
@@ -38,8 +54,8 @@ services:
     environment:
       - MONGODB_HOST=mongodb
     depends_on:
-      mongodb:
-        condition: service_healthy
+      ferretdb:
+        condition: service_started
       minio:
         condition: service_healthy
     volumes:
@@ -126,8 +142,14 @@ services:
       - voicera_network
 
 volumes:
-  mongodb_data:
+  # New FerretDB backing store (PostgreSQL)
+  ferretdb_postgres_data:
     driver: local
+  # Legacy MongoDB volume is intentionally NOT declared here so compose
+  # will not recreate/attach it. Existing *_mongodb_data volumes on disk
+  # are left untouched for rollback until you verify FerretDB, then:
+  #   docker volume ls | grep mongodb_data
+  #   docker volume rm <name>
   minio_data:
     driver: local
 

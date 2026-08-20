@@ -37,7 +37,7 @@ import {
   Loader2,
   Phone,
 } from "lucide-react"
-import { getOrgId, getIntegrations, createIntegration, deleteIntegration, Integration, getCustomLLMIntegrations, createCustomLLMIntegration, updateCustomLLMIntegration, deleteCustomLLMIntegration, CustomLLMIntegration } from "@/lib/api"
+import { getOrgId, getCurrentUser, getIntegrations, createIntegration, deleteIntegration, Integration, getCustomLLMIntegrations, createCustomLLMIntegration, updateCustomLLMIntegration, deleteCustomLLMIntegration, CustomLLMIntegration } from "@/lib/api"
 
 /** Backend integration model names for Vobiz (stored in MongoDB Integrations collection). */
 const VOBIZ_AUTH_ID_MODEL = "VobizAuthId"
@@ -190,6 +190,8 @@ export default function IntegrationsPage() {
   const [vobizAuthToken, setVobizAuthToken] = useState("")
   const [plivoAuthId, setPlivoAuthId] = useState("")
   const [plivoAuthToken, setPlivoAuthToken] = useState("")
+  const [vobizConnected, setVobizConnected] = useState(false)
+  const [plivoConnected, setPlivoConnected] = useState(false)
   const [modalVobizAuthId, setModalVobizAuthId] = useState("")
   const [modalVobizAuthToken, setModalVobizAuthToken] = useState("")
   const [vobizTokenVisible, setVobizTokenVisible] = useState(false)
@@ -209,13 +211,26 @@ export default function IntegrationsPage() {
   
   // Loading state
   const [isLoading, setIsLoading] = useState(true)
+  const [canManageIntegrations, setCanManageIntegrations] = useState(false)
 
-  // Fetch integrations on mount
+  // Fetch user role and integrations on mount
   useEffect(() => {
-    fetchIntegrations()
+    const load = async () => {
+      try {
+        const user = await getCurrentUser()
+        const isOwner = user.is_owner === true
+        setCanManageIntegrations(isOwner)
+        await fetchIntegrations(isOwner)
+      } catch (error) {
+        console.error("Error fetching current user:", error)
+        setCanManageIntegrations(false)
+        await fetchIntegrations(false)
+      }
+    }
+    void load()
   }, [])
 
-  const fetchIntegrations = async () => {
+  const fetchIntegrations = async (storeCredentials = canManageIntegrations) => {
     try {
       setIsLoading(true)
       const [integrations, customLlms] = await Promise.all([
@@ -224,39 +239,53 @@ export default function IntegrationsPage() {
       ])
       setCustomLLMIntegrations(customLlms)
       const customKeys: Record<string, string> = {}
-      customLlms.forEach((llm) => {
-        if (llm.api_key) customKeys[llm.id] = llm.api_key
-      })
+      if (storeCredentials) {
+        customLlms.forEach((llm) => {
+          if (llm.api_key) customKeys[llm.id] = llm.api_key
+        })
+      }
       setCustomLLMApiKeys(customKeys)
-      
-      // Convert integrations array to connected providers map and api keys map
+
       const connected: Record<string, boolean> = {}
       const keys: Record<string, string> = {}
       setVobizAuthId("")
       setVobizAuthToken("")
       setPlivoAuthId("")
       setPlivoAuthToken("")
-      
+
+      let hasVobizId = false
+      let hasVobizToken = false
+      let hasPlivoId = false
+      let hasPlivoToken = false
+
       integrations.forEach((integration: Integration) => {
         if (integration.model === VOBIZ_AUTH_ID_MODEL) {
-          setVobizAuthId(integration.api_key)
+          hasVobizId = true
+          if (storeCredentials) setVobizAuthId(integration.api_key)
         } else if (integration.model === VOBIZ_AUTH_TOKEN_MODEL) {
-          setVobizAuthToken(integration.api_key)
+          hasVobizToken = true
+          if (storeCredentials) setVobizAuthToken(integration.api_key)
         } else if (integration.model === PLIVO_AUTH_ID_MODEL) {
-          setPlivoAuthId(integration.api_key)
+          hasPlivoId = true
+          if (storeCredentials) setPlivoAuthId(integration.api_key)
         } else if (integration.model === PLIVO_AUTH_TOKEN_MODEL) {
-          setPlivoAuthToken(integration.api_key)
+          hasPlivoToken = true
+          if (storeCredentials) setPlivoAuthToken(integration.api_key)
         } else {
           const provider = providers.find(
             (p) => p.name.toLowerCase() === integration.model.toLowerCase()
           )
           if (provider) {
             connected[provider.id] = true
-            keys[provider.id] = integration.api_key
+            if (storeCredentials) {
+              keys[provider.id] = integration.api_key
+            }
           }
         }
       })
-      
+
+      setVobizConnected(hasVobizId && hasVobizToken)
+      setPlivoConnected(hasPlivoId && hasPlivoToken)
       setConnectedProviders(connected)
       setApiKeys(keys)
     } catch (error) {
@@ -293,6 +322,7 @@ export default function IntegrationsPage() {
 
   // Open connect modal (clear search so browser autocomplete doesn't fill it with login email)
   const openConnectModal = (provider: Provider) => {
+    if (!canManageIntegrations) return
     setSearchQuery("")
     setSelectedProvider(provider)
     setModalApiKey("")
@@ -302,6 +332,7 @@ export default function IntegrationsPage() {
 
   // Open manage modal for connected provider
   const openManageModal = (provider: Provider) => {
+    if (!canManageIntegrations) return
     setSelectedProvider(provider)
     setModalApiKey(apiKeys[provider.id] || "••••••••••••••••")
     setIsModalKeyVisible(false)
@@ -369,10 +400,8 @@ export default function IntegrationsPage() {
 
   const isEditing = selectedProvider && connectedProviders[selectedProvider.id]
 
-  const vobizConnected = Boolean(vobizAuthId && vobizAuthToken)
-  const plivoConnected = Boolean(plivoAuthId && plivoAuthToken)
-
   const openTelephonyModal = (provider: "vobiz" | "plivo") => {
+    if (!canManageIntegrations) return
     setSearchQuery("")
     setTelephonyProviderModal(provider)
     if (provider === "vobiz") {
@@ -409,9 +438,11 @@ export default function IntegrationsPage() {
       if (telephonyProviderModal === "vobiz") {
         setVobizAuthId(modalVobizAuthId.trim())
         setVobizAuthToken(modalVobizAuthToken.trim())
+        setVobizConnected(true)
       } else {
         setPlivoAuthId(modalVobizAuthId.trim())
         setPlivoAuthToken(modalVobizAuthToken.trim())
+        setPlivoConnected(true)
       }
       setVobizModalOpen(false)
     } catch (error) {
@@ -433,9 +464,11 @@ export default function IntegrationsPage() {
       if (telephonyProviderModal === "vobiz") {
         setVobizAuthId("")
         setVobizAuthToken("")
+        setVobizConnected(false)
       } else {
         setPlivoAuthId("")
         setPlivoAuthToken("")
+        setPlivoConnected(false)
       }
       setVobizModalOpen(false)
     } catch (error) {
@@ -451,6 +484,7 @@ export default function IntegrationsPage() {
   }
 
   const openCustomLLMModal = (integration?: CustomLLMIntegration) => {
+    if (!canManageIntegrations) return
     setSearchQuery("")
     setEditingCustomLLM(integration ?? null)
     setModalCustomLLMName(integration?.name ?? "")
@@ -519,7 +553,7 @@ export default function IntegrationsPage() {
       }
 
       setCustomLLMModalOpen(false)
-      await fetchIntegrations()
+      await fetchIntegrations(canManageIntegrations)
     } catch (error) {
       console.error("Error saving custom LLM integration:", error)
     } finally {
@@ -532,7 +566,7 @@ export default function IntegrationsPage() {
     try {
       await deleteCustomLLMIntegration(integration.id)
       setCustomLLMModalOpen(false)
-      await fetchIntegrations()
+      await fetchIntegrations(canManageIntegrations)
     } catch (error) {
       console.error("Error deleting custom LLM integration:", error)
     } finally {
@@ -551,6 +585,13 @@ export default function IntegrationsPage() {
             Connect API providers to enable speech and language capabilities
           </p>
         </div>
+
+        {!isLoading && !canManageIntegrations && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Only organization owners can view or edit API credentials. You can see which
+            integrations are connected.
+          </div>
+        )}
 
         {/* Connected Integrations Section */}
         {isLoading ? (
@@ -611,16 +652,17 @@ export default function IntegrationsPage() {
                         </div>
                       </div>
 
-                      {/* Manage button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openManageModal(provider)}
-                        className="gap-1.5"
-                      >
-                        <Settings2 className="h-3.5 w-3.5" />
-                        Manage
-                      </Button>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openManageModal(provider)}
+                          className="gap-1.5"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                          Manage
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -636,15 +678,17 @@ export default function IntegrationsPage() {
               <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Custom LLM
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openCustomLLMModal()}
-                className="gap-1.5"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add Custom LLM
-              </Button>
+              {canManageIntegrations && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openCustomLLMModal()}
+                  className="gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Custom LLM
+                </Button>
+              )}
             </div>
             <Card>
               <CardContent className="p-0">
@@ -680,15 +724,17 @@ export default function IntegrationsPage() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openCustomLLMModal(integration)}
-                        className="gap-1.5 shrink-0"
-                      >
-                        <Settings2 className="h-3.5 w-3.5" />
-                        Manage
-                      </Button>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openCustomLLMModal(integration)}
+                          className="gap-1.5 shrink-0"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                          Manage
+                        </Button>
+                      )}
                     </div>
                   ))
                 )}
@@ -736,24 +782,26 @@ export default function IntegrationsPage() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openTelephonyModal(isVobiz ? "vobiz" : "plivo")}
-                        className="gap-1.5 shrink-0"
-                      >
-                        {connected ? (
-                          <>
-                            <Settings2 className="h-3.5 w-3.5" />
-                            Manage
-                          </>
-                        ) : (
-                          <>
-                            <Plus className="h-3.5 w-3.5" />
-                            Connect
-                          </>
-                        )}
-                      </Button>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openTelephonyModal(isVobiz ? "vobiz" : "plivo")}
+                          className="gap-1.5 shrink-0"
+                        >
+                          {connected ? (
+                            <>
+                              <Settings2 className="h-3.5 w-3.5" />
+                              Manage
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3.5 w-3.5" />
+                              Connect
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   )
                 })}
@@ -825,8 +873,8 @@ export default function IntegrationsPage() {
               {availableProviders.map((provider) => (
                 <Card
                   key={provider.id}
-                  className="group hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => openConnectModal(provider)}
+                  className={`group transition-shadow ${canManageIntegrations ? "hover:shadow-md cursor-pointer" : ""}`}
+                  onClick={canManageIntegrations ? () => openConnectModal(provider) : undefined}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-2">
@@ -850,19 +898,20 @@ export default function IntegrationsPage() {
                         </div>
                       </div>
 
-                      {/* Connect button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openConnectModal(provider)
-                        }}
-                      >
-                        <Plus className="h-3.5 w-3.5 mr-1" />
-                        Connect
-                      </Button>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openConnectModal(provider)
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Connect
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -1,26 +1,41 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: voicera_mongodb
+  postgres:
+    image: ghcr.io/ferretdb/postgres-documentdb:17-0.107.0-ferretdb-2.7.0
+    container_name: voicera_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: postgres
+    volumes:
+      - ferretdb_postgres_data:/var/lib/postgresql/data
+    networks:
+      - voicera_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  ferretdb:
+    image: ghcr.io/ferretdb/ferretdb:2.7.0
+    container_name: voicera_ferretdb
     restart: unless-stopped
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin123
-      MONGO_INITDB_DATABASE: voicera
-    volumes:
-      - mongodb_data:/data/db
+      FERRETDB_POSTGRESQL_URL: postgres://admin:admin123@postgres:5432/postgres
     networks:
-      - voicera_network
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      voicera_network:
+        aliases:
+          - mongodb
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Distroless image: no shell for custom probes; api uses service_started.
 
   api:
     build:
@@ -35,8 +50,8 @@ services:
     environment:
       - MONGODB_HOST=mongodb
     depends_on:
-      mongodb:
-        condition: service_healthy
+      ferretdb:
+        condition: service_started
     volumes:
       - .:/app
     working_dir: /app
@@ -45,10 +60,11 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
-  mongodb_data:
+  ferretdb_postgres_data:
     driver: local
+  # Legacy *_mongodb_data volumes on disk are left for rollback; do not
+  # docker volume rm until FerretDB cutover is verified.
 
 networks:
   voicera_network:
     driver: bridge
-
