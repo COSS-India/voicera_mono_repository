@@ -1,0 +1,23 @@
+deploy/nginx/nginx.translate.conf
+  s_80e2ddc471e657::t_9455a466969aca 1-69
+deploy/compose/docker-compose.translate.yml
+  s_80e2ddc471e657::t_3289c3754ce3e3 1-122
+deploy/DEPLOYMENT_translate.md
+  s_80e2ddc471e657::t_8e386bb157c234 1-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "0488a51ee3a17470ed45aaecbd8a80ccbd7891de",
+  "prompts": {},
+  "sessions": {
+    "s_80e2ddc471e657": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e72f4dc-af84-40e0-97f4-4d427012f1fd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
