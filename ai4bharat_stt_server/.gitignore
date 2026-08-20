@@ -12,3 +12,12 @@ IndicConformer.nemo
 bhili-asr/
 
 run_stt_benchmark.py
+.onnxruntime-gpu/
+
+# Language-probe calibration dataset and benchmark artifacts (local only)
+language_probe_dataset/
+benchmark_results/
+benchmark_language_probe.py
+test_indicconformer_language_probe.py
+test_language_probe_unit.py
+test_live_auto_language_server_unit.py

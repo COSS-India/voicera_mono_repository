@@ -6,8 +6,9 @@ uvicorn
 transformers
 torchaudio 
 onnx 
-onnxruntime 
-onnxruntime-gpu
+# Do not install CPU and GPU ONNX Runtime together; both own the same module.
+# The GPU package also includes CPUExecutionProvider for non-live workflows.
+onnxruntime-gpu==1.23.2
 pyarr
 dotenv
 

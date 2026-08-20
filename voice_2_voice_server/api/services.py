@@ -354,6 +354,7 @@ def create_stt_service(
     sample_rate: int,
     vad_analyzer: Any = None,
     org_id: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> Any:
     """Create an STT service based on configuration.
     
@@ -466,11 +467,72 @@ def create_stt_service(
     elif provider == "AI4Bharat":
         model = args.get("model") or stt_config.get("model")
         if model == "indic-conformer-stt":
+            enable_auto = args.get("enable_auto_language")
+            if enable_auto is None:
+                enable_auto = os.getenv("ENABLE_AUTO_LANGUAGE", "false").strip().lower() in {
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                }
+            mapped_language = (
+                STT_LANGUAGE_MAP[provider].get(language) if language else None
+            )
+            from services.ai4bharat.auto_language import (
+                AUTO_LANGUAGE_UNKNOWN,
+                is_force_auto_stt_language,
+            )
+
+            force_auto_stt = enable_auto and is_force_auto_stt_language()
+            fallback_display = args.get("bootstrap_fallback_language") or (
+                language if force_auto_stt else None
+            )
+            bootstrap_fallback = (
+                STT_LANGUAGE_MAP[provider].get(fallback_display)
+                if fallback_display
+                else None
+            )
+            if force_auto_stt:
+                language_id = AUTO_LANGUAGE_UNKNOWN
+            elif enable_auto and not mapped_language:
+                language_id = AUTO_LANGUAGE_UNKNOWN
+            elif mapped_language:
+                language_id = mapped_language
+            else:
+                language_id = STT_LANGUAGE_MAP[provider].get(language or "Hindi", "hi")
             return IndicConformerRESTSTTService(
-                language_id=STT_LANGUAGE_MAP[provider][language],
+                language_id=language_id,
                 sample_rate=16000,
                 input_sample_rate=sample_rate,
                 suppress_vad_frames=(vad_analyzer is not None),
+                session_id=session_id,
+                bootstrap_fallback_language_id=(
+                    bootstrap_fallback if force_auto_stt else mapped_language
+                ),
+                enable_auto_language_shadow=args.get("enable_auto_language_shadow"),
+                auto_language_min_duration_ms=args.get(
+                    "auto_language_min_duration_ms"
+                ),
+                auto_language_max_duration_ms=args.get(
+                    "auto_language_max_duration_ms"
+                ),
+                auto_language_margin_threshold=args.get(
+                    "auto_language_margin_threshold"
+                ),
+                auto_language_candidate_languages=args.get(
+                    "auto_language_candidate_languages"
+                ),
+                enable_auto_language=args.get("enable_auto_language"),
+                auto_language_device=args.get("auto_language_device"),
+                auto_language_confirmation_count=args.get(
+                    "auto_language_confirmation_count"
+                ),
+                auto_language_reprobe_cooldown_ms=args.get(
+                    "auto_language_reprobe_cooldown_ms"
+                ),
+                auto_language_event_log_path=args.get(
+                    "auto_language_event_log_path"
+                ),
             )
         else:
             raise ServiceCreationError(f"Unknown ai4bharat STT model: {model}. Expected 'indic-conformer-stt'")

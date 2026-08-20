@@ -10,16 +10,22 @@ from fastapi import FastAPI, UploadFile, File, Form
 import uvicorn
 import io
 
+from indicconformer_language_probe import (
+    IndicConformerLanguageProbe,
+    LanguageProbeConfig,
+)
+
 app = FastAPI()
 
 # Global model
 model = None
 device = None
+language_probe = None
 
 
 @app.on_event("startup")
 def load_model():
-    global model, device
+    global model, device, language_probe
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Loading model on {device}...")
@@ -30,6 +36,9 @@ def load_model():
     )
     model = model.to(device)
     model.eval()
+    # Constructing the probe does not execute the encoder or CTC head.  The
+    # default endpoint path remains model(wav, language, decoder) unchanged.
+    language_probe = IndicConformerLanguageProbe(model, LanguageProbeConfig())
     
     print("Model loaded!")
 
@@ -38,7 +47,9 @@ def load_model():
 async def transcribe(
     audio: UploadFile = File(...),
     language: str = Form(default="hi"),
-    decoder: str = Form(default="ctc")
+    decoder: str = Form(default="ctc"),
+    enable_auto_language: bool = Form(default=False),
+    scoring_method: str = Form(default="non_blank_mass"),
 ):
     """
     Transcribe audio file
@@ -63,11 +74,26 @@ async def transcribe(
     # Move to device
     wav = wav.to(device)
     
-    # Transcribe
+    # Production compatibility: unless this explicit experimental flag is
+    # enabled, preserve the original public model(wav, lang, strategy) path.
     with torch.no_grad():
-        text = model(wav, language, decoder)
-    
-    return {"text": text, "language": language}
+        if not enable_auto_language:
+            text = model(wav, language, decoder)
+            return {"text": text, "language": language}
+
+        result = language_probe.transcribe_auto_language(
+            wav,
+            strategy=decoder,
+            scoring_method=scoring_method,
+            return_diagnostics=True,
+        )
+
+    return {
+        "text": result["transcript"],
+        "language": result["language"],
+        "reason": result.get("reason"),
+        "probe": result.get("probe"),
+    }
 
 
 @app.get("/health")

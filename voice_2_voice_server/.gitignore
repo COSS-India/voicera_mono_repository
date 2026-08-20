@@ -26,3 +26,9 @@ dist/
 build/
 scripts/
 kenpath_llm/load_test.py
+data/
+logs/
+
+# Auto-language local tests
+tests/test_ai4bharat_live_auto_language.py
+tests/test_ai4bharat_shadow_mode.py

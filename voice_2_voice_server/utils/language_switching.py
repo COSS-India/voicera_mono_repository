@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -92,7 +92,7 @@ def setup_language_switching(
     tts: Any,
     context: OpenAILLMContext,
     default_language: str | None,
-) -> None:
+) -> Callable[[str], None]:
     current_language = _resolve_default_language(default_language)
     tool_schema = create_switch_language_tool_schema()
     context.set_tools(ToolsSchema([tool_schema]))
@@ -121,7 +121,10 @@ def setup_language_switching(
             return
 
         if hasattr(stt, "set_language"):
-            await stt.set_language(code)
+            try:
+                await stt.set_language(code, source="llm")
+            except TypeError:
+                await stt.set_language(code)
         else:
             logger.warning("STT service does not support set_language; skipping STT switch")
 
@@ -131,7 +134,7 @@ def setup_language_switching(
             logger.warning("TTS service does not support set_language; skipping TTS switch")
 
         current_language = code
-        logger.info(f"Conversation language switched to: {code}")
+        logger.info("Conversation language switched to: {} source=llm", code)
         await params.result_callback(
             json.dumps({"success": True, "language": code})
         )
@@ -141,3 +144,11 @@ def setup_language_switching(
         switch_language_handler,
         cancel_on_interruption=False,
     )
+
+    def update_current_language(language: str) -> None:
+        """Synchronize the LLM tool's session state after an auto switch."""
+
+        nonlocal current_language
+        current_language = language
+
+    return update_current_language

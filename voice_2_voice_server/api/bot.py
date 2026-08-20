@@ -1,6 +1,7 @@
 """Voice bot pipeline implementation using Pipecat."""
 
 import json
+import os
 import time
 import traceback
 
@@ -66,6 +67,7 @@ from utils.language_switching import (
     LANGUAGE_SWITCH_SYSTEM_PROMPT,
     setup_language_switching,
 )
+from services.ai4bharat.auto_language import is_force_auto_stt_language
 from utils.call_recording_utils import submit_call_recording
 from utils.vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
 from utils.metrics import CallMetricsObserver
@@ -149,8 +151,25 @@ async def run_bot(
             llm_config["knowledge_top_k"] = 10
         
         language = agent_config.get("language")
+        stt_provider = str(stt_config.get("name") or "").strip().lower()
+        stt_model = (stt_config.get("args") or {}).get("model") or stt_config.get(
+            "model"
+        )
+        auto_language_stt = (
+            os.getenv("ENABLE_AUTO_LANGUAGE", "false").strip().lower()
+            in {"1", "true", "yes", "on"}
+            and stt_provider == "ai4bharat"
+            and stt_model == "indic-conformer-stt"
+        )
+        if is_force_auto_stt_language():
+            fallback_language = stt_config.get("language") or language
+            if fallback_language:
+                stt_args = dict(stt_config.get("args") or {})
+                stt_args["bootstrap_fallback_language"] = fallback_language
+                stt_config["args"] = stt_args
+            stt_config.pop("language", None)
         if language:
-            if not stt_config.get("language"):
+            if not stt_config.get("language") and not auto_language_stt:
                 stt_config["language"] = language
             if not tts_config.get("language"):
                 tts_config["language"] = language
@@ -167,7 +186,13 @@ async def run_bot(
                 agent_config
             ),
         )
-        stt = create_stt_service(stt_config, sample_rate, vad_analyzer=vad_analyzer, org_id=org_id)
+        stt = create_stt_service(
+            stt_config,
+            sample_rate,
+            vad_analyzer=vad_analyzer,
+            org_id=org_id,
+            session_id=vistaar_session_id,
+        )
         tts = create_tts_service(tts_config, sample_rate, org_id=org_id)
 
         stt_provider_name = str(stt_config.get("name") or "").strip().lower()
@@ -204,14 +229,32 @@ async def run_bot(
             logger.info("Language switching enabled (OpenAI + AI4Bharat STT/TTS)")
         context = OpenAILLMContext([{"role": "system", "content": system_prompt}])
 
+        language_state_updater = None
         if language_switching_enabled:
-            setup_language_switching(
+            language_state_updater = setup_language_switching(
                 llm=llm,
                 stt=stt,
                 tts=tts,
                 context=context,
                 default_language=language or "hi",
             )
+
+        if hasattr(stt, "set_auto_language_switch_callback"):
+            async def propagate_auto_language(
+                from_language: str,
+                to_language: str,
+            ) -> None:
+                if hasattr(tts, "set_language"):
+                    tts.set_language(to_language)
+                if language_state_updater is not None:
+                    language_state_updater(to_language)
+                logger.info(
+                    "Session language propagated | from={} to={} source=auto_probe",
+                    from_language,
+                    to_language,
+                )
+
+            stt.set_auto_language_switch_callback(propagate_auto_language)
         
         # Use stored user aggregator params if available (for OpenAI services)
         user_params = getattr(llm, "_user_aggregator_params", None)
