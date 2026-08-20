@@ -98,9 +98,15 @@ services:
     # its token in .env.translate as TUNNEL_TOKEN. This yields a STABLE URL, which
     # the frontend bakes at build time (NEXT_PUBLIC_*). For a throwaway random URL
     # instead, replace with:  command: tunnel --url http://nginx:8080
-    command: tunnel run
+    # Default = QUICK tunnel: free random https://<random>.trycloudflare.com URL,
+    # no account/domain/token. URL changes on every cloudflared restart, so after
+    # the first start you must copy the URL into the *.translate env files and
+    # rebuild the frontend (it bakes NEXT_PUBLIC_* at build time).
+    # For a STABLE named tunnel instead (needs a Cloudflare-managed domain): set
+    # CLOUDFLARED_CMD="tunnel run" and TUNNEL_TOKEN=<token> in .env.translate.
+    command: ${CLOUDFLARED_CMD:-tunnel --url http://nginx:8080}
     environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
     depends_on: [nginx]
     networks: [internal]
 
