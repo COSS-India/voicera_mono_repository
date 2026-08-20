@@ -3,6 +3,13 @@
 import { use, useCallback, useEffect, useRef, useState } from "react"
 import { getTranslationListenWebSocketUrl } from "@/lib/johnaic-config"
 import type { PublicAgent } from "@/lib/api"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 const DEFAULT_SAMPLE_RATE = 16000
 
@@ -167,6 +174,12 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
         <div className="max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center">
+          <img
+            src="/voicera-wordmark-trimmed.png"
+            alt="Voicera"
+            className="mx-auto mb-4 h-6 w-auto"
+            style={{ filter: "brightness(0) saturate(100%)" }}
+          />
           <h1 className="mb-2 text-lg font-semibold text-slate-900">Link unavailable</h1>
           <p className="text-sm text-slate-600">{loadError}</p>
         </div>
@@ -186,6 +199,12 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
         <div className="max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center">
+          <img
+            src="/voicera-wordmark-trimmed.png"
+            alt="Voicera"
+            className="mx-auto mb-4 h-6 w-auto"
+            style={{ filter: "brightness(0) saturate(100%)" }}
+          />
           <h1 className="mb-2 text-lg font-semibold text-slate-900">{agent.display_name}</h1>
           <p className="text-sm text-slate-600">This link is not a live translation session.</p>
         </div>
@@ -196,29 +215,40 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="mb-6 flex items-center justify-center gap-2.5">
+          <img
+            src="/voicera-wordmark-trimmed.png"
+            alt="Voicera"
+            className="block h-2.5 w-auto"
+            style={{ filter: "brightness(0) saturate(100%)" }}
+          />
+          <span className="h-3 w-px bg-slate-300" />
+          <span className="text-sm font-normal leading-none text-slate-400">Live translation</span>
+        </div>
         <div className="mb-6 text-center">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-            Live translation
-          </p>
-          <h1 className="mt-1 text-xl font-semibold text-slate-900">{agent.display_name}</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{agent.display_name}</h1>
           {agent.source_language && (
             <p className="mt-1 text-sm text-slate-500">Presenter speaks {agent.source_language}</p>
           )}
         </div>
 
         <label className="mb-2 block text-sm font-medium text-slate-700">Your language</label>
-        <select
+        <Select
           value={language}
-          onChange={(e) => setLanguage(e.target.value)}
+          onValueChange={setLanguage}
           disabled={isConnected || isConnecting}
-          className="mb-4 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60"
         >
-          {agent.target_languages.map((lang) => (
-            <option key={lang} value={lang}>
-              {lang}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="mb-4 h-11 w-full rounded-lg border-slate-300 bg-white text-sm text-slate-900">
+            <SelectValue placeholder="Select a language" />
+          </SelectTrigger>
+          <SelectContent className="rounded-lg">
+            {agent.target_languages.map((lang) => (
+              <SelectItem key={lang} value={lang} className="text-sm">
+                {lang}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <div className="mb-4 flex items-center justify-between">
           <span className="flex items-center gap-2 text-sm text-slate-600">
@@ -271,6 +301,10 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
             </div>
           )}
         </div>
+
+        <p className="mt-6 text-center text-xs text-slate-400">
+          Powered by Voicera
+        </p>
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-# Live Translation Agent — Technical Design
+# Live Translation Agent - Technical Design
 
 **Status:** Implemented (see §11 for the as-built checklist and §13 for deltas from the original plan)
 **Scope:** New agent type for real-time, one-to-many live translation with public shareable listener links. Opt-in public sharing for any agent as a secondary, generic capability.
@@ -22,7 +22,7 @@ Secondary generic capability: an **opt-in "public share" flag** on *any* agent, 
 
 Established by codebase survey (file:line references are load-bearing anchors for implementation):
 
-**Agent model (backend — FastAPI + MongoDB, collection `AgentConfig`)**
+**Agent model (backend - FastAPI + MongoDB, collection `AgentConfig`)**
 - Pydantic models: `voicera_backend/app/models/schemas.py:49-94` (`AgentConfigCreate` / `Response` / `Update`).
 - Type enum lives in `agent_config.interaction_mode`: `voicera_backend/app/services/agent_service.py:19` → `VALID_INTERACTION_MODES = {"conversational", "non_conversational"}`.
 - Per-mode validation: `_validate_agent_config_for_mode` `agent_service.py:64-73`. Mode is **immutable after create**: `agent_service.py:404-409`.
@@ -32,21 +32,21 @@ Established by codebase survey (file:line references are load-bearing anchors fo
 - CRUD service: `agent_service.create_agent` (`agent_service.py:220-296`), `update_agent_config` (`agent_service.py:372-484`).
 - Router: `voicera_backend/app/routers/agents.py` (prefix `/agents`, mounted under `/api/v1`).
 
-**Voice engine (`voice_2_voice_server` — FastAPI + Pipecat)**
-- WS routes in `voice_2_voice_server/api/server.py`: `/agent/{agent_id}` (Vobiz, `:430`), `/plivo/agent/{agent_id}` (`:514`), `/browser/agent/{agent_id}` (browser, `:545`). **All unauthenticated** — `websocket.accept()` immediately.
+**Voice engine (`voice_2_voice_server` - FastAPI + Pipecat)**
+- WS routes in `voice_2_voice_server/api/server.py`: `/agent/{agent_id}` (Vobiz, `:430`), `/plivo/agent/{agent_id}` (`:514`), `/browser/agent/{agent_id}` (browser, `:545`). **All unauthenticated** - `websocket.accept()` immediately.
 - Pipeline assembled in `api/bot.py:run_bot` (`:302-335`): `transport.input → stt → … → llm → … → tts → … → transport.output`. Strictly **1:1**, no fan-out, no session registry.
 - Service factories in `api/services.py`: `create_stt_service` (`:373-567`), `create_llm_service` (`:120-370`), `create_tts_service` (`:570-785`). Providers include OpenAI, Deepgram, Sarvam, ElevenLabs, AI4Bharat, Bhashini.
 - Config fetch: `utils/backend_utils.py:fetch_agent_config_from_backend` (`:156-199`) → `GET /api/v1/agents/config/id/{agent_id}` with `X-API-Key`.
 - Language: per-agent, seeded into `stt_config`/`tts_config` (`bot.py:157-165`). Display→provider-code maps in `config/stt_mappings.py`, `config/tts_mappings.py`. Mid-call switch tool exists but is provider-limited (`utils/language_switching.py`).
-- Outbound audio serialisation choke point: `serializer/vobiz_serializer.py:serialize` (`:41-62`) — returning `None` suppresses an outbound audio frame.
-- Multi-worker: `VOICE_SERVER_NUM_WORKERS` (`server.py:623`). **Per-process state is not shared across workers** — critical for the room registry (see §7).
+- Outbound audio serialisation choke point: `serializer/vobiz_serializer.py:serialize` (`:41-62`) - returning `None` suppresses an outbound audio frame.
+- Multi-worker: `VOICE_SERVER_NUM_WORKERS` (`server.py:623`). **Per-process state is not shared across workers** - critical for the room registry (see §7).
 
 **Auth / sharing / frontend**
 - Backend auth: user JWT `get_current_user` (`voicera_backend/app/auth.py:131-168`) and internal `X-API-Key` `verify_api_key` (`auth.py:171-205`). WebSocket layer has **no auth**.
 - No existing share-token model, no public agent flag, no unauthenticated page route.
 - Platform-key fallback: `services.py:54-59` (`ALLOW_PLATFORM_KEY_FALLBACK`).
 - Frontend: Next.js App Router (`voicera_frontend/app/`). Route groups `(auth)` and `(dashboard)`; **auth is client-side only** (localStorage token, redirect on 401 in `lib/api.ts:70-76`). New public page = new top-level segment outside both groups, not using `fetchWithAuth`.
-- Browser voice client: `voicera_frontend/components/assistants/test-browser-dialog.tsx` — mic capture + 16 kHz PCM + `playAudio` playback + transcript rendering. WS URL: `lib/johnaic-config.ts:getBrowserAgentWebSocketUrl`.
+- Browser voice client: `voicera_frontend/components/assistants/test-browser-dialog.tsx` - mic capture + 16 kHz PCM + `playAudio` playback + transcript rendering. WS URL: `lib/johnaic-config.ts:getBrowserAgentWebSocketUrl`.
 - Create/edit wizard: `voicera_frontend/app/(dashboard)/assistants/page.tsx`; step keys `WizardStepKey` (`:205`), `getWizardStepKeys` (`:220-226`); type cards (`:1466-1507`); payload build (`:1046-1096`). TS types `lib/api.ts:362-447`.
 
 ---
@@ -72,7 +72,7 @@ Established by codebase survey (file:line references are load-bearing anchors fo
 
 - **Publisher leg** reuses the existing transport + STT stack, but ends at STT (no LLM/TTS/output) → presenter inherently receives no bot audio.
 - **LangWorker** is created lazily when the first listener selects a language, and torn down when the last listener for that language leaves. Cost scales with *distinct active languages*, not listener count.
-- **Fan-out** is a small in-memory broadcast to all listener sockets in a language group — the one capability Pipecat lacks today, added as a new module without touching the 1:1 path.
+- **Fan-out** is a small in-memory broadcast to all listener sockets in a language group - the one capability Pipecat lacks today, added as a new module without touching the 1:1 path.
 
 ---
 
@@ -86,26 +86,26 @@ VALID_INTERACTION_MODES = {"conversational", "non_conversational", "translation"
 ```
 
 Add a `translation` branch to `_validate_agent_config_for_mode` (`agent_service.py:64-73`). Requirements for a translation agent:
-- `agent_config.source_language` — non-empty (what the presenter speaks).
-- `agent_config.target_languages` — non-empty list, each resolvable in `TTS_LANGUAGE_MAP` for the chosen `tts_model`.
+- `agent_config.source_language` - non-empty (what the presenter speaks).
+- `agent_config.target_languages` - non-empty list, each resolvable in `TTS_LANGUAGE_MAP` for the chosen `tts_model`.
 - `agent_config.stt_model.name` and `agent_config.tts_model.name` present.
 - `system_prompt` optional; if empty, use a built-in translation prompt (§6.2).
 
-**Branch-point audit (must review — additive value can be silently mis-handled by code that assumes "not conversational ⇒ non_conversational"):**
-- `_validate_agent_config_for_mode` — add branch.
-- Immutability rule `agent_service.py:404-409` — keep translation immutable too.
-- Frontend `getWizardStepKeys` (`page.tsx:220-226`) — add translation step set.
-- Any `if mode == "non_conversational"` special-casing (e.g. greeting-required, `agent-card.tsx:66` `isAlertAgent`) — ensure translation is not accidentally treated as an alert agent.
+**Branch-point audit (must review - additive value can be silently mis-handled by code that assumes "not conversational ⇒ non_conversational"):**
+- `_validate_agent_config_for_mode` - add branch.
+- Immutability rule `agent_service.py:404-409` - keep translation immutable too.
+- Frontend `getWizardStepKeys` (`page.tsx:220-226`) - add translation step set.
+- Any `if mode == "non_conversational"` special-casing (e.g. greeting-required, `agent-card.tsx:66` `isAlertAgent`) - ensure translation is not accidentally treated as an alert agent.
 
 ### 4.2 New agent_config fields (all optional, additive)
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `source_language` | str | — | Presenter's spoken language (display name, mapped via existing STT map). |
+| `source_language` | str | - | Presenter's spoken language (display name, mapped via existing STT map). |
 | `target_languages` | list[str] | `[]` | Allowed listener output languages. |
 | `mute_publisher_playback` | bool | `true` | The "mute bot response" toggle. For translation, publisher leg never builds an output path (so this is inherently satisfied); the flag is retained so the behaviour is explicit and reusable. |
 
-### 4.3 New top-level agent fields (opt-in public sharing — generic, all types)
+### 4.3 New top-level agent fields (opt-in public sharing - generic, all types)
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
@@ -114,7 +114,7 @@ Add a `translation` branch to `_validate_agent_config_for_mode` (`agent_service.
 
 Add to `AgentConfigCreate` / `AgentConfigUpdate` / `AgentConfigResponse` (`schemas.py:49-94`) and write them in `create_agent` / `update_agent_config` following the existing "only write when truthy" idiom.
 
-Migration: none required (MongoDB, absent fields read as defaults). Existing agents are unaffected — `public_share_enabled` absent ⇒ treated as false.
+Migration: none required (MongoDB, absent fields read as defaults). Existing agents are unaffected - `public_share_enabled` absent ⇒ treated as false.
 
 ---
 
@@ -137,13 +137,13 @@ New router `voicera_backend/app/routers/public.py` (prefix `/public`, **no auth 
 
 Token-rotation / host access (authed, JWT):
 - `POST /agents/{agent_type}/share/rotate` → regenerate `share_token`.
-- Host connect to the voice server is authorised with a short-lived **host token** minted by the backend for the agent owner (see §7.1) — not the public `share_token`.
+- Host connect to the voice server is authorised with a short-lived **host token** minted by the backend for the agent owner (see §7.1) - not the public `share_token`.
 
 Voice-server → backend lookup for the listener leg: add `GET /agents/public/by-token/{share_token}` behind `X-API-Key` (same style as `/agents/config/id/{agent_id}`, `agents.py:39-43`) so the voice server can validate a listener's token and read `agent_id` + allowed `target_languages` without exposing secrets publicly.
 
 ---
 
-## 6. Voice server — translation module (new, self-contained)
+## 6. Voice server - translation module (new, self-contained)
 
 New file `voice_2_voice_server/api/translation_room.py`. New routes added to `server.py`. **No change to `bot.py` / existing WS routes.**
 
@@ -162,13 +162,13 @@ class TranslationRoom:
     bus: "SourceSegmentBus"                     # fan-in of final transcripts
 ```
 
-- `bus` is an asyncio pub/sub: publisher pushes `{seq, text, ts}`; each `LangWorker` subscribes. Use per-worker `asyncio.Queue` so a slow language cannot back-pressure others (bounded queue, drop-oldest on overflow with a log — no silent unbounded growth).
+- `bus` is an asyncio pub/sub: publisher pushes `{seq, text, ts}`; each `LangWorker` subscribes. Use per-worker `asyncio.Queue` so a slow language cannot back-pressure others (bounded queue, drop-oldest on overflow with a log - no silent unbounded growth).
 
 ### 6.2 Publisher WS `/translate/publish/{agent_id}`
 
 Authorised by host token (§7.1). Lifecycle:
 1. Validate host token → agent_id + org.
-2. Register as `room.publisher` (reject if one already active — single presenter per room; return a clear close code).
+2. Register as `room.publisher` (reject if one already active - single presenter per room; return a clear close code).
 3. Build a **minimal Pipecat pipeline**: `transport.input() → SileroVAD → stt → TranscriptCollector`.
    - Reuse `create_stt_service` (`services.py:373`) and the existing `FastAPIWebsocketTransport` + `VobizFrameSerializer` setup from `bot.py:514-526` (audio-in only; `audio_out_enabled=False`).
    - `TranscriptCollector` is a tiny `FrameProcessor` that captures final `TranscriptionFrame`s and calls `room.bus.publish(...)`. No LLM, no TTS, no `transport.output()` ⇒ presenter receives nothing back (the "mute" requirement, satisfied structurally).
@@ -176,7 +176,7 @@ Authorised by host token (§7.1). Lifecycle:
 
 ### 6.3 LangWorker (translate → TTS → fan-out)
 
-One per active target language. Driven directly (no fake transport — no VAD needed for text-in):
+One per active target language. Driven directly (no fake transport - no VAD needed for text-in):
 ```
 loop:
     seg = await queue.get()                      # {seq, text}
@@ -186,7 +186,7 @@ loop:
         await room.fanout(target_language, payload)        # send_text to all subscribers[lang]
     await room.fanout_transcript(target_language, seg, translated)   # optional text events
 ```
-- `translate(...)`: reuse `create_llm_service` (OpenAI etc.) with a fixed instruction — *"Translate the text from {source} to {target}. Output only the translation, no commentary."* Falls back to platform key via existing `platform_key_fallback_enabled()`. (If a dedicated translation API is later preferred, it swaps in behind this one function.)
+- `translate(...)`: reuse `create_llm_service` (OpenAI etc.) with a fixed instruction - *"Translate the text from {source} to {target}. Output only the translation, no commentary."* Falls back to platform key via existing `platform_key_fallback_enabled()`. (If a dedicated translation API is later preferred, it swaps in behind this one function.)
 - `tts`: `create_tts_service` with `tts_config.language = target` (reuse `TTS_LANGUAGE_MAP`).
 - **Ordering:** process segments strictly by `seq` per worker to keep translated audio in order.
 - Lazily started on first subscriber for that language; stopped when `subscribers[lang]` becomes empty.
@@ -218,10 +218,10 @@ The presenter must be the agent owner (or delegated). The public `share_token` m
 
 ### 7.3 Multi-worker caveat (must decide before ship)
 `_ROOMS` is process-local. With `VOICE_SERVER_NUM_WORKERS > 1`, the presenter and a listener can land on different workers and never see each other. Options, cheapest first:
-1. **MVP:** run the translation routes affinity-pinned — deploy translation on a single-worker instance, or use sticky routing keyed by `agent_id`/`share_token` at the load balancer. Document the constraint. *(Recommended for first ship — zero extra infra.)*
+1. **MVP:** run the translation routes affinity-pinned - deploy translation on a single-worker instance, or use sticky routing keyed by `agent_id`/`share_token` at the load balancer. Document the constraint. *(Recommended for first ship - zero extra infra.)*
 2. **Scale-out:** back the room bus + subscriber registry with Redis pub/sub so any worker can serve any leg. Deferred; the `SourceSegmentBus` and `fanout` interfaces are designed so this is a drop-in later.
 
-This caveat is called out loudly rather than hidden — it is the one real operational constraint of the minimal design.
+This caveat is called out loudly rather than hidden - it is the one real operational constraint of the minimal design.
 
 ---
 
@@ -239,24 +239,24 @@ This caveat is called out loudly rather than hidden — it is the one real opera
 ### 8.2 Agent detail page
 - If `public_share_enabled`: show **listener share link** `${APP_URL}/live/{share_token}` with copy button, plus a **"Start broadcasting"** action (host page/dialog).
 
-### 8.3 New public listener page — `app/live/[token]/page.tsx`
+### 8.3 New public listener page - `app/live/[token]/page.tsx`
 - Top-level segment, outside `(auth)`/`(dashboard)`. Must not import `fetchWithAuth`.
 - On load: `GET /api/public/agents/{token}` (new BFF passthrough → backend `/public/agents/{token}`) to fetch display name + allowed target languages.
 - Language picker → connect WS `${JOHNAIC_WS}/translate/listen/{token}?lang=<chosen>`.
 - Playback + transcript rendering: extract the playback half of `test-browser-dialog.tsx` into a reusable `useAudioPlayback` hook (no mic). Reuse `Orb` visualiser.
 - Language can be changed live by reconnecting with a new `lang`.
 
-### 8.4 Host/broadcast page (authed) — dialog or `app/(dashboard)/assistants/[id]/broadcast`
+### 8.4 Host/broadcast page (authed) - dialog or `app/(dashboard)/assistants/[id]/broadcast`
 - Fetch a host token (`POST /api/agents/{id}/broadcast-token`), connect WS `${JOHNAIC_WS}/translate/publish/{agent_id}` with it, capture mic (reuse mic-capture half of `test-browser-dialog.tsx`), show live source transcript. No playback.
 
 ### 8.5 Generic share (tier 1, any agent)
-- The same `/live/{token}` page branches on `interaction_mode`: `translation` → listener flow above; anything else → the **existing 1:1 browser flow** (reuse `TestBrowserDialog` internals, connect to existing `/browser/agent/{agent_id}`). This makes "share any agent" a few lines, not a new engine — each visitor gets an independent session.
+- The same `/live/{token}` page branches on `interaction_mode`: `translation` → listener flow above; anything else → the **existing 1:1 browser flow** (reuse `TestBrowserDialog` internals, connect to existing `/browser/agent/{agent_id}`). This makes "share any agent" a few lines, not a new engine - each visitor gets an independent session.
 
 ---
 
 ## 9. Why not "blanket-enable share links for all agents"
 
-The voice WS already has zero transport auth, so a raw `agent_id` is *already* a de-facto key — blanket-enabling would only widen an existing exposure. Unauthenticated sessions consume the org's LLM/STT/TTS keys and call slots (real money + abuse surface). The **opt-in flag + `share_token`** is the minimal fix that (a) makes `agent_id` no longer the key, (b) keeps every agent private by default, and (c) still delivers the generic "share any agent" capability for those who opt in — one boolean, one token, one public endpoint, one page.
+The voice WS already has zero transport auth, so a raw `agent_id` is *already* a de-facto key - blanket-enabling would only widen an existing exposure. Unauthenticated sessions consume the org's LLM/STT/TTS keys and call slots (real money + abuse surface). The **opt-in flag + `share_token`** is the minimal fix that (a) makes `agent_id` no longer the key, (b) keeps every agent private by default, and (c) still delivers the generic "share any agent" capability for those who opt in - one boolean, one token, one public endpoint, one page.
 
 ---
 
@@ -284,18 +284,18 @@ Backend
 Voice server
 - [x] `api/translation_room.py`: `TranslationRoom`, `LangWorker`, process-local registry, fan-out, `TranscriptCollector`, `FanOutSink`.
 - [x] Routes `/translate/publish/{agent_id}` (host token via `?token=`) and `/translate/listen/{share_token}?lang=` (public) in `server.py`.
-- [x] Publisher pipeline is `transport.input() → VAD → STT → TranscriptCollector` with `audio_out_enabled=False` — the presenter structurally receives no bot audio.
+- [x] Publisher pipeline is `transport.input() → VAD → STT → TranscriptCollector` with `audio_out_enabled=False` - the presenter structurally receives no bot audio.
 - [x] Capacity: one call slot for the publisher plus one per active language, via the existing `try_acquire_call_slot`/`release_call_slot` accounting.
 - [x] Bounded per-language backlog (`MAX_SEGMENT_BACKLOG`, drop-oldest with a log) so one slow language cannot grow memory or stall the others.
-- [x] Startup warning when `VOICE_SERVER_NUM_WORKERS > 1` (rooms are process-local — see §7.3).
+- [x] Startup warning when `VOICE_SERVER_NUM_WORKERS > 1` (rooms are process-local - see §7.3).
 
 Frontend
 - [x] "Live Translation" type card, `translation` step set (`type → agent → audio → share → review`), and config fields in the create wizard.
 - [x] `InteractionMode`/`AgentConfig`/`CreateAgentRequest` type extensions plus `PublicAgent` and `BroadcastToken`.
 - [x] Shared `components/assistants/translation-languages-section.tsx` (listener languages + per-language voices) used by **both** the create wizard and the edit page.
 - [x] Edit page round-trips translation agents: loads the mode, edits listener languages/voices, and manages the share link (enable/disable, copy, rotate).
-- [x] Public `app/live/[token]/page.tsx` — language picker + playback + translated transcript, no auth.
-- [x] `components/assistants/broadcast-dialog.tsx` — host mic capture → `/translate/publish`, starts muted, shows the listener link.
+- [x] Public `app/live/[token]/page.tsx` - language picker + playback + translated transcript, no auth.
+- [x] `components/assistants/broadcast-dialog.tsx` - host mic capture → `/translate/publish`, starts muted, shows the listener link.
 - [x] Agent card: "Live Translation" badge, link-active chip, Broadcast + Copy Link actions in place of Test Call / Test on Browser.
 - [x] BFF passthrough routes: `app/api/public/agents/[token]`, `app/api/agents/broadcast-token`, `app/api/agents/share-rotate`.
 
@@ -307,7 +307,7 @@ Verification performed: `python3 -m py_compile` on all changed Python; `tsc --no
 
 Two design points changed during implementation, both for correctness:
 
-1. **Per-language voices (`agent_config.target_voices`).** The plan assumed one global TTS voice. In practice `tts.json` voices are language-specific and disjoint for the on-prem providers — AI4Bharat offers `Rohit/Divya/Aman/Rani` for Hindi but `Kavitha/Jaya` for Tamil — so a single speaker cannot serve multiple listener languages. A translation agent therefore stores `target_voices: {language: voice}`, and `LangWorker.start()` applies the matching voice when it builds that language's TTS service. The UI requires a voice only for languages whose provider exposes a fixed list; free-form voice-ID providers keep it optional.
+1. **Per-language voices (`agent_config.target_voices`).** The plan assumed one global TTS voice. In practice `tts.json` voices are language-specific and disjoint for the on-prem providers - AI4Bharat offers `Rohit/Divya/Aman/Rani` for Hindi but `Kavitha/Jaya` for Tamil - so a single speaker cannot serve multiple listener languages. A translation agent therefore stores `target_voices: {language: voice}`, and `LangWorker.start()` applies the matching voice when it builds that language's TTS service. The UI requires a voice only for languages whose provider exposes a fixed list; free-form voice-ID providers keep it optional.
 2. **Host-token verification lives in the backend.** Rather than duplicating JWT decoding (and the `SECRET_KEY`) in the voice server, the presenter's token is verified by `POST /agents/broadcast/resolve` over the existing internal X-API-Key channel. The voice server holds no JWT logic.
 
 Also worth noting: the agent's own prompt is **not** ignored. `TranslationRoom.translate()` sends a fixed "translate only, no commentary" system instruction and appends the agent's `system_prompt` as additional style/domain guidance, so the authored prompt shapes tone and terminology without being able to break the output contract. The create wizard labels this field "Translation Guidance" and prefills a sensible default.
@@ -315,7 +315,7 @@ Also worth noting: the agent's own prompt is **not** ignored. `TranslationRoom.t
 ### 13.1 Hardening applied during post-implementation review
 
 Security
-- **`agent_id` is not exposed publicly.** `build_public_agent_projection()` withholds it unless the caller passes `include_agent_id=True`, which only the internal X-API-Key endpoint does. Because the voice server's WebSocket routes are unauthenticated, a public `agent_id` would itself be a usable credential for `/browser/agent/{agent_id}` — which would have defeated the whole point of the share token (§9).
+- **`agent_id` is not exposed publicly.** `build_public_agent_projection()` withholds it unless the caller passes `include_agent_id=True`, which only the internal X-API-Key endpoint does. Because the voice server's WebSocket routes are unauthenticated, a public `agent_id` would itself be a usable credential for `/browser/agent/{agent_id}` - which would have defeated the whole point of the share token (§9).
 - **Host broadcast tokens cannot be used as session tokens.** They travel in a WebSocket URL query string, which proxies routinely log. `get_current_user` now rejects any JWT carrying a `role` claim, so a leaked broadcast URL cannot be replayed against the REST API. (Verified safe: real login tokens carry `is_member`, never `role`.)
 
 Resource safety
@@ -326,7 +326,7 @@ Resource safety
 Failure behaviour
 - **Missing translation credential fails at connect, not mid-talk.** The publisher resolves the OpenAI client before accepting audio and closes with code `4402` if the org has no OpenAI integration and platform fallback is off. This also moves the blocking integration lookup out of the audio path.
 - **A bad segment can no longer mute a language.** The per-language consumer loop catches and logs per-segment errors and continues (matching the convention of commit `497c67d`, "keep batch worker alive on inference failure"), and a dead TTS pipeline is now logged via a task done-callback instead of vanishing.
-- **Backlog overflow drops the oldest segment**, not the newest, so a lagging language catches up to live speech instead of falling further behind — the code now matches the documented intent.
+- **Backlog overflow drops the oldest segment**, not the newest, so a lagging language catches up to live speech instead of falling further behind - the code now matches the documented intent.
 - **`audio_out_sample_rate` is pinned** to 16 kHz. Providers constructed without an explicit rate would otherwise inherit pipecat's 24 kHz default; playback was already correct (the listener honours `media.sampleRate`) but payloads were larger than necessary.
 
 UX correctness
