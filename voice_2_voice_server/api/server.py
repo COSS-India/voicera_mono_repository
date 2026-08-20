@@ -27,6 +27,11 @@ from utils.backend_utils import (
 )
 from utils.batching import create_batch_router
 from utils.vi_obd_client import ViObdClient, ViObdError, resolve_vi_agent_id_full
+from utils.vi_recording_webhook import (
+    extract_recording_url,
+    format_raw_body_for_log,
+    parse_webhook_body,
+)
 
 
 load_dotenv()
@@ -754,6 +759,51 @@ async def vi_post_stream_callback(request: ViPostStreamRequest):
         request.dni,
     )
     return ViPostStreamResponse(callstatus="0", rm_number="")
+
+
+@app.post("/vi/recording-webhook")
+async def vi_recording_webhook(request: Request):
+    """VI flow-builder webhook: VI pushes recording file URL after hangup (ApiCall node).
+
+    V1 is log-only — full raw request is logged before parsing to confirm VI payload shape.
+    """
+    raw_body = await request.body()
+    content_type = request.headers.get("content-type")
+
+    logger.info(
+        "VI recording webhook hit: method={} url={} content_type={} body_len={}",
+        request.method,
+        str(request.url),
+        content_type,
+        len(raw_body),
+    )
+    for header_name, header_value in request.headers.items():
+        logger.info("VI recording webhook header: {}={}", header_name, header_value)
+    logger.info(
+        "VI recording webhook raw body: {}",
+        format_raw_body_for_log(raw_body),
+    )
+
+    parsed, parse_mode = parse_webhook_body(raw_body, content_type)
+    logger.info("VI recording webhook parse_mode={}", parse_mode)
+    if parsed is not None:
+        try:
+            logger.info(
+                "VI recording webhook parsed payload: {}",
+                json.dumps(parsed, ensure_ascii=False, default=str),
+            )
+        except (TypeError, ValueError):
+            logger.info("VI recording webhook parsed payload (repr): {!r}", parsed)
+
+    recording_url = extract_recording_url(parsed)
+    if recording_url:
+        logger.info("VI recording webhook: recording_url={}", recording_url)
+    else:
+        logger.warning(
+            "VI recording webhook: no recording URL found (checked keys: recording_url, RecordVoice, record_voice)"
+        )
+
+    return {"status": "received"}
 
 
 @app.websocket("/browser/agent/{agent_id}")

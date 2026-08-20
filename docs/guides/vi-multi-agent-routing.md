@@ -40,3 +40,16 @@ When a VI WebSocket `start` event arrives:
 | `VI_DEFAULT_AGENT_ID` | Fallback agent if DNI is not attached |
 
 OBD outbound uses `VI_OBD_*`, `VI_DNI`, and `VI_FLOW_ID` — see `voice_2_voice_server/.env.example`.
+
+## Recording webhook (flow-builder)
+
+Configure an **ApiCall** node after HangUp in the VI DIY flow to POST the recording URL to VoicERA:
+
+| Setting | Value |
+|---------|--------|
+| URL | `https://<your-host>/vi/recording-webhook` |
+| Method | POST (assumed — confirm via voice-server logs if webhook does not fire) |
+| Content-Type | `application/json` (assumed) |
+| Body key | `recording_url` → value `$RecordVoice` |
+
+V1 only **logs** the full raw request and extracted URL; payload shape is unconfirmed until a live call hits the webhook. Check voice-server logs for `VI recording webhook raw body`.
