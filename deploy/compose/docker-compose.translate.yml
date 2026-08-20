@@ -1,0 +1,122 @@
+# Parallel "live-translation" deployment. Runs ALONGSIDE voicera-prod on the same
+# host, fully isolated (own project name -> own containers, network, volumes).
+# It hosts NO models: voice_server reaches the EXISTING prod stt/tts over the
+# shared prod network (see the `prodnet` network + voice_server env below).
+#
+#   dcpt='docker compose -p voicera-translate \
+#         --env-file ~/voicera_mono_repository/deploy/compose/.env.translate \
+#         -f ~/voicera_mono_repository/deploy/compose/docker-compose.translate.yml'
+#
+# NOTE: project name is set with `-p voicera-translate` on the CLI (above), NOT a
+# top-level `name:` here, so it can never collide with voicera-prod.
+
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: voicera
+    volumes:
+      - mongodb_data:/data/db
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-}
+    volumes:
+      - minio_data:/data
+    networks: [internal]
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  backend:
+    build: ../../voicera_backend
+    restart: unless-stopped
+    env_file: ../../voicera_backend/.env.translate
+    environment:
+      - MONGODB_HOST=mongodb
+    depends_on:
+      mongodb: { condition: service_healthy }
+      minio:   { condition: service_healthy }
+    networks: [internal]
+
+  voice_server:
+    build: ../../voice_2_voice_server
+    restart: unless-stopped
+    env_file: ../../voice_2_voice_server/.env.translate
+    depends_on: [backend, minio]
+    # Dual-homed: `internal` for its own backend/minio, `prodnet` to reach the
+    # existing prod stt/tts. On `prodnet` the names backend/minio/nginx are
+    # AMBIGUOUS (they exist in both projects), so .env.translate references every
+    # service by its UNIQUE container name (voicera-translate-* / voicera-prod-*).
+    networks: [internal, prodnet]
+
+  frontend:
+    build:
+      context: ../../voicera_frontend
+      secrets: [frontend_env]
+    restart: unless-stopped
+    env_file: ../../voicera_frontend/.env.local.translate
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://backend:8000
+    depends_on: [backend]
+    networks: [internal]
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    # No host port: cloudflared reaches nginx over the internal network. Uncomment
+    # to expose on loopback for local debugging (pick a port unused by prod's 8080):
+    # ports: ["127.0.0.1:8090:8080"]
+    volumes:
+      - ../nginx/nginx.translate.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [frontend, backend, voice_server]
+    networks: [internal]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # Named (remotely-managed) tunnel. Create the tunnel in the Cloudflare Zero
+    # Trust dashboard, add a public hostname -> service http://nginx:8080, and put
+    # its token in .env.translate as TUNNEL_TOKEN. This yields a STABLE URL, which
+    # the frontend bakes at build time (NEXT_PUBLIC_*). For a throwaway random URL
+    # instead, replace with:  command: tunnel --url http://nginx:8080
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on: [nginx]
+    networks: [internal]
+
+volumes:
+  mongodb_data:
+  minio_data:
+
+networks:
+  internal:
+    driver: bridge
+  # The existing prod compose network. Verify the exact name with
+  # `docker network ls | grep voicera` and set PROD_NETWORK_NAME in .env.translate.
+  prodnet:
+    external: true
+    name: ${PROD_NETWORK_NAME}
+
+secrets:
+  frontend_env:
+    file: ../../voicera_frontend/.env.local.translate
