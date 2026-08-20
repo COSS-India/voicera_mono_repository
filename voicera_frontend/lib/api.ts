@@ -374,14 +374,22 @@ export interface Agent {
   vobiz_answer_url?: string
   plivo_app_id?: string
   plivo_answer_url?: string
+  public_share_enabled?: boolean
+  share_token?: string
 }
 
-export type InteractionMode = "conversational" | "non_conversational"
+export type InteractionMode = "conversational" | "non_conversational" | "translation"
 
 export interface AgentConfig {
   interaction_mode?: InteractionMode
   system_prompt?: string
   greeting_message: string
+  // Live-translation agents only:
+  source_language?: string
+  target_languages?: string[]
+  /** Per-target-language TTS voice; voices are language-specific for AI4Bharat/Bhashini. */
+  target_voices?: Record<string, string>
+  mute_publisher_playback?: boolean
   ignore_user_speech_before_greeting?: boolean
   interruption_min_words?: number
   user_silence_hangup_seconds?: number
@@ -444,6 +452,26 @@ export interface CreateAgentRequest {
   vobiz_answer_url?: string
   plivo_app_id?: string
   plivo_answer_url?: string
+  public_share_enabled?: boolean
+}
+
+/**
+ * Secret-stripped public view of a shared agent (unauthenticated).
+ * Note: agent_id is intentionally NOT exposed publicly — the voice server's
+ * WebSocket routes are unauthenticated, so it would act as a credential.
+ */
+export interface PublicAgent {
+  display_name: string
+  interaction_mode: InteractionMode
+  source_language?: string
+  target_languages: string[]
+  greeting_message?: string
+}
+
+export interface BroadcastToken {
+  token: string
+  agent_id: string
+  expires_in: number
 }
 
 export interface Campaign {

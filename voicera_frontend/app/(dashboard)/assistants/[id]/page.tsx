@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { Separator } from "@/components/ui/separator"
@@ -31,6 +31,7 @@ import {
   Timer,
   Plus,
   Trash2,
+  Share2,
 } from "lucide-react"
 import {
   Dialog,
@@ -40,7 +41,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, fetchApiRoute, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
 import { agentsQueryKey } from "@/lib/queries/agents"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
@@ -58,6 +59,7 @@ import {
   loadSelectedLanguagesFromConfig,
 } from "@/lib/languageModelSupport"
 import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
+import { TranslationLanguagesSection } from "@/components/assistants/translation-languages-section"
 import {
   type KenpathVariant,
   isBharatVistaarLanguageSupported,
@@ -204,7 +206,7 @@ const llmProviders = {
 }
 
 const editWizardStepMeta: Record<
-  "agent" | "llm" | "audio" | "telephony" | "call_mgmt",
+  "agent" | "llm" | "audio" | "telephony" | "call_mgmt" | "share",
   { title: string; subtitle: string; icon: typeof FileText }
 > = {
   agent: { title: "Agent", subtitle: "Name & Prompt", icon: FileText },
@@ -212,11 +214,16 @@ const editWizardStepMeta: Record<
   audio: { title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
   telephony: { title: "Telephony", subtitle: "Provider Info", icon: Phone },
   call_mgmt: { title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
+  share: { title: "Share", subtitle: "Listener Link", icon: Share2 },
 }
 
 function getEditWizardStepKeys(mode: InteractionMode): Array<keyof typeof editWizardStepMeta> {
   if (mode === "non_conversational") {
     return ["agent", "audio", "telephony"]
+  }
+  if (mode === "translation") {
+    // Translation agents have no telephony leg and no call management.
+    return ["agent", "audio", "share"]
   }
   return ["agent", "llm", "audio", "telephony", "call_mgmt"]
 }
@@ -285,6 +292,13 @@ export default function AgentDetailPage() {
   const [ttsDescription, setTtsDescription] = useState("")
   const [speed, setSpeed] = useState(1.0)
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("conversational")
+  // Live-translation only
+  const [targetLanguages, setTargetLanguages] = useState<string[]>([])
+  const [targetVoices, setTargetVoices] = useState<Record<string, string>>({})
+  const [publicShareEnabled, setPublicShareEnabled] = useState(false)
+  const [shareToken, setShareToken] = useState<string>("")
+  const [isRotatingShareToken, setIsRotatingShareToken] = useState(false)
+  const [shareLinkCopied, setShareLinkCopied] = useState(false)
 
   // Collapsible states
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(true)
@@ -328,29 +342,119 @@ export default function AgentDetailPage() {
   )
   const primaryLanguage = activeLanguages[0] || ""
 
+  const isTranslationMode = interactionMode === "translation"
+
+  // A translation agent transcribes only the presenter's language but must
+  // synthesise every listener language, so the two intersections diverge.
+  // Every other mode keeps the previous behaviour: the selected languages.
+  const activeTargetLanguages = useMemo(
+    () => getActiveLanguages(targetLanguages),
+    [targetLanguages]
+  )
+  const sttLanguages = useMemo(
+    () => (isTranslationMode ? activeLanguages.slice(0, 1) : activeLanguages),
+    [isTranslationMode, activeLanguages]
+  )
+  const ttsLanguages = useMemo(
+    () => (isTranslationMode ? activeTargetLanguages : activeLanguages),
+    [isTranslationMode, activeTargetLanguages, activeLanguages]
+  )
+
   // Get supported STT providers for all selected languages (intersection)
   const supportedSTTProviders = useMemo(
-    () => getIntersectedSTTProviders(activeLanguages),
-    [activeLanguages]
+    () => getIntersectedSTTProviders(sttLanguages),
+    [sttLanguages]
   )
 
   // Get supported STT models for selected provider across all selected languages
   const supportedSTTModels = useMemo(
-    () => getIntersectedSTTModels(activeLanguages, sttProvider),
-    [activeLanguages, sttProvider]
+    () => getIntersectedSTTModels(sttLanguages, sttProvider),
+    [sttLanguages, sttProvider]
   )
 
   // Get supported TTS providers for all selected languages (intersection)
   const supportedTTSProviders = useMemo(
-    () => getIntersectedTTSProviders(activeLanguages),
-    [activeLanguages]
+    () => getIntersectedTTSProviders(ttsLanguages),
+    [ttsLanguages]
   )
 
   // Get supported TTS models for selected provider across all selected languages
   const supportedTTSModels = useMemo(
-    () => getIntersectedTTSModels(activeLanguages, ttsProvider),
-    [activeLanguages, ttsProvider]
+    () => getIntersectedTTSModels(ttsLanguages, ttsProvider),
+    [ttsLanguages, ttsProvider]
   )
+
+  /** Fixed voice list for one language + the selected TTS provider, if any. */
+  const getTTSVoicesForLanguage = useCallback(
+    (language: string): string[] => {
+      if (!language || !ttsProvider) return []
+      const langData =
+        ttsData.tts.languages[language as keyof typeof ttsData.tts.languages]
+      if (!langData) return []
+      const providerData = langData.models[
+        ttsProvider as keyof typeof langData.models
+      ] as { voices?: string | string[] } | undefined
+      if (!providerData) return []
+      return Array.isArray(providerData.voices) ? providerData.voices : []
+    },
+    [ttsProvider]
+  )
+
+  /** Listener languages the chosen TTS provider cannot actually speak. */
+  const unsupportedTargetLanguages = useMemo(() => {
+    if (!isTranslationMode || !ttsProvider) return []
+    return activeTargetLanguages.filter(
+      (lang) => !getIntersectedTTSProviders([lang]).has(ttsProvider)
+    )
+  }, [isTranslationMode, activeTargetLanguages, ttsProvider])
+
+  const toggleTargetLanguage = (code: string) => {
+    setTargetLanguages((prev) => {
+      const current = getActiveLanguages(prev)
+      return current.includes(code)
+        ? current.filter((c) => c !== code)
+        : [...current, code]
+    })
+    setTargetVoices((prev) => {
+      if (!(code in prev)) return prev
+      const next = { ...prev }
+      delete next[code]
+      return next
+    })
+  }
+
+  const ttsCapableLanguages = useMemo(
+    () => allLanguages.filter((lang) => lang.code in ttsData.tts.languages),
+    [allLanguages]
+  )
+
+  const shareUrl =
+    shareToken && typeof window !== "undefined"
+      ? `${window.location.origin}/live/${shareToken}`
+      : ""
+
+  const handleRotateShareToken = async () => {
+    const targetAgentType = (agent?.agent_type || agentType).trim()
+    if (!targetAgentType) return
+    setIsRotatingShareToken(true)
+    try {
+      const response = await fetchApiRoute("/api/agents/share-rotate", {
+        method: "POST",
+        body: JSON.stringify({ agent_type: targetAgentType }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.detail || data?.error || "Failed to rotate link")
+      }
+      setShareToken(data.share_token || "")
+      setPublicShareEnabled(true)
+      setErrorMessage("")
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to rotate link")
+    } finally {
+      setIsRotatingShareToken(false)
+    }
+  }
 
   // Derive all STT providers from JSON (across all languages)
   const allSTTProviders = useMemo(() => {
@@ -474,9 +578,12 @@ export default function AgentDetailPage() {
   }
 
   const handleLanguagesChange = (languages: string[]) => {
-    setSelectedLanguages(languages)
-    if (languages[0]) {
-      applyLanguageAudioDefaults(languages[0])
+    // A translation agent has exactly one presenter language; keeping extras
+    // would silently do nothing since STT only ever uses the first.
+    const next = interactionMode === "translation" ? languages.slice(0, 1) : languages
+    setSelectedLanguages(next)
+    if (next[0]) {
+      applyLanguageAudioDefaults(next[0])
     }
   }
 
@@ -556,11 +663,26 @@ export default function AgentDetailPage() {
           setAgent(agentData)
           setAgentType(agentData.agent_type || "")
 
+          const rawInteractionMode = agentData.agent_config?.interaction_mode
           const loadedInteractionMode: InteractionMode =
-            agentData.agent_config?.interaction_mode === "non_conversational"
-              ? "non_conversational"
+            rawInteractionMode === "non_conversational" || rawInteractionMode === "translation"
+              ? rawInteractionMode
               : "conversational"
           setInteractionMode(loadedInteractionMode)
+
+          if (loadedInteractionMode === "translation") {
+            setTargetLanguages(
+              dedupeLanguages(
+                (agentData.agent_config?.target_languages || []).map((l) => String(l))
+              )
+            )
+            const loadedVoices = agentData.agent_config?.target_voices
+            setTargetVoices(
+              loadedVoices && typeof loadedVoices === "object" ? { ...loadedVoices } : {}
+            )
+          }
+          setPublicShareEnabled(Boolean(agentData.public_share_enabled))
+          setShareToken(agentData.share_token || "")
 
           setSystemPrompt(agentData.agent_config?.system_prompt || "")
           setGreetingMessage(agentData.agent_config?.greeting_message || "")
@@ -794,6 +916,9 @@ export default function AgentDetailPage() {
   useEffect(() => {
     // Don't validate during initial load
     if (isLoading || isInitialLoadRef.current || activeLanguages.length === 0) return
+    // For translation agents the TTS intersection follows the listener languages;
+    // don't wipe the provider while that list is momentarily empty.
+    if (isTranslationMode && activeTargetLanguages.length === 0) return
 
     if (sttProvider && !supportedSTTProviders.has(sttProvider)) {
       setSttProvider("")
@@ -812,7 +937,7 @@ export default function AgentDetailPage() {
     }
 
     // Clear TTS voice if it's not available for current provider; for Sarvam set to first voice of model
-    if (ttsProvider && ttsVoice && availableTTSVoices.length > 0) {
+    if (!isTranslationMode && ttsProvider && ttsVoice && availableTTSVoices.length > 0) {
       if (!availableTTSVoices.includes(ttsVoice)) {
         if (ttsProvider === "sarvam") {
           setTtsVoice(availableTTSVoices[0])
@@ -821,8 +946,28 @@ export default function AgentDetailPage() {
         }
       }
     }
+    if (isTranslationMode) {
+      // Drop per-target voices the new provider/language set no longer offers.
+      setTargetVoices((prev) => {
+        const cleaned: Record<string, string> = {}
+        for (const lang of activeTargetLanguages) {
+          const voice = prev[lang]
+          if (!voice) continue
+          const voices = getTTSVoicesForLanguage(lang)
+          if (voices.length === 0 || voices.includes(voice)) cleaned[lang] = voice
+        }
+        const prevKeys = Object.keys(prev)
+        const unchanged =
+          prevKeys.length === Object.keys(cleaned).length &&
+          prevKeys.every((k) => prev[k] === cleaned[k])
+        return unchanged ? prev : cleaned
+      })
+    }
   }, [
     activeLanguages,
+    isTranslationMode,
+    activeTargetLanguages,
+    getTTSVoicesForLanguage,
     sttProvider,
     sttModel,
     ttsProvider,
@@ -864,6 +1009,30 @@ export default function AgentDetailPage() {
               ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
               ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
               ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
+            },
+          }
+        : interactionMode === "translation"
+        ? {
+            ...languageConfigFields,
+            interaction_mode: "translation",
+            system_prompt: systemPrompt || "",
+            source_language: primaryLanguage || "",
+            target_languages: activeTargetLanguages,
+            target_voices: Object.fromEntries(
+              activeTargetLanguages
+                .map((lang) => [lang, targetVoices[lang]])
+                .filter(([, voice]) => Boolean(voice))
+            ),
+            mute_publisher_playback: true,
+            stt_model: {
+              name: sttProvider || "",
+              ...(sttModel && { model: sttModel }),
+            },
+            tts_model: {
+              name: ttsProvider || "",
+              ...(ttsModel && { model: ttsModel }),
+              ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") &&
+                ttsDescription && { description: ttsDescription }),
             },
           }
         : {
@@ -934,9 +1103,12 @@ export default function AgentDetailPage() {
 
     const hasConfigChanged = originalNormalized !== currentNormalized
     const hasAgentTypeChanged = agentType.trim() !== (agent.agent_type || "").trim()
-    const hasChanged = hasConfigChanged || hasAgentTypeChanged
+    const hasShareChanged =
+      interactionMode === "translation" &&
+      publicShareEnabled !== Boolean(agent.public_share_enabled)
+    const hasChanged = hasConfigChanged || hasAgentTypeChanged || hasShareChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, speed, originalConfig, agent, interactionMode])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, ttsDescription, speed, originalConfig, agent, interactionMode, activeTargetLanguages, targetVoices, publicShareEnabled])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -984,6 +1156,32 @@ export default function AgentDetailPage() {
                   ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
                   ...(agent.agent_config?.tts_model?.emotion_intensity !== undefined && { emotion_intensity: agent.agent_config.tts_model.emotion_intensity }),
                   ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
+                },
+              }
+            : interactionMode === "translation"
+            ? {
+                interaction_mode: "translation",
+                system_prompt: systemPrompt,
+                greeting_message: "",
+                ...languageConfigFields,
+                source_language: primaryLanguage,
+                target_languages: activeTargetLanguages,
+                target_voices: Object.fromEntries(
+                  activeTargetLanguages
+                    .map((lang) => [lang, targetVoices[lang]])
+                    .filter(([, voice]) => Boolean(voice))
+                ),
+                mute_publisher_playback: true,
+                stt_model: {
+                  name: getProviderOfficialName(sttProvider),
+                  ...(sttModel && { model: sttModel }),
+                },
+                tts_model: {
+                  name: getProviderOfficialName(ttsProvider),
+                  ...(ttsModel && { model: ttsModel }),
+                  speaker: "",
+                  ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") &&
+                    ttsDescription && { description: ttsDescription }),
                 },
               }
             : (() => {
@@ -1043,6 +1241,9 @@ export default function AgentDetailPage() {
           },
                 }
               })(),
+        ...(interactionMode === "translation" && {
+          public_share_enabled: publicShareEnabled,
+        }),
       }
 
       const updatedAgent = await updateAgent(originalAgentType, updatedConfig)
@@ -1055,6 +1256,9 @@ export default function AgentDetailPage() {
         const refreshedAgent = await getAgent(trimmedAgentType, user.org_id)
         setAgent(refreshedAgent)
         setAgentType(refreshedAgent.agent_type || trimmedAgentType)
+        // Enabling sharing for the first time mints a token server-side.
+        setPublicShareEnabled(Boolean(refreshedAgent.public_share_enabled))
+        setShareToken(refreshedAgent.share_token || "")
 
         if (trimmedAgentType !== originalAgentType) {
           router.replace(`/assistants/${encodeURIComponent(trimmedAgentType)}`)
@@ -1512,6 +1716,12 @@ export default function AgentDetailPage() {
                   <Languages className="h-5 w-5 text-slate-400" />
                   Configure Languages
                 </h3>
+                {isTranslationMode && (
+                  <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    The language below is what the <strong>presenter speaks</strong>. Listener
+                    languages are configured under it.
+                  </p>
+                )}
                 {allLanguages.length > 0 ? (
                   <LanguageSelectionSection
                     selectedLanguages={selectedLanguages}
@@ -1530,6 +1740,23 @@ export default function AgentDetailPage() {
                   <div className="px-3 py-2 text-base text-slate-500 border border-slate-200 rounded-lg bg-slate-50">
                     Loading languages...
                   </div>
+                )}
+
+                {isTranslationMode && (
+                  <TranslationLanguagesSection
+                    languageOptions={ttsCapableLanguages}
+                    targetLanguages={activeTargetLanguages}
+                    sourceLanguage={primaryLanguage}
+                    unsupportedLanguages={unsupportedTargetLanguages}
+                    targetVoices={targetVoices}
+                    ttsProvider={ttsProvider}
+                    getVoicesForLanguage={getTTSVoicesForLanguage}
+                    displayLanguageName={displayLanguageName}
+                    onToggleLanguage={toggleTargetLanguage}
+                    onVoiceChange={(lang, voice) =>
+                      setTargetVoices((prev) => ({ ...prev, [lang]: voice }))
+                    }
+                  />
                 )}
               </div>
 
@@ -1643,6 +1870,8 @@ export default function AgentDetailPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {/* Translation agents set one voice per listener language above. */}
+                  {!isTranslationMode && (
                   <div>
                     <label className="text-sm font-semibold text-slate-700 mb-2 block">Voice</label>
                     {(ttsProvider === "gcp" || ttsProvider === "cartesia" || ttsProvider === "elevenlabs") ? (
@@ -1667,6 +1896,7 @@ export default function AgentDetailPage() {
                       </Select>
                     )}
                   </div>
+                  )}
                 </div>
 
                 {(ttsProvider === "ai4bharat" || ttsProvider === "bhashini") && (
@@ -1847,6 +2077,83 @@ export default function AgentDetailPage() {
                 </div>
               </div>
             </div>
+            {/* Share (live-translation agents) */}
+            <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${currentEditStepKey === "share" ? "" : "hidden"}`}>
+              <h2 className="text-lg font-semibold text-slate-900 mb-1 flex items-center gap-2">
+                <Share2 size={20} className="text-blue-500" />
+                Listener Link
+              </h2>
+              <p className="text-sm text-slate-500 mb-8">
+                Anyone with this link can listen — no login needed.
+              </p>
+
+              <div className="flex items-start justify-between gap-6 rounded-xl border border-slate-200 p-5">
+                <div>
+                  <p className="text-base font-semibold text-slate-900">Enable public link</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Turning this off immediately stops new listeners from joining.
+                  </p>
+                </div>
+                <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={publicShareEnabled}
+                    onChange={() => setPublicShareEnabled((v) => !v)}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer-checked:bg-emerald-600 transition-colors" />
+                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+                </label>
+              </div>
+
+              {publicShareEnabled !== Boolean(agent.public_share_enabled) && (
+                <p className="mt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                  Save your changes to apply this.
+                </p>
+              )}
+
+              {shareToken && (
+                <div className="mt-6 space-y-3">
+                  <label className="text-sm font-semibold text-slate-700">Link</label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 truncate rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {shareUrl}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(shareUrl)
+                        setShareLinkCopied(true)
+                        setTimeout(() => setShareLinkCopied(false), 1500)
+                      }}
+                    >
+                      {shareLinkCopied ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Rotate link</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Generates a new link and permanently breaks the previous one.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isRotatingShareToken}
+                      onClick={handleRotateShareToken}
+                    >
+                      {isRotatingShareToken && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      Rotate
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className={`bg-white rounded-xl border border-slate-200 p-6 sm:p-8 ${currentEditStepKey === "call_mgmt" ? "" : "hidden"}`}>
               <h2 className="text-lg font-semibold text-slate-900 mb-1 flex items-center gap-2">
                 <Timer size={20} className="text-blue-500" />

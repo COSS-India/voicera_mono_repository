@@ -31,6 +31,8 @@ import {
   Settings,
   Trash2,
   Loader2,
+  Radio,
+  Link2,
 } from "lucide-react"
 import type { Agent } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -42,6 +44,7 @@ interface AgentCardProps {
   onViewConfig: (agent: Agent) => void
   onTestCall: (agent: Agent) => void
   onTestBrowser: (agent: Agent) => void
+  onBroadcast?: (agent: Agent) => void
   onViewHistory: (agent: Agent) => void
   onDelete?: (agent: Agent) => void
   isDeleting?: boolean
@@ -55,15 +58,18 @@ export function AgentCard({
   onViewConfig,
   onTestCall,
   onTestBrowser,
+  onBroadcast,
   onViewHistory,
   onDelete,
   isDeleting = false,
   callCount = 0,
 }: AgentCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
   const isAlertAgent = agent.agent_config?.interaction_mode === "non_conversational"
+  const isTranslationAgent = agent.agent_config?.interaction_mode === "translation"
   const fullPromptText = isAlertAgent
     ? (agent.agent_config?.greeting_message ?? "").trim()
     : (agent.agent_config?.system_prompt ?? "").trim()
@@ -123,7 +129,7 @@ export function AgentCard({
 
   const hoverZone = (
     <>
-      <div>
+      <div className="flex-1">
         <div className="flex flex-wrap items-start gap-2">
           <h3 className="text-[17px] font-medium leading-snug text-slate-900 break-words">
             {displayName}
@@ -133,6 +139,11 @@ export function AgentCard({
               Alert
             </span>
           )}
+          {isTranslationAgent && (
+            <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+              Live Translation
+            </span>
+          )}
         </div>
         <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-slate-500">
           {description}
@@ -140,6 +151,21 @@ export function AgentCard({
       </div>
 
       <div className="mt-4">
+        {isTranslationAgent ? (
+          <span
+            className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium"
+            style={{
+              backgroundColor: agent.share_token ? "#EAF3DE" : "#FCEBEB",
+              color: agent.share_token ? "#3B6D11" : "#A32D2D",
+            }}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: agent.share_token ? "#3B6D11" : "#A32D2D" }}
+            />
+            {agent.share_token ? "Link active" : "Link disabled"}
+          </span>
+        ) : (
         <button
           type="button"
           className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium"
@@ -159,6 +185,7 @@ export function AgentCard({
           />
           {isConnected ? agent.phone_number : "Not linked"}
         </button>
+        )}
         {callCount > 0 && (
           <span className="ml-2 inline-flex h-8 items-center rounded-full bg-slate-100 px-2.5 text-[13px] font-medium text-slate-700">
             {callCount.toLocaleString()} Calls
@@ -173,7 +200,7 @@ export function AgentCard({
   const hoverZoneBody = fullPromptText ? (
     <HoverCard openDelay={200} closeDelay={100}>
       <HoverCardTrigger asChild>
-        <div className="mt-4 space-y-4 outline-none">{hoverZone}</div>
+        <div className="mt-4 flex flex-1 flex-col space-y-4 outline-none">{hoverZone}</div>
       </HoverCardTrigger>
       <HoverCardPortal>
         <HoverCardContent side="top" className="max-w-md max-h-80 overflow-y-auto p-4">
@@ -187,14 +214,14 @@ export function AgentCard({
       </HoverCardPortal>
     </HoverCard>
   ) : (
-    <div className="mt-4 space-y-4">{hoverZone}</div>
+    <div className="mt-4 flex flex-1 flex-col space-y-4">{hoverZone}</div>
   )
 
   return (
     <>
     <div
       onClick={handleCardClick}
-      className="group cursor-pointer rounded-xl border-[0.5px] border-slate-200 bg-white p-[18px] transition-all duration-150 hover:-translate-y-[2px] hover:border-slate-300"
+      className="group flex h-full cursor-pointer flex-col rounded-xl border-[0.5px] border-slate-200 bg-white p-[18px] transition-all duration-150 hover:-translate-y-[2px] hover:border-slate-300"
     >
       <div className="flex items-start justify-between gap-3">
         {agentIcon}
@@ -258,6 +285,46 @@ export function AgentCard({
 
       {hoverZoneBody}
 
+      {isTranslationAgent ? (
+        // A translation agent has no caller: the presenter broadcasts and
+        // listeners join through the public link.
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            onClick={(e) => {
+              e.stopPropagation()
+              onBroadcast?.(agent)
+            }}
+            variant="outline"
+            className="h-9 rounded-[7px] border-[0.5px] border-slate-300 bg-transparent px-2 text-[13px] font-medium text-slate-700 shadow-none hover:bg-[var(--color-background-secondary)]"
+            title="Start speaking; listeners hear the live translation"
+          >
+            <Radio className="mr-1.5 h-3.5 w-3.5" />
+            Broadcast
+          </Button>
+          <Button
+            onClick={async (e) => {
+              e.stopPropagation()
+              if (!agent.share_token) return
+              await navigator.clipboard.writeText(
+                `${window.location.origin}/live/${agent.share_token}`,
+              )
+              setLinkCopied(true)
+              setTimeout(() => setLinkCopied(false), 1500)
+            }}
+            variant="outline"
+            disabled={!agent.share_token}
+            className="h-9 rounded-[7px] border-[0.5px] border-slate-300 bg-transparent px-2 text-[13px] font-medium text-slate-700 shadow-none hover:bg-[var(--color-background-secondary)] disabled:text-slate-400"
+            title={
+              agent.share_token
+                ? "Copy the public listener link"
+                : "Enable the public link in the agent settings"
+            }
+          >
+            <Link2 className="mr-1.5 h-3.5 w-3.5" />
+            {linkCopied ? "Copied" : "Copy Link"}
+          </Button>
+        </div>
+      ) : (
       <div className="grid grid-cols-2 gap-2">
         <Button
           onClick={(e) => {
@@ -304,6 +371,7 @@ export function AgentCard({
           Test on Browser
         </Button>
       </div>
+      )}
     </div>
 
     <Dialog

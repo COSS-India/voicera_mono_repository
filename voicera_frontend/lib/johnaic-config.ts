@@ -16,3 +16,15 @@ export function getBrowserAgentWebSocketUrl(agentId: string): string {
   const wsBase = johnaicServerUrlToWebSocket(requireJohnaicServerUrl())
   return `${wsBase}/browser/agent/${encodeURIComponent(agentId)}`
 }
+
+/** Presenter (host) leg of a live-translation room; requires a host token. */
+export function getTranslationPublishWebSocketUrl(agentId: string, token: string): string {
+  const wsBase = johnaicServerUrlToWebSocket(requireJohnaicServerUrl())
+  return `${wsBase}/translate/publish/${encodeURIComponent(agentId)}?token=${encodeURIComponent(token)}`
+}
+
+/** Public listener leg; pick a target language from the agent's allowed set. */
+export function getTranslationListenWebSocketUrl(shareToken: string, language: string): string {
+  const wsBase = johnaicServerUrlToWebSocket(requireJohnaicServerUrl())
+  return `${wsBase}/translate/listen/${encodeURIComponent(shareToken)}?lang=${encodeURIComponent(language)}`
+}

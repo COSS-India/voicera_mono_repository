@@ -160,7 +160,17 @@ async def get_current_user(
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    # Purpose-scoped tokens (e.g. the "host" token handed to a broadcast
+    # WebSocket via a URL query string, which proxies routinely log) must never
+    # double as a session token for the REST API.
+    if payload.get("role"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This token cannot be used for API access",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return {
         "email": email,
         "org_id": payload.get("org_id"),

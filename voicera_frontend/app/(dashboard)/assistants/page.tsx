@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
@@ -21,10 +21,12 @@ import {
 } from "@/components/ui/select"
 import { TestCallSheet } from "@/components/assistants/test-call-sheet"
 import { TestBrowserDialog } from "@/components/assistants/test-browser-dialog"
+import { BroadcastDialog } from "@/components/assistants/broadcast-dialog"
 import { AgentCard } from "@/components/assistants/agent-card"
 import { CreateNewAgentCard } from "@/components/assistants/create-new-agent-card"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
+import { TranslationLanguagesSection } from "@/components/assistants/translation-languages-section"
 import {
   ChevronRight,
   ChevronLeft,
@@ -45,6 +47,8 @@ import {
   Timer,
   MessageSquare,
   Bell,
+  Languages,
+  Share2,
 } from "lucide-react"
 
 // Import JSON data
@@ -202,7 +206,15 @@ const getAgentDescription = (agent: Agent): string => {
 }
 
 // Types
-type WizardStepKey = "type" | "agent" | "llm" | "audio" | "telephony" | "call_mgmt" | "review"
+type WizardStepKey =
+  | "type"
+  | "agent"
+  | "llm"
+  | "audio"
+  | "telephony"
+  | "call_mgmt"
+  | "share"
+  | "review"
 
 const WIZARD_STEP_META: Record<
   WizardStepKey,
@@ -214,13 +226,23 @@ const WIZARD_STEP_META: Record<
   audio: { title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
   telephony: { title: "Telephony", subtitle: "Select Provider", icon: Phone },
   call_mgmt: { title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
+  share: { title: "Share", subtitle: "Listener Link", icon: Share2 },
   review: { title: "Review", subtitle: "Confirm", icon: CheckCircle2 },
 }
+
+// Extra guidance appended to the engine's fixed "translate only" instruction.
+const TRANSLATION_DEFAULT_PROMPT =
+  "Translate faithfully and keep the speaker's tone. Keep names, numbers and technical terms unchanged."
 
 function getWizardStepKeys(mode: InteractionMode | null): WizardStepKey[] {
   if (!mode) return ["type"]
   if (mode === "non_conversational") {
     return ["type", "agent", "audio", "telephony", "review"]
+  }
+  if (mode === "translation") {
+    // No telephony/call-management: a translation agent is browser-only, and
+    // its listeners are reached through the public share link.
+    return ["type", "agent", "audio", "share", "review"]
   }
   return ["type", "agent", "llm", "audio", "telephony", "call_mgmt", "review"]
 }
@@ -264,6 +286,10 @@ interface AgentConfig {
   similarityBoost: number
   stability: number
   telephonyProvider: string
+  // Live translation only
+  targetLanguages: string[]
+  targetVoices: Record<string, string>
+  publicShareEnabled: boolean
 }
 type AgentWithTelephony = Agent & {
   plivo_app_id?: string
@@ -308,6 +334,9 @@ const defaultConfig: AgentConfig = {
   similarityBoost: 75,
   stability: 50,
   telephonyProvider: "Plivo",
+  targetLanguages: [],
+  targetVoices: {},
+  publicShareEnabled: true,
 }
 
 const formatDurationSeconds = (seconds: number) => {
@@ -336,6 +365,7 @@ export default function AssistantsPage() {
   const [isCreatingAgent, setIsCreatingAgent] = useState(false)
   const [isTestCallSheetOpen, setIsTestCallSheetOpen] = useState(false)
   const [isTestBrowserDialogOpen, setIsTestBrowserDialogOpen] = useState(false)
+  const [isBroadcastDialogOpen, setIsBroadcastDialogOpen] = useState(false)
   const [selectedAgentForTest, setSelectedAgentForTest] = useState<Agent | null>(null)
   const [showDeleteSuccessToast, setShowDeleteSuccessToast] = useState(false)
   const [deletingAgentType, setDeletingAgentType] = useState<string | null>(null)
@@ -582,51 +612,102 @@ export default function AssistantsPage() {
   )
   const primaryLanguage = activeLanguages[0] || ""
 
+  const isTranslationMode = config.interactionMode === "translation"
+
+  // A translation agent transcribes only the presenter's language but must
+  // synthesise every listener language, so the two intersections diverge.
+  // For all other modes both stay exactly as before: the selected languages.
+  const sttLanguages = useMemo(
+    () => (isTranslationMode ? activeLanguages.slice(0, 1) : activeLanguages),
+    [isTranslationMode, activeLanguages]
+  )
+  const translationTargetLanguages = useMemo(
+    () => getActiveLanguages(config.targetLanguages),
+    [config.targetLanguages]
+  )
+  const ttsLanguages = useMemo(
+    () => (isTranslationMode ? translationTargetLanguages : activeLanguages),
+    [isTranslationMode, translationTargetLanguages, activeLanguages]
+  )
+
   // Get supported STT providers for all selected languages (intersection)
   const supportedSTTProviders = useMemo(
-    () => getIntersectedSTTProviders(activeLanguages),
-    [activeLanguages]
+    () => getIntersectedSTTProviders(sttLanguages),
+    [sttLanguages]
   )
 
   // Get supported STT models for selected provider across all selected languages
   const supportedSTTModels = useMemo(
-    () => getIntersectedSTTModels(activeLanguages, config.sttProvider),
-    [activeLanguages, config.sttProvider]
+    () => getIntersectedSTTModels(sttLanguages, config.sttProvider),
+    [sttLanguages, config.sttProvider]
   )
 
   // Get supported TTS providers for all selected languages (intersection)
   const supportedTTSProviders = useMemo(
-    () => getIntersectedTTSProviders(activeLanguages),
-    [activeLanguages]
+    () => getIntersectedTTSProviders(ttsLanguages),
+    [ttsLanguages]
   )
 
   // Get supported TTS models for selected provider across all selected languages
   const supportedTTSModels = useMemo(
-    () => getIntersectedTTSModels(activeLanguages, config.ttsProvider),
-    [activeLanguages, config.ttsProvider]
+    () => getIntersectedTTSModels(ttsLanguages, config.ttsProvider),
+    [ttsLanguages, config.ttsProvider]
+  )
+
+  /** Languages any TTS provider can speak — the candidate listener languages. */
+  const ttsCapableLanguages = useMemo(
+    () => allLanguages.filter((lang) => lang.code in ttsData.tts.languages),
+    [allLanguages]
+  )
+
+  /** Selected listener languages the chosen TTS provider cannot actually speak. */
+  const unsupportedTargetLanguages = useMemo(() => {
+    if (!isTranslationMode || !config.ttsProvider) return []
+    return translationTargetLanguages.filter(
+      (lang) => !getIntersectedTTSProviders([lang]).has(config.ttsProvider)
+    )
+  }, [isTranslationMode, translationTargetLanguages, config.ttsProvider])
+
+  const toggleTargetLanguage = (code: string) => {
+    setConfig((prev) => {
+      const current = getActiveLanguages(prev.targetLanguages)
+      const next = current.includes(code)
+        ? current.filter((c) => c !== code)
+        : [...current, code]
+      const targetVoices = { ...prev.targetVoices }
+      if (!next.includes(code)) delete targetVoices[code]
+      return { ...prev, targetLanguages: next, targetVoices }
+    })
+  }
+
+  /** Concrete voice list for one language + the selected TTS provider, if any. */
+  const getTTSVoicesForLanguage = useCallback(
+    (language: string): string[] => {
+      if (!language || !config.ttsProvider) return []
+      const langData =
+        ttsData.tts.languages[language as keyof typeof ttsData.tts.languages]
+      if (!langData) return []
+      const providerData = langData.models[
+        config.ttsProvider as keyof typeof langData.models
+      ] as { voices?: string | string[] } | undefined
+      if (!providerData) return []
+      return Array.isArray(providerData.voices) ? providerData.voices : []
+    },
+    [config.ttsProvider]
   )
 
   // Get available TTS voices for primary language + selected provider/model
-  const availableTTSVoices = useMemo(() => {
-    if (!primaryLanguage || !config.ttsProvider) return []
-    const langData =
-      ttsData.tts.languages[primaryLanguage as keyof typeof ttsData.tts.languages]
-    if (!langData) return []
-
-    const providerData = langData.models[config.ttsProvider as keyof typeof langData.models] as {
-      voices?: string | string[]
-    }
-    if (!providerData) return []
-
-    if (Array.isArray(providerData.voices)) {
-      return providerData.voices
-    }
-    return []
-  }, [primaryLanguage, config.ttsProvider])
+  const availableTTSVoices = useMemo(
+    () => getTTSVoicesForLanguage(primaryLanguage),
+    [getTTSVoicesForLanguage, primaryLanguage]
+  )
 
   // Clear STT/TTS selections when they fall outside the intersected language support
   useEffect(() => {
     if (activeLanguages.length === 0) return
+    // Translation agents pick target languages after the source; don't wipe the
+    // TTS defaults while that list is still empty.
+    if (isTranslationMode && translationTargetLanguages.length === 0) return
 
     setConfig((prev) => {
       let changed = false
@@ -652,12 +733,31 @@ export default function AssistantsPage() {
         changed = true
       }
       if (
+        !isTranslationMode &&
         prev.ttsVoice &&
         availableTTSVoices.length > 0 &&
         !availableTTSVoices.includes(prev.ttsVoice)
       ) {
         next.ttsVoice = ""
         changed = true
+      }
+      if (isTranslationMode) {
+        // Drop per-target voices that the new provider/language set no longer offers.
+        const cleaned: Record<string, string> = {}
+        for (const lang of translationTargetLanguages) {
+          const voice = prev.targetVoices[lang]
+          if (!voice) continue
+          const voices = getTTSVoicesForLanguage(lang)
+          if (voices.length === 0 || voices.includes(voice)) cleaned[lang] = voice
+        }
+        const prevKeys = Object.keys(prev.targetVoices)
+        if (
+          prevKeys.length !== Object.keys(cleaned).length ||
+          prevKeys.some((k) => prev.targetVoices[k] !== cleaned[k])
+        ) {
+          next.targetVoices = cleaned
+          changed = true
+        }
       }
 
       return changed ? next : prev
@@ -669,6 +769,9 @@ export default function AssistantsPage() {
     supportedTTSModels,
     supportedTTSProviders,
     availableTTSVoices,
+    isTranslationMode,
+    translationTargetLanguages,
+    getTTSVoicesForLanguage,
   ])
 
   // Get LLM models for selected provider
@@ -715,6 +818,11 @@ export default function AssistantsPage() {
   const handleTestBrowser = (agent: Agent) => {
     setSelectedAgentForTest(agent)
     setIsTestBrowserDialogOpen(true)
+  }
+
+  const handleBroadcast = (agent: Agent) => {
+    setSelectedAgentForTest(agent)
+    setIsBroadcastDialogOpen(true)
   }
 
   const handleViewHistory = (agent: Agent) => {
@@ -853,9 +961,13 @@ export default function AssistantsPage() {
 
   const setSelectedLanguages = (languages: string[]) => {
     setConfig((prev) => {
-      const updated = { ...prev, selectedLanguages: languages }
-      if (languages[0]) {
-        applyLanguageAudioDefaults(updated, languages[0])
+      // A translation agent has exactly one presenter language; keeping extras
+      // would silently do nothing since STT only ever uses the first.
+      const next =
+        prev.interactionMode === "translation" ? languages.slice(0, 1) : languages
+      const updated = { ...prev, selectedLanguages: next }
+      if (next[0]) {
+        applyLanguageAudioDefaults(updated, next[0])
       }
       return updated
     })
@@ -874,6 +986,18 @@ export default function AssistantsPage() {
           applyLanguageAudioDefaults(updated, languages[0])
         }
       }
+      if (key === "interactionMode") {
+        // Translation agents are browser-only and skip the telephony step, so
+        // clear the provider default rather than silently provisioning a number.
+        updated.telephonyProvider =
+          value === "translation" ? "none" : prev.telephonyProvider
+        if (value === "translation" && prev.systemPrompt === defaultConfig.systemPrompt) {
+          updated.systemPrompt = TRANSLATION_DEFAULT_PROMPT
+        }
+        if (value !== "translation" && prev.systemPrompt === TRANSLATION_DEFAULT_PROMPT) {
+          updated.systemPrompt = defaultConfig.systemPrompt
+        }
+      }
       if (key === "sttProvider") {
         updated.sttModel = ""
       }
@@ -881,6 +1005,9 @@ export default function AssistantsPage() {
         updated.ttsModel = ""
         updated.ttsVoice = ""
         updated.ttsDescription = ""
+        if (prev.interactionMode === "translation") {
+          updated.targetVoices = {}
+        }
       }
       if (key === "llmProvider") {
         updated.llmModel = ""
@@ -1056,6 +1183,25 @@ export default function AssistantsPage() {
                 ...languageFields,
                 tts_model: ttsModel,
               }
+            : config.interactionMode === "translation"
+            ? {
+                interaction_mode: "translation",
+                system_prompt: config.systemPrompt,
+                greeting_message: "",
+                // language/languages drive STT; source_language is the explicit
+                // presenter language the translation prompt is built from.
+                ...languageFields,
+                source_language: primaryLanguage,
+                target_languages: translationTargetLanguages,
+                target_voices: Object.fromEntries(
+                  translationTargetLanguages
+                    .map((lang) => [lang, config.targetVoices[lang]])
+                    .filter(([, voice]) => Boolean(voice))
+                ),
+                mute_publisher_playback: true,
+                stt_model: sttModel,
+                tts_model: ttsModel,
+              }
             : {
                 interaction_mode: "conversational",
                 system_prompt: config.systemPrompt,
@@ -1092,6 +1238,9 @@ export default function AssistantsPage() {
         ...(config.telephonyProvider === "Plivo" && {
           plivo_app_id: plivoAppId,
           plivo_answer_url: plivoAnswerUrl,
+        }),
+        ...(config.interactionMode === "translation" && {
+          public_share_enabled: config.publicShareEnabled,
         }),
       }
 
@@ -1155,6 +1304,24 @@ export default function AssistantsPage() {
             config.ttsVoice.length > 0
           )
         }
+        if (config.interactionMode === "translation") {
+          // A voice is required only for the languages whose provider offers a
+          // fixed voice list (e.g. AI4Bharat speakers); free-form IDs stay optional.
+          const voicesReady = translationTargetLanguages.every((lang) => {
+            const voices = getTTSVoicesForLanguage(lang)
+            return voices.length === 0 || !!config.targetVoices[lang]
+          })
+          return !!(
+            primaryLanguage &&
+            config.sttProvider &&
+            config.sttModel &&
+            config.ttsProvider &&
+            config.ttsModel &&
+            translationTargetLanguages.length > 0 &&
+            unsupportedTargetLanguages.length === 0 &&
+            voicesReady
+          )
+        }
         return !!(
           primaryLanguage &&
           config.sttProvider &&
@@ -1168,6 +1335,8 @@ export default function AssistantsPage() {
         return !!config.telephonyProvider
       case "call_mgmt":
         return config.callTimeoutSeconds >= 60
+      case "share":
+        return true
       case "review":
         return true
       default:
@@ -1321,6 +1490,7 @@ export default function AssistantsPage() {
                 onViewConfig={viewConfig}
                 onTestCall={handleTestCall}
                 onTestBrowser={handleTestBrowser}
+                onBroadcast={handleBroadcast}
                 onViewHistory={handleViewHistory}
                 onDelete={handleDelete}
                 isDeleting={deletingAgentType === agent.agent_type}
@@ -1342,6 +1512,13 @@ export default function AssistantsPage() {
         <TestBrowserDialog
           open={isTestBrowserDialogOpen}
           onOpenChange={setIsTestBrowserDialogOpen}
+          agent={selectedAgentForTest}
+          getAgentDisplayName={getAgentDisplayName}
+        />
+
+        <BroadcastDialog
+          open={isBroadcastDialogOpen}
+          onOpenChange={setIsBroadcastDialogOpen}
           agent={selectedAgentForTest}
           getAgentDisplayName={getAgentDisplayName}
         />
@@ -1459,8 +1636,7 @@ export default function AssistantsPage() {
                   </div>
                   {interactionModeLocked && (
                     <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-                      Agent type is locked. You cannot switch between conversational and
-                      non-conversational during setup.
+                      Agent type is locked. You cannot change the agent type during setup.
                     </p>
                   )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1504,6 +1680,27 @@ export default function AssistantsPage() {
                         For alerts and one-way messages. Plays your message and ends the call.
                       </p>
                     </button>
+                    <button
+                      type="button"
+                      disabled={interactionModeLocked}
+                      onClick={() => updateConfig("interactionMode", "translation")}
+                      className={`text-left rounded-xl border-2 p-6 transition-all ${
+                        config.interactionMode === "translation"
+                          ? "border-slate-900 bg-slate-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      } ${interactionModeLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-10 w-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                          <Languages className="h-5 w-5" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900">Live Translation</h3>
+                      </div>
+                      <p className="text-sm text-slate-600">
+                        One presenter speaks; many listeners open a shared link and hear a live
+                        translation in the language they choose.
+                      </p>
+                    </button>
                   </div>
                 </div>
 
@@ -1536,7 +1733,9 @@ export default function AssistantsPage() {
                     </p>
                   </div>
 
-                  {/* Agent Welcome / Alert Message */}
+                  {/* Agent Welcome / Alert Message — a translation agent never
+                      greets anyone; it only relays the presenter's speech. */}
+                  {!isTranslationMode && (
                   <div className="space-y-3">
                     <label className="text-base font-bold text-slate-900">
                       {config.interactionMode === "non_conversational"
@@ -1600,19 +1799,33 @@ export default function AssistantsPage() {
                     </div>
                     )}
                   </div>
+                  )}
 
                   {/* Agent Prompt */}
                   {config.interactionMode !== "non_conversational" && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <label className="text-base font-bold text-slate-900">Agent Prompt</label>
+                      <label className="text-base font-bold text-slate-900">
+                        {isTranslationMode ? "Translation Guidance" : "Agent Prompt"}
+                      </label>
                     </div>
                     <Textarea
                       value={config.systemPrompt}
                       onChange={(e) => updateConfig("systemPrompt", e.target.value)}
-                      placeholder="You are a helpful assistant that..."
+                      placeholder={
+                        isTranslationMode
+                          ? "Translate faithfully and keep the speaker's tone."
+                          : "You are a helpful assistant that..."
+                      }
                       className="min-h-[200px] rounded-lg border-slate-200 bg-white resize-none text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                     />
+                    {isTranslationMode && (
+                      <p className="text-sm text-slate-500">
+                        The engine always translates the presenter into each listener&apos;s chosen
+                        language. Use this only for extra guidance such as tone or how to handle
+                        names and technical terms.
+                      </p>
+                    )}
                   </div>
                   )}
                 </div>
@@ -1887,6 +2100,12 @@ export default function AssistantsPage() {
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-8">
                   {/* Language Selection */}
+                  {isTranslationMode && (
+                    <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+                      Pick the language the <strong>presenter speaks</strong> below. Listener
+                      languages are configured after it.
+                    </p>
+                  )}
                   <LanguageSelectionSection
                     selectedLanguages={config.selectedLanguages}
                     allLanguages={allLanguages}
@@ -1900,6 +2119,27 @@ export default function AssistantsPage() {
                     onOpenChange={setLanguageOpen}
                     onLanguagesChange={setSelectedLanguages}
                   />
+
+                  {/* Translation: listener (target) languages + per-language voices */}
+                  {isTranslationMode && (
+                    <TranslationLanguagesSection
+                      languageOptions={ttsCapableLanguages}
+                      targetLanguages={translationTargetLanguages}
+                      sourceLanguage={primaryLanguage}
+                      unsupportedLanguages={unsupportedTargetLanguages}
+                      targetVoices={config.targetVoices}
+                      ttsProvider={config.ttsProvider}
+                      getVoicesForLanguage={getTTSVoicesForLanguage}
+                      displayLanguageName={displayLanguageName}
+                      onToggleLanguage={toggleTargetLanguage}
+                      onVoiceChange={(lang, voice) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          targetVoices: { ...prev.targetVoices, [lang]: voice },
+                        }))
+                      }
+                    />
+                  )}
 
                   {/* STT Settings */}
                   {activeLanguages.length > 0 && config.interactionMode !== "non_conversational" && (
@@ -2062,6 +2302,7 @@ export default function AssistantsPage() {
                           </Select>
                         </div>
 
+                        {!isTranslationMode && (
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Voice</label>
                           <div className="flex items-center gap-2">
@@ -2088,7 +2329,9 @@ export default function AssistantsPage() {
                             )}
                           </div>
                         </div>
+                        )}
                       </div>
+
 
                       {/* TTS Description for AI4Bharat and Bhashini */}
                       {(config.ttsProvider === "ai4bharat" || config.ttsProvider === "bhashini") && (
@@ -2577,6 +2820,54 @@ export default function AssistantsPage() {
                     </div>
                   </div>
                 </div>
+
+                <Button
+                  onClick={handleNextStep}
+                  disabled={!canProceed()}
+                  className="mt-8 h-11 px-6 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium gap-2 disabled:bg-slate-200 disabled:text-slate-400 transition-all"
+                >
+                  {getNextStepLabel()}
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {/* Step: Share (translation agents) */}
+            {currentStepKey === "share" && (
+              <div className="bg-white rounded-xl border border-slate-200 p-8">
+                <h2 className="text-xl font-bold text-slate-900 mb-1">Listener Link</h2>
+                <p className="text-slate-500 mb-8">
+                  Anyone with the link can listen — no login needed. Keep it off if you only want
+                  to test the agent yourself.
+                </p>
+
+                <div className="flex items-start justify-between gap-6 rounded-xl border border-slate-200 p-5">
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">Enable public link</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Generates a random, unguessable link. You can turn it off or rotate the link
+                      later from the agent settings.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={config.publicShareEnabled}
+                      onChange={() =>
+                        updateConfig("publicShareEnabled", !config.publicShareEnabled)
+                      }
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer-checked:bg-emerald-600 transition-colors" />
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+                  </label>
+                </div>
+
+                {!config.publicShareEnabled && (
+                  <p className="mt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                    Without a public link, listeners cannot join this translation session.
+                  </p>
+                )}
 
                 <Button
                   onClick={handleNextStep}

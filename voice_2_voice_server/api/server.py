@@ -19,12 +19,15 @@ import requests
 
 from .bot import bot
 from .services import platform_key_fallback_enabled
+from .translation_room import run_publisher, run_listener, get_or_create_room
 from utils.telemetry import router as telemetry_router
 from utils.backend_utils import (
     create_meeting_in_backend,
     update_meeting_end_time,
     fetch_agent_config_from_backend,
     fetch_integration_key,
+    fetch_public_agent_by_token,
+    resolve_broadcast_token,
 )
 from utils.batching import create_batch_router
 from utils.call_management import peek_capacity_available
@@ -602,6 +605,67 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
     finally:
         logger.info(f"🔌 Browser WebSocket closed: call_sid={call_sid}")
 
+@app.websocket("/translate/publish/{agent_id}")
+async def translate_publish_endpoint(websocket: WebSocket, agent_id: str):
+    """Presenter (host) leg of a live translation room.
+
+    Authorised by a short-lived host token (?token=) minted by the backend for
+    the agent owner; the public share_token does NOT grant publish rights.
+    """
+    await websocket.accept()
+    logger.info(f"🔌 Translation publish connected: agent={agent_id}")
+    try:
+        token = websocket.query_params.get("token")
+        resolved = resolve_broadcast_token(token) if token else None
+        if not resolved or resolved.get("agent_id") != agent_id:
+            await websocket.close(code=4401, reason="unauthorized")
+            return
+
+        agent_config = await fetch_agent_config_from_backend(agent_id)
+        if not agent_config or agent_config.get("interaction_mode") != "translation":
+            await websocket.close(code=4404, reason="not a translation agent")
+            return
+
+        await run_publisher(websocket, agent_id, agent_config)
+    except Exception as e:
+        logger.error(f"❌ Translation publish error: {e}")
+        logger.debug(traceback.format_exc())
+    finally:
+        logger.info(f"🔌 Translation publish closed: agent={agent_id}")
+
+
+@app.websocket("/translate/listen/{share_token}")
+async def translate_listen_endpoint(websocket: WebSocket, share_token: str):
+    """Public listener leg: pick a language and hear the live translation."""
+    await websocket.accept()
+    try:
+        language = websocket.query_params.get("lang")
+        public = fetch_public_agent_by_token(share_token)
+        if not public or public.get("interaction_mode") != "translation":
+            await websocket.close(code=4404, reason="share link not found")
+            return
+
+        target_languages = public.get("target_languages") or []
+        if not language or language not in target_languages:
+            await websocket.close(code=4400, reason="invalid or missing language")
+            return
+
+        agent_id = public.get("agent_id")
+        agent_config = await fetch_agent_config_from_backend(agent_id)
+        if not agent_config:
+            await websocket.close(code=4404, reason="agent unavailable")
+            return
+
+        room = await get_or_create_room(agent_id, agent_config)
+        logger.info(f"🔌 Translation listener connected: agent={agent_id} lang={language}")
+        await run_listener(websocket, room, language)
+    except Exception as e:
+        logger.error(f"❌ Translation listener error: {e}")
+        logger.debug(traceback.format_exc())
+    finally:
+        logger.info("🔌 Translation listener closed")
+
+
 def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info"):
     """Run the server with optimized settings for low-latency voice applications.
     
@@ -621,6 +685,14 @@ def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info")
         logger.warning("⚠️ Could not enable TCP_NODELAY, latency may be affected")
 
     num_workers = int(os.environ.get("VOICE_SERVER_NUM_WORKERS", "4"))
+    if num_workers > 1:
+        logger.warning(
+            "⚠️ VOICE_SERVER_NUM_WORKERS={} > 1: live-translation rooms are "
+            "process-local. Presenter and listeners must land on the same worker "
+            "(single-worker deploy or sticky routing on /translate/*), or a "
+            "shared bus (e.g. Redis) is required.",
+            num_workers,
+        )
 
     config = Config(
         "api.server:app",

@@ -1,16 +1,28 @@
 """
 Agent API routes.
 """
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+from datetime import timedelta
+from fastapi import APIRouter, HTTPException, status, Depends, Query, Body
+from pydantic import BaseModel
 from app.models.schemas import (
     AgentConfigCreate, AgentConfigResponse, AgentConfigUpdate,
+    PublicAgentResponse, BroadcastTokenResponse,
     SuccessResponse, ErrorResponse
 )
 from app.services import agent_service, vobiz
-from app.auth import get_current_user, verify_api_key
+from app.auth import get_current_user, verify_api_key, create_access_token, verify_token
 from typing import Dict, Any, List
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+# Host (presenter) broadcast tokens are short-lived: they only need to survive
+# the moment between "Start broadcasting" and the publish WebSocket opening.
+BROADCAST_TOKEN_EXPIRE_MINUTES = 10
+
+
+class BroadcastResolveRequest(BaseModel):
+    """Voice-server → backend: resolve a host broadcast token."""
+    token: str
 
 
 # ============================================================================
@@ -78,6 +90,44 @@ async def get_agent_by_phone_number(
             detail="No agent found for this phone number"
         )
     return agent
+
+
+@router.get("/public/by-token/{share_token}", response_model=PublicAgentResponse)
+async def get_public_agent_by_token_for_bot(
+    share_token: str,
+    _: bool = Depends(verify_api_key),
+):
+    """Resolve a share_token to a secret-stripped agent (voice-server endpoint).
+
+    Includes agent_id because the voice server needs it to locate the room; the
+    unauthenticated /public variant deliberately omits it.
+    """
+    agent = agent_service.fetch_agent_by_share_token(share_token)
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Share link not found or disabled",
+        )
+    return agent_service.build_public_agent_projection(agent, include_agent_id=True)
+
+
+@router.post("/broadcast/resolve", response_model=Dict[str, Any])
+async def resolve_broadcast_token_for_bot(
+    payload: BroadcastResolveRequest,
+    _: bool = Depends(verify_api_key),
+):
+    """Verify a host broadcast token and return its agent_id/org_id.
+
+    Keeps all JWT logic in the backend; the voice server only makes an
+    X-API-Key HTTP call to authorise a presenter.
+    """
+    claims = verify_token(payload.token)
+    if not claims or claims.get("role") != "host" or not claims.get("agent_id"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired broadcast token",
+        )
+    return {"agent_id": claims["agent_id"], "org_id": claims.get("org_id")}
 
 
 # ============================================================================
@@ -195,6 +245,57 @@ async def update_agent_config(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result["message"]
+        )
+    return result
+
+
+@router.post("/{agent_type}/broadcast-token", response_model=BroadcastTokenResponse)
+async def create_broadcast_token(
+    agent_type: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Mint a short-lived host token so the owner can open the publish leg."""
+    agent = agent_service.fetch_agent_config_for_org(agent_type, current_user["org_id"])
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent type not found",
+        )
+    agent_id = agent.get("agent_id")
+    expires = timedelta(minutes=BROADCAST_TOKEN_EXPIRE_MINUTES)
+    token = create_access_token(
+        {
+            "sub": current_user["email"],
+            "org_id": current_user["org_id"],
+            "agent_id": agent_id,
+            "role": "host",
+        },
+        expires_delta=expires,
+    )
+    return BroadcastTokenResponse(
+        token=token,
+        agent_id=agent_id,
+        expires_in=int(expires.total_seconds()),
+    )
+
+
+@router.post("/{agent_type}/share/rotate", response_model=Dict[str, Any])
+async def rotate_agent_share_token(
+    agent_type: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Regenerate the public share_token, invalidating previously shared links."""
+    agent = agent_service.fetch_agent_config_for_org(agent_type, current_user["org_id"])
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent type not found",
+        )
+    result = agent_service.rotate_share_token(agent_type, current_user["org_id"])
+    if result["status"] == "fail":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["message"],
         )
     return result
 

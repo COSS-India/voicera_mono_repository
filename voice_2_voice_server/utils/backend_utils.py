@@ -199,6 +199,48 @@ async def fetch_agent_config_from_backend(agent_id: str) -> dict:
         return None
 
 
+def fetch_public_agent_by_token(share_token: str) -> Optional[Dict[str, Any]]:
+    """Resolve a public share_token to a secret-stripped agent projection.
+
+    Uses the bot endpoint (X-API-Key). Returns None if the token is unknown or
+    sharing is disabled.
+    """
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/agents/public/by-token/{share_token}"
+    headers = _get_api_headers()
+    try:
+        response = requests.get(api_endpoint, headers=headers, timeout=10)
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        data = response.json()
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.debug(f"Public agent resolve failed for token: {e}")
+        return None
+
+
+def resolve_broadcast_token(token: str) -> Optional[Dict[str, Any]]:
+    """Verify a host broadcast token via the backend, returning agent_id/org_id."""
+    if not token:
+        return None
+    backend_url = _get_backend_url()
+    api_endpoint = f"{backend_url}/api/v1/agents/broadcast/resolve"
+    headers = _get_api_headers()
+    try:
+        response = requests.post(
+            api_endpoint, json={"token": token}, headers=headers, timeout=10
+        )
+        if response.status_code in (401, 404):
+            return None
+        response.raise_for_status()
+        data = response.json()
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.debug(f"Broadcast token resolve failed: {e}")
+        return None
+
+
 async def create_meeting_in_backend(payload) :
     """Create a meeting record in the backend when call starts."""
     backend_url = _get_backend_url()

@@ -3,6 +3,7 @@ Agent service for handling agent-related database operations.
 """
 import json
 import logging
+import secrets
 import string
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +17,16 @@ from app.models.schemas import AgentConfigCreate, AgentConfigUpdate
 
 logger = logging.getLogger(__name__)
 
-VALID_INTERACTION_MODES = {"conversational", "non_conversational"}
+VALID_INTERACTION_MODES = {"conversational", "non_conversational", "translation"}
+
+# Interaction modes whose behaviour is locked once an agent is created: switching
+# in or out of them would change the whole runtime pipeline, so we reject it.
+IMMUTABLE_INTERACTION_MODES = {"non_conversational", "translation"}
+
+
+def generate_share_token() -> str:
+    """Random URL-safe token used as the public key for a shareable agent."""
+    return secrets.token_urlsafe(16)
 
 # Pre-configured agents, seeded once per org from app/config/default_agents.json.
 # Platform .env credential fallback on the voice server is now available to all
@@ -70,6 +80,19 @@ def _validate_agent_config_for_mode(agent_config: Dict[str, Any]) -> Optional[st
         tts_model = (agent_config or {}).get("tts_model")
         if not isinstance(tts_model, dict) or not tts_model.get("name"):
             return "TTS configuration is required for non-conversational agents"
+    elif mode == "translation":
+        source = str((agent_config or {}).get("source_language") or "").strip()
+        if not source:
+            return "Source language is required for translation agents"
+        targets = (agent_config or {}).get("target_languages")
+        if not isinstance(targets, list) or not [t for t in targets if str(t).strip()]:
+            return "At least one target language is required for translation agents"
+        stt_model = (agent_config or {}).get("stt_model")
+        if not isinstance(stt_model, dict) or not stt_model.get("name"):
+            return "STT configuration is required for translation agents"
+        tts_model = (agent_config or {}).get("tts_model")
+        if not isinstance(tts_model, dict) or not tts_model.get("name"):
+            return "TTS configuration is required for translation agents"
     return None
 
 
@@ -286,6 +309,9 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
             agent_doc["plivo_app_id"] = agent_data.plivo_app_id
         if agent_data.plivo_answer_url:
             agent_doc["plivo_answer_url"] = agent_data.plivo_answer_url
+        if agent_data.public_share_enabled:
+            agent_doc["public_share_enabled"] = True
+            agent_doc["share_token"] = generate_share_token()
 
         agent_table.insert_one(agent_doc)
         logger.info(f"Agent created successfully: {agent_data.agent_type}")
@@ -346,6 +372,75 @@ def fetch_agent_config_by_id(agent_id: str) -> Optional[Dict[str, Any]]:
         logger.error(f"Error fetching agent config by ID: {str(e)}")
         return None
 
+def fetch_agent_by_share_token(share_token: str) -> Optional[Dict[str, Any]]:
+    """Fetch a publicly-shared agent by its share_token.
+
+    Returns None unless the token matches an agent with public sharing enabled,
+    so a disabled or unknown token never resolves.
+    """
+    if not share_token:
+        return None
+    try:
+        db = get_database()
+        agent_table = db["AgentConfig"]
+        agent = agent_table.find_one(
+            {"share_token": share_token, "public_share_enabled": True}
+        )
+        return agent
+    except Exception as e:
+        logger.error(f"Error fetching agent by share token: {str(e)}")
+        return None
+
+
+def rotate_share_token(agent_type: str, org_id: str) -> Dict[str, Any]:
+    """Regenerate the share_token for an agent, invalidating old public links."""
+    try:
+        db = get_database()
+        agent_table = db["AgentConfig"]
+        existing = agent_table.find_one({"agent_type": agent_type, "org_id": org_id})
+        if not existing:
+            return {"status": "fail", "message": "Agent type not found"}
+        new_token = generate_share_token()
+        agent_table.update_one(
+            {"agent_type": agent_type, "org_id": org_id},
+            {"$set": {
+                "share_token": new_token,
+                "public_share_enabled": True,
+                "updated_at": datetime.now().isoformat(),
+            }},
+        )
+        return {"status": "success", "share_token": new_token}
+    except Exception as e:
+        logger.error(f"Error rotating share token: {str(e)}")
+        return {"status": "fail", "message": f"Error rotating share token: {str(e)}"}
+
+
+def build_public_agent_projection(
+    agent: Dict[str, Any], include_agent_id: bool = False
+) -> Dict[str, Any]:
+    """Secret-stripped view of an agent for unauthenticated consumers.
+
+    ``agent_id`` is withheld by default: the voice server's WebSocket routes are
+    unauthenticated, so anyone holding an agent_id can open a session on the
+    org's STT/LLM/TTS credentials. Only the internal (X-API-Key) caller, which
+    needs it to resolve the room, may ask for it.
+    """
+    config = agent.get("agent_config") or {}
+    targets = config.get("target_languages")
+    if not isinstance(targets, list):
+        targets = []
+    projection: Dict[str, Any] = {
+        "display_name": agent.get("agent_type"),
+        "interaction_mode": _get_interaction_mode(config),
+        "source_language": config.get("source_language"),
+        "target_languages": [str(t) for t in targets if str(t).strip()],
+        "greeting_message": config.get("greeting_message"),
+    }
+    if include_agent_id:
+        projection["agent_id"] = agent.get("agent_id")
+    return projection
+
+
 def fetch_agents_of_org(org_id: str) -> List[Dict[str, Any]]:
     """
     Fetch all agents for a given org.
@@ -401,13 +496,13 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
         incoming_config = _normalize_agent_language_fields(dict(agent_data.agent_config or {}))
         incoming_mode = _get_interaction_mode(incoming_config)
 
-        if existing_mode == "non_conversational":
-            if incoming_mode != "non_conversational":
+        if existing_mode in IMMUTABLE_INTERACTION_MODES:
+            if incoming_mode != existing_mode:
                 return {
                     "status": "fail",
-                    "message": "Cannot change a non-conversational agent to conversational",
+                    "message": f"Cannot change the interaction mode of a {existing_mode} agent",
                 }
-            incoming_config["interaction_mode"] = "non_conversational"
+            incoming_config["interaction_mode"] = existing_mode
         elif not incoming_config.get("interaction_mode"):
             incoming_config["interaction_mode"] = existing_mode
 
@@ -442,6 +537,12 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
             update_doc["plivo_app_id"] = agent_data.plivo_app_id
         if agent_data.plivo_answer_url:
             update_doc["plivo_answer_url"] = agent_data.plivo_answer_url
+        if agent_data.public_share_enabled is not None:
+            update_doc["public_share_enabled"] = bool(agent_data.public_share_enabled)
+            # Mint a token on first enable; preserve it across toggles so an
+            # existing share link keeps working when re-enabled.
+            if agent_data.public_share_enabled and not existing_agent.get("share_token"):
+                update_doc["share_token"] = generate_share_token()
 
         if existing_agent.get("created_at") is None:
             update_doc["created_at"] = (

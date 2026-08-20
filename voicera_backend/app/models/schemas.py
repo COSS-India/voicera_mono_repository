@@ -61,6 +61,9 @@ class AgentConfigCreate(BaseModel):
     vobiz_answer_url: Optional[str] = None
     plivo_app_id: Optional[str] = None
     plivo_answer_url: Optional[str] = None
+    # Opt-in public shareable link (default off). When enabled the service
+    # generates a random share_token so the raw agent_id is never the key.
+    public_share_enabled: Optional[bool] = None
 
 class AgentConfigResponse(BaseModel):
     """Schema for agent config response."""
@@ -76,6 +79,8 @@ class AgentConfigResponse(BaseModel):
     vobiz_answer_url: Optional[str] = None
     plivo_app_id: Optional[str] = None
     plivo_answer_url: Optional[str] = None
+    public_share_enabled: Optional[bool] = None
+    share_token: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -92,6 +97,32 @@ class AgentConfigUpdate(BaseModel):
     vobiz_answer_url: Optional[str] = None
     plivo_app_id: Optional[str] = None
     plivo_answer_url: Optional[str] = None
+    public_share_enabled: Optional[bool] = None
+
+
+class PublicAgentResponse(BaseModel):
+    """Secret-stripped public projection of an agent, resolved by share_token.
+
+    Returned to unauthenticated clients (the public share page) and to the
+    voice server; never exposes org_id, keys, prompts or telephony data.
+
+    ``agent_id`` is only populated for the internal (X-API-Key) endpoint — the
+    voice server's WebSockets are unauthenticated, so a public agent_id would be
+    a usable credential.
+    """
+    agent_id: Optional[str] = None
+    display_name: str
+    interaction_mode: str
+    source_language: Optional[str] = None
+    target_languages: List[str] = []
+    greeting_message: Optional[str] = None
+
+
+class BroadcastTokenResponse(BaseModel):
+    """Short-lived host token authorising a presenter to open the publish leg."""
+    token: str
+    agent_id: str
+    expires_in: int
 
 # Meeting Models
 class MeetingCreate(BaseModel):
