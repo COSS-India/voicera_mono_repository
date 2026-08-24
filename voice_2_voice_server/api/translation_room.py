@@ -25,8 +25,9 @@ import asyncio
 import base64
 import json
 import os
+import re
 import time
-from typing import Any, Dict, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 
 from loguru import logger
 from fastapi import WebSocket
@@ -71,10 +72,37 @@ LISTENER_SEND_BACKLOG = 100
 # Keep a room (and its language workers) alive briefly after the presenter drops,
 # so a transient reconnect doesn't tear down every listener's session.
 PRESENTER_GRACE_SECS = int(os.getenv("TRANSLATION_PRESENTER_GRACE_SECS", "20"))
+# Silence (seconds) before VAD declares the utterance finished and the pipeline
+# (STT → translate → TTS) fires. Lower = translation starts sooner after the
+# presenter pauses, at the cost of occasionally splitting on a mid-sentence
+# breath. Env-tunable per deployment / speaker cadence.
+VAD_STOP_SECS = float(os.getenv("TRANSLATION_VAD_STOP_SECS", "0.25"))
+
+# Streamed translation is flushed to TTS one sentence at a time so the listener
+# hears the first sentence while the model is still translating the rest, instead
+# of waiting for the whole segment. Break on sentence-final punctuation (Latin +
+# Indic danda) once whitespace confirms the sentence closed.
+_SENTENCE_END = re.compile(r"[.!?।॥]+[\"'”’)\]]*\s")
+# A rambling clause with no sentence-final punctuation would otherwise never
+# flush; past this many buffered chars, break at the last word boundary so audio
+# keeps flowing. Sentence breaks are always preferred when present.
+MAX_TTS_CHUNK_CHARS = 240
 
 
 def _translation_model() -> str:
     return os.getenv("TRANSLATION_MODEL") or "gpt-4o-mini"
+
+
+def _next_chunk_end(buffer: str) -> Optional[int]:
+    """Index to cut ``buffer`` at for the next TTS chunk, or None to wait for more."""
+    match = _SENTENCE_END.search(buffer)
+    if match:
+        return match.end()
+    if len(buffer) >= MAX_TTS_CHUNK_CHARS:
+        space = buffer.rfind(" ", 0, MAX_TTS_CHUNK_CHARS)
+        if space > 0:
+            return space + 1
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -228,21 +256,23 @@ class LangWorker:
         while True:
             text = await self._queue.get()
             try:
-                translated = await self.room.translate(text, self.language)
-                if not translated:
-                    continue
-                # Push the text first so listeners see it even if TTS lags.
-                self.broadcast(
-                    json.dumps(
-                        {
-                            "event": "transcript",
-                            "role": "assistant",
-                            "content": translated,
-                            "source": text,
-                        }
+                first = True
+                async for sentence in self.room.translate_stream(text, self.language):
+                    # Push each sentence's text just before its audio so listeners
+                    # see it even if TTS lags; tag the source only on the first
+                    # sentence so the original isn't repeated on every chunk.
+                    self.broadcast(
+                        json.dumps(
+                            {
+                                "event": "transcript",
+                                "role": "assistant",
+                                "content": sentence,
+                                "source": text if first else None,
+                            }
+                        )
                     )
-                )
-                await self._synthesize(translated)
+                    first = False
+                    await self._synthesize(sentence)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -423,11 +453,19 @@ class TranslationRoom:
                 except Exception:
                     pass
 
-    async def translate(self, text: str, target_language: str) -> Optional[str]:
+    async def translate_stream(
+        self, text: str, target_language: str
+    ) -> AsyncIterator[str]:
+        """Yield the translation one sentence at a time as the model produces it.
+
+        Streaming lets TTS start on the first sentence while later sentences are
+        still being translated, cutting time-to-first-audio for a segment from
+        "whole paragraph" down to "first sentence".
+        """
         client = self.get_openai_client()
         if client is None:
             logger.error("translation: no OpenAI key available (org or platform)")
-            return None
+            return
         system = (
             f"You are a translation engine. Translate the user's text from "
             f"{self.source_language} into {target_language}. Output only the "
@@ -441,21 +479,43 @@ class TranslationRoom:
             {"role": "system", "content": system},
             {"role": "user", "content": text},
         ]
-        # One retry: a single transient LLM hiccup (429/timeout) would otherwise
-        # silently drop a whole segment of speech for this language.
-        last_error: Optional[Exception] = None
+        # One retry, but only before any sentence has been emitted: a transient
+        # LLM hiccup (429/timeout) otherwise drops the segment, yet retrying after
+        # a partial emit would repeat already-spoken text.
         for attempt in range(2):
+            buffer = ""
+            produced = False
             try:
-                resp = await client.chat.completions.create(
-                    model=self._model, messages=messages, temperature=0.2
+                stream = await client.chat.completions.create(
+                    model=self._model,
+                    messages=messages,
+                    temperature=0.2,
+                    stream=True,
                 )
-                return (resp.choices[0].message.content or "").strip()
+                async for chunk in stream:
+                    delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
+                    if not delta:
+                        continue
+                    buffer += delta
+                    while True:
+                        cut = _next_chunk_end(buffer)
+                        if cut is None:
+                            break
+                        sentence = buffer[:cut].strip()
+                        buffer = buffer[cut:].lstrip()
+                        if sentence:
+                            produced = True
+                            yield sentence
+                tail = buffer.strip()
+                if tail:
+                    yield tail
+                return
             except Exception as e:
-                last_error = e
-                if attempt == 0:
+                if attempt == 0 and not produced:
                     await asyncio.sleep(0.3)
-        logger.warning(f"translation to {target_language} failed: {last_error}")
-        return None
+                    continue
+                logger.warning(f"translation to {target_language} failed: {e}")
+                return
 
     def get_openai_client(self):
         """Resolve (and cache) the translation client.
@@ -579,7 +639,7 @@ async def run_publisher(websocket: WebSocket, agent_id: str, config: Dict[str, A
         )
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=PUBLISH_SAMPLE_RATE,
-            params=VADParams(stop_secs=0.4, min_volume=0.5, confidence=0.3, start_secs=0.1),
+            params=VADParams(stop_secs=VAD_STOP_SECS, min_volume=0.5, confidence=0.3, start_secs=0.1),
         )
         transport = FastAPIWebsocketTransport(
             websocket=websocket,

@@ -13,11 +13,18 @@ import {
 
 const DEFAULT_SAMPLE_RATE = 16000
 // Schedule audio a little ahead of the clock so network jitter between 20 ms
-// frames doesn't cause audible gaps. If the scheduled queue ever runs further
-// than MAX_LEAD ahead (TTS bursting faster than real time), resync to the front
-// of the buffer so end-to-end latency stays bounded instead of drifting.
-const JITTER_BUFFER_SECS = 0.25
-const MAX_LEAD_SECS = 1.5
+// frames doesn't cause audible gaps. Kept small to minimise added latency; raise
+// it if listeners on jittery links hear dropouts.
+const JITTER_BUFFER_SECS = 0.15
+// Safety valve for genuine long-run drift only: if translated speech is
+// consistently longer than the source, a listener would fall further and further
+// behind, so past this much buffered-but-unplayed audio we drop the backlog and
+// resync to now. It must stay well ABOVE one utterance's worth of audio: the
+// backend sends a whole sentence's frames as fast as TTS yields them, so normal
+// buffering routinely runs several seconds ahead. Setting this too low makes the
+// resync fire mid-sentence, discarding translated speech the listener never hears
+// (and, before the sources were tracked, layering it into a doubled voice).
+const MAX_LEAD_SECS = 8
 
 function base64ToInt16(base64: string): Int16Array {
   const binary = atob(base64)
