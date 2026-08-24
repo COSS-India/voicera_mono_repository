@@ -1,0 +1,24 @@
+voice_2_voice_server/api/server.py
+  s_efee2bd76c77cf::t_aa87331b79cca1 633-640
+  s_efee2bd76c77cf::t_34fd851514b47d 726-728
+  s_efee2bd76c77cf::t_6a1d696fb44138 670-677
+  s_efee2bd76c77cf::t_b81377d669127c 42-56
+voicera_frontend/app/live/[token]/page.tsx
+  s_efee2bd76c77cf::t_06c779b98976bc 265-268
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "3fa8ebda5a370311ffabf421e721cbd26de0c7d9",
+  "prompts": {},
+  "sessions": {
+    "s_efee2bd76c77cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25cc3008-a23d-4c76-a4bc-3023dc8a3a09",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
