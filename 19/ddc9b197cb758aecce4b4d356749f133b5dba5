@@ -1,0 +1,24 @@
+voicera_frontend/app/live/[token]/page.tsx
+  s_efee2bd76c77cf::t_12b1ffb4f2880e 296-297
+  s_efee2bd76c77cf::t_cf0903306f78b8 101-112,117,125,132
+  s_efee2bd76c77cf::t_e76a4e7df340e4 55-57,61-63
+  s_efee2bd76c77cf::t_bda6988a27ada9 159-165,167-168,170
+  s_efee2bd76c77cf::t_cd6ce25fd752aa 289
+  s_efee2bd76c77cf::t_966990a67e4724 185-196,205-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "19ddc9b197cb758aecce4b4d356749f133b5dba5",
+  "prompts": {},
+  "sessions": {
+    "s_efee2bd76c77cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25cc3008-a23d-4c76-a4bc-3023dc8a3a09",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
