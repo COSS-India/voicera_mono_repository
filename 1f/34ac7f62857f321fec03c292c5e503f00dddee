@@ -1,0 +1,62 @@
+docs/live-translation/TECHNICAL.md
+  s_1c04209dea38f5::t_dd59e86060b6a5 336-361
+voice_2_voice_server/api/translation_room.py
+  s_1c04209dea38f5::t_549288726fa57a 179-180
+  s_1c04209dea38f5::t_e09d1b66480cc1 747,754-756,758-773,777-778,799-804
+  s_1c04209dea38f5::t_0c32e4136b41b1 184,186-187,196-208,211-212,215,217-223,225-226,228-230,233-237
+  s_1c04209dea38f5::t_242c797d3afa83 378
+  s_1c04209dea38f5::t_d21fceac88f91d 251-319,323-328,331-332,339-344,347
+  s_1c04209dea38f5::t_cec2feb33328c2 577
+  s_1c04209dea38f5::t_bfac1768e15cc3 713,720-722
+  s_1c04209dea38f5::t_92d845c46ac0e3 135-142
+  s_1c04209dea38f5::t_2a280d297f1824 97-100,102-103,107-120
+  s_1c04209dea38f5::t_1d3c81fecaab1a 393,396,400,409-414,416-417,420-422,437-438,444-503,505-506,508,510-554,556-557,559-560
+  s_1c04209dea38f5::t_17f77e1d3195d7 231-232
+  s_1c04209dea38f5::t_ad23fe371af5f4 69,71-79
+  s_1c04209dea38f5::t_8c8a323332cbc8 590-598
+voice_2_voice_server/services/ai4bharat/tts.py
+  s_1c04209dea38f5::t_d7da489ae6d235 36-51
+  s_1c04209dea38f5::t_5a1504fd586fce 97-99
+  s_1c04209dea38f5::t_1df14c2e51578c 126-128
+ai4bharat_tts_server/server.py
+  s_1c04209dea38f5::t_bb43c9330e6041 109-110
+  s_1c04209dea38f5::t_1f12a61e98fc59 68-70
+  s_1c04209dea38f5::t_e2c3a8316eb5fc 134-140,155-175,183-196
+voice_2_voice_server/.env.example
+  s_1c04209dea38f5::t_17cccdb544fd66 65-77
+ai4bharat_tts_server/inference/runner.py
+  s_1c04209dea38f5::t_046fb5b5615c17 658-668
+voicera_frontend/app/live/[token]/page.tsx
+  s_1c04209dea38f5::t_cf790742751300 252-255,257-271,273-277
+  s_1c04209dea38f5::t_74547d373a19bc 452
+  s_1c04209dea38f5::t_5fea49372d2ef7 118-121
+  s_1c04209dea38f5::t_cd103c6ca45a7f 244
+  s_1c04209dea38f5::t_4d6dc2b247508b 111-117
+  s_1c04209dea38f5::t_2a719ffe5c58c6 468-477
+  s_1c04209dea38f5::t_df39fd85967a21 166-167,169,175,178-207
+  s_1c04209dea38f5::t_4a75d94bc672a8 176-177
+  s_1c04209dea38f5::t_eb67dad357316e 372-373,377-381
+  s_1c04209dea38f5::t_81a2b0cfc7aaad 279-311
+  s_1c04209dea38f5::t_34a3b203f495b0 82-87
+  s_1c04209dea38f5::t_553815ba84360b 38-43
+  s_1c04209dea38f5::t_59e3a9931d2229 374-376
+  s_1c04209dea38f5::t_aa9ba62d0951b6 387-388
+  s_1c04209dea38f5::t_640280de95d67e 20-37
+  s_1c04209dea38f5::t_ab112f276fc278 278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "1f34ac7f62857f321fec03c292c5e503f00dddee",
+  "prompts": {},
+  "sessions": {
+    "s_1c04209dea38f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "536096af-083a-4451-9240-d58a13bbf9cc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
