@@ -1,0 +1,43 @@
+voicera_frontend/components/live-status-indicator.tsx
+  s_edafcbc55fa67d::t_b844b98d0e1961 1-30,37-43
+  s_edafcbc55fa67d::t_046b9b65938745 31-36
+voicera_frontend/app/live/[token]/page.tsx
+  s_edafcbc55fa67d::t_9cf32839a96e54 215
+  s_edafcbc55fa67d::t_58cd9dd8da7587 454
+  s_edafcbc55fa67d::t_e2ed1df8695309 475-484
+  s_edafcbc55fa67d::t_3f1efaf86de91a 407-414
+  s_edafcbc55fa67d::t_bbf26f17ef3f6f 6
+  s_edafcbc55fa67d::t_523b409f3ca549 328-330,333
+  s_edafcbc55fa67d::t_b81e22c9fee998 242
+  s_edafcbc55fa67d::t_2355aea3b7af57 347-348
+  s_edafcbc55fa67d::t_60e77dbf7098d4 79-81
+  s_edafcbc55fa67d::t_15d05fff9cd4e1 245-246
+  s_edafcbc55fa67d::t_945b37b7291fd5 43-66
+  s_edafcbc55fa67d::t_59c27a6a3a36eb 269,271,275
+  s_edafcbc55fa67d::t_59eec9483c367c 439
+  s_edafcbc55fa67d::t_ba65837b978f81 216-218
+  s_edafcbc55fa67d::t_9dbea1e76b4c5d 455
+  s_edafcbc55fa67d::t_40cb001f1a8568 167-168
+voicera_frontend/components/assistants/broadcast-dialog.tsx
+  s_edafcbc55fa67d::t_856a0de09785b5 326
+  s_edafcbc55fa67d::t_9289f6bb756982 16,19-35
+  s_edafcbc55fa67d::t_5aa96da568ae26 289-296
+  s_edafcbc55fa67d::t_636796b6272b2d 330
+  s_edafcbc55fa67d::t_56b577c048268c 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "05f15f240f69b31d8cbbee8514c4e23f2ca0687e",
+  "prompts": {},
+  "sessions": {
+    "s_edafcbc55fa67d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "030327be-3720-4edd-ace9-1be42c6be50e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
