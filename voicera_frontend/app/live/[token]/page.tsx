@@ -233,7 +233,9 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
         wsRef.current = null
         if (ctx && ctx.state !== "closed") {
           const remaining = Math.max(0, playbackTimeRef.current - ctx.currentTime)
-          window.setTimeout(() => void ctx.close(), remaining * 1000 + 200)
+          window.setTimeout(() => {
+            if (ctx.state !== "closed") void ctx.close()
+          }, remaining * 1000 + 200)
         }
         playbackTimeRef.current = 0
         setIsConnected(false)

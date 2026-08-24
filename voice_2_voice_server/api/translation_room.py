@@ -261,10 +261,14 @@ class LangWorker:
             if not (isinstance(frame, AudioRawFrame) and frame.audio):
                 continue
             pcm = frame.audio
-            if frame.sample_rate != LISTEN_SAMPLE_RATE:
-                pcm = await self._resampler.resample(
-                    pcm, frame.sample_rate, LISTEN_SAMPLE_RATE
-                )
+            in_rate = frame.sample_rate
+            if in_rate <= 0:
+                # Defensive: a provider that never reported its rate would make
+                # the resampler divide by zero. Skip rather than crash the worker.
+                logger.warning(f"translation[{self.language}]: TTS frame missing sample_rate; dropped")
+                continue
+            if in_rate != LISTEN_SAMPLE_RATE:
+                pcm = await self._resampler.resample(pcm, in_rate, LISTEN_SAMPLE_RATE)
             buffer.extend(pcm)
             while len(buffer) >= LISTEN_CHUNK_BYTES:
                 self._send_audio(bytes(buffer[:LISTEN_CHUNK_BYTES]))
