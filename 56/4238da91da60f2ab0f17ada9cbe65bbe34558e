@@ -1,0 +1,45 @@
+voicera_frontend/app/live/[token]/page.tsx
+  s_053628238cad40::t_f9e0da688c40f1 15-20
+  s_053628238cad40::t_068be0b232461e 136-139
+  s_053628238cad40::t_25a2102c14e38f 221-224,229-230,234-237
+voice_2_voice_server/api/translation_room.py
+  s_053628238cad40::t_74db92b0cb668b 370-396,436-454
+  s_053628238cad40::t_d285414100f911 63-73
+  s_053628238cad40::t_c92eff8173cd2f 103-105,107-108,110-146,154-160,165,167,169,174,192-196,234-235,245,252-300,306,309-311,318-323
+  s_053628238cad40::t_1ed3eae854f19b 627-629
+  s_053628238cad40::t_f1bd8de256e119 340
+  s_053628238cad40::t_fada9803f55ad2 514
+  s_053628238cad40::t_5430a53e923402 411-415
+  s_053628238cad40::t_c088f9bf24a193 596-601
+  s_053628238cad40::t_a890d45e0bd8d4 644
+  s_053628238cad40::t_3ec24673005305 669
+  s_053628238cad40::t_d0864d2967a988 34,39
+docs/live-translation/ARCHITECTURE_DIAGRAM.md
+  s_22c6b2951611fb::t_f3340a1af0cb2c 1-120
+deploy/compose/docker-compose.translate.yml
+  s_053628238cad40::t_32f80cac936574 63-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "564238da91da60f2ab0f17ada9cbe65bbe34558e",
+  "prompts": {},
+  "sessions": {
+    "s_053628238cad40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52b40c7a-b5f4-481a-b1c6-9cce7bc405b0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_22c6b2951611fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cc871e5-2eb5-42eb-b027-09cb91e3c288",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
