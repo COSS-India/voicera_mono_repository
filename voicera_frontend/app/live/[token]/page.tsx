@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react"
 import { getTranslationListenWebSocketUrl } from "@/lib/johnaic-config"
 import type { PublicAgent } from "@/lib/api"
+import { LiveStatusIndicator, type LiveStatusState } from "@/components/live-status-indicator"
 import {
   Select,
   SelectContent,
@@ -39,6 +40,30 @@ function int16ToFloat32(input: Int16Array): Float32Array<ArrayBuffer> {
   return out
 }
 
+function getListenerStatus({
+  sessionEnded,
+  isConnected,
+  isConnecting,
+  isReconnecting,
+  presenterOnline,
+}: {
+  sessionEnded: boolean
+  isConnected: boolean
+  isConnecting: boolean
+  isReconnecting: boolean
+  presenterOnline: boolean
+}): { state: LiveStatusState; label: string } {
+  if (sessionEnded) return { state: "idle", label: "Broadcast ended" }
+  if (isReconnecting) return { state: "connecting", label: "Reconnecting…" }
+  if (isConnecting) return { state: "connecting", label: "Connecting…" }
+  if (isConnected) {
+    return presenterOnline
+      ? { state: "live", label: "Listening live" }
+      : { state: "waiting", label: "Waiting for presenter…" }
+  }
+  return { state: "idle", label: "Not connected" }
+}
+
 interface LiveTranslationPageProps {
   params: Promise<{ token: string }>
 }
@@ -51,6 +76,9 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
   const [language, setLanguage] = useState("")
   const [isConnecting, setIsConnecting] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
+  const [isReconnecting, setIsReconnecting] = useState(false)
+  const [presenterOnline, setPresenterOnline] = useState(false)
+  const [sessionEnded, setSessionEnded] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [transcripts, setTranscripts] = useState<
@@ -136,6 +164,8 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     playbackTimeRef.current = 0
     setIsConnected(false)
     setIsConnecting(false)
+    setIsReconnecting(false)
+    setPresenterOnline(false)
   }, [clearTimers, stopScheduledSources])
 
   useEffect(() => {
@@ -182,8 +212,10 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     reconnectAttemptsRef.current = attempt + 1
     const delay = Math.min(15000, 1000 * 2 ** attempt) // capped exponential backoff
     setIsConnected(false)
-    setIsConnecting(true)
-    setNotice("Connection lost — reconnecting…")
+    setIsReconnecting(true)
+    // The new socket re-reports presence on open; don't carry the old value over
+    // or we'd flash "Listening live" before the fresh status frame arrives.
+    setPresenterOnline(false)
     reconnectRef.current = window.setTimeout(() => openSocketRef.current(), delay)
   }, [])
 
@@ -207,8 +239,11 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     ws.onopen = () => {
       reconnectAttemptsRef.current = 0
       setIsConnecting(false)
+      setIsReconnecting(false)
       setIsConnected(true)
       setError("")
+      // Clear transient close notices (e.g. "at capacity") now that we're back on.
+      setNotice("")
       // Fresh stream: drop any audio still scheduled from a prior socket and
       // reset the playout cursor so a reconnect can't overlap the old tail.
       stopScheduledSources()
@@ -231,16 +266,13 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
             Number(msg?.media?.sampleRate) || DEFAULT_SAMPLE_RATE,
           )
         } else if (msg?.event === "status") {
-          setNotice(
-            msg.presenter_online
-              ? ""
-              : "Connected — waiting for the presenter to start speaking.",
-          )
+          setPresenterOnline(Boolean(msg.presenter_online))
         } else if (msg?.event === "presenter_live") {
-          setNotice("")
+          setPresenterOnline(true)
         } else if (msg?.event === "session_ended") {
           // Presenter ended on purpose — don't fight it with reconnects.
           wantConnectedRef.current = false
+          setSessionEnded(true)
           setNotice("The presenter ended the broadcast.")
         } else if (msg?.event === "transcript" && msg?.content) {
           setTranscripts((prev) => {
@@ -293,8 +325,12 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
           }, remaining * 1000 + 200)
         }
         playbackTimeRef.current = 0
+        // Release the connect re-entrancy guard: this socket is done and no
+        // reconnect is pending, so a later "Listen" click must be allowed through.
+        connectingRef.current = false
         setIsConnected(false)
         setIsConnecting(false)
+        setIsReconnecting(false)
       }
     }
   }, [token, handleIncomingAudio, scheduleReconnect, stopScheduledSources])
@@ -308,6 +344,8 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     connectingRef.current = true
     setError("")
     setNotice("")
+    setSessionEnded(false)
+    setPresenterOnline(false)
     setIsConnecting(true)
     setTranscripts([])
     try {
@@ -366,6 +404,14 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     )
   }
 
+  const listenerStatus = getListenerStatus({
+    sessionEnded,
+    isConnected,
+    isConnecting,
+    isReconnecting,
+    presenterOnline,
+  })
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -390,7 +436,7 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
         <Select
           value={language}
           onValueChange={setLanguage}
-          disabled={isConnected || isConnecting}
+          disabled={isConnected || isConnecting || isReconnecting}
         >
           <SelectTrigger className="mb-4 h-11 w-full rounded-lg border-slate-300 bg-white text-sm text-slate-900">
             <SelectValue placeholder="Select a language" />
@@ -405,15 +451,8 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
         </Select>
 
         <div className="mb-4 flex items-center justify-between">
-          <span className="flex items-center gap-2 text-sm text-slate-600">
-            <span
-              className={`inline-block h-2.5 w-2.5 rounded-full ${
-                isConnected ? "bg-green-500" : isConnecting ? "bg-amber-400" : "bg-slate-300"
-              }`}
-            />
-            {isConnected ? "Listening live" : isConnecting ? "Connecting…" : "Not connected"}
-          </span>
-          {!isConnected ? (
+          <LiveStatusIndicator state={listenerStatus.state} label={listenerStatus.label} />
+          {!isConnected && !isReconnecting ? (
             <button
               type="button"
               onClick={connect}
@@ -433,8 +472,16 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
           )}
         </div>
 
-        {error && <p className="mb-3 text-xs text-red-600">{error}</p>}
-        {notice && <p className="mb-3 text-xs text-slate-600">{notice}</p>}
+        {error && (
+          <p role="alert" className="mb-3 text-xs text-red-600">
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p role="status" aria-live="polite" className="mb-3 text-xs text-slate-600">
+            {notice}
+          </p>
+        )}
 
         <div
           ref={transcriptViewportRef}

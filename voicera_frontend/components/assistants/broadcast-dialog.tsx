@@ -13,7 +13,26 @@ import {
 import type { Agent, BroadcastToken } from "@/lib/api"
 import { getAuthToken } from "@/lib/api"
 import { getTranslationPublishWebSocketUrl } from "@/lib/johnaic-config"
+import { LiveStatusIndicator, type LiveStatusState } from "@/components/live-status-indicator"
 import { Copy, Loader2, Mic, MicOff, Radio, Square } from "lucide-react"
+
+function getBroadcasterStatus({
+  isConnecting,
+  isLive,
+  isMuted,
+}: {
+  isConnecting: boolean
+  isLive: boolean
+  isMuted: boolean
+}): { state: LiveStatusState; label: string } {
+  if (isConnecting) return { state: "connecting", label: "Connecting" }
+  if (isLive) {
+    return isMuted
+      ? { state: "waiting", label: "Connected (mic muted)" }
+      : { state: "live", label: "Live" }
+  }
+  return { state: "idle", label: "Idle" }
+}
 
 interface BroadcastDialogProps {
   open: boolean
@@ -267,14 +286,14 @@ export function BroadcastDialog({
             )}
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-slate-700">
-            <Radio className={`h-4 w-4 ${isLive ? "text-green-600" : "text-slate-400"}`} />
-            <span>
-              Status:{" "}
-              {isLive ? (isMuted ? "Connected (mic muted)" : "Live") : isConnecting ? "Connecting" : "Idle"}
-            </span>
-          </div>
-          {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+          <LiveStatusIndicator
+            {...getBroadcasterStatus({ isConnecting, isLive, isMuted })}
+          />
+          {error && (
+            <p role="alert" className="mt-3 text-xs text-red-600">
+              {error}
+            </p>
+          )}
         </div>
 
         <DialogFooter className="shrink-0 flex-row flex-wrap justify-center gap-2 sm:justify-center">
@@ -304,11 +323,11 @@ export function BroadcastDialog({
                 return next
               })
             }
-            className={
+            className={`min-w-[7rem] ${
               isMuted
                 ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
                 : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-            }
+            }`}
           >
             {isMuted ? <MicOff className="mr-1 h-4 w-4" /> : <Mic className="mr-1 h-4 w-4" />}
             {isMuted ? "Unmute" : "Mute"}
