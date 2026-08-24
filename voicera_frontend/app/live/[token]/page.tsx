@@ -12,6 +12,12 @@ import {
 } from "@/components/ui/select"
 
 const DEFAULT_SAMPLE_RATE = 16000
+// Schedule audio a little ahead of the clock so network jitter between 20 ms
+// frames doesn't cause audible gaps. If the scheduled queue ever runs further
+// than MAX_LEAD ahead (TTS bursting faster than real time), resync to the front
+// of the buffer so end-to-end latency stays bounded instead of drifting.
+const JITTER_BUFFER_SECS = 0.25
+const MAX_LEAD_SECS = 1.5
 
 function base64ToInt16(base64: string): Int16Array {
   const binary = atob(base64)
@@ -127,8 +133,10 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     const source = ctx.createBufferSource()
     source.buffer = buffer
     source.connect(ctx.destination)
-    const now = ctx.currentTime + 0.05
-    const startAt = Math.max(now, playbackTimeRef.current)
+    const earliest = ctx.currentTime + JITTER_BUFFER_SECS
+    let startAt = Math.max(earliest, playbackTimeRef.current)
+    // Drifted too far ahead → drop the accumulated lead and resync to now.
+    if (startAt - ctx.currentTime > MAX_LEAD_SECS) startAt = earliest
     source.start(startAt)
     playbackTimeRef.current = startAt + buffer.duration
   }, [])
@@ -210,16 +218,23 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
       if (ev.code === 4404 || ev.code === 4400) {
         wantConnectedRef.current = false
         setError("This live translation link is no longer available.")
+      } else if (ev.code === 1013) {
+        // At capacity: keep retrying (a slot may free up) but say so, instead of
+        // showing a bare "reconnecting…" that looks like a fault.
+        setNotice("The session is at capacity — retrying shortly…")
       }
       if (wantConnectedRef.current) {
         scheduleReconnect()
       } else {
-        // Terminal close (presenter ended / bad link): release the audio context
-        // so a later re-Listen starts fresh instead of orphaning it.
+        // Terminal close (presenter ended / bad link): let already-scheduled
+        // audio finish, then release the context so a later re-Listen is fresh.
         const ctx = audioContextRef.current
         audioContextRef.current = null
-        if (ctx && ctx.state !== "closed") void ctx.close()
         wsRef.current = null
+        if (ctx && ctx.state !== "closed") {
+          const remaining = Math.max(0, playbackTimeRef.current - ctx.currentTime)
+          window.setTimeout(() => void ctx.close(), remaining * 1000 + 200)
+        }
         playbackTimeRef.current = 0
         setIsConnected(false)
         setIsConnecting(false)

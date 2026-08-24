@@ -31,11 +31,12 @@ from typing import Any, Dict, Optional
 from loguru import logger
 from fastapi import WebSocket
 
-from pipecat.frames.frames import AudioRawFrame, TranscriptionFrame, TTSSpeakFrame, Frame
+from pipecat.frames.frames import AudioRawFrame, ErrorFrame, TranscriptionFrame, Frame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.audio.utils import create_stream_resampler
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.transports.websocket.fastapi import (
@@ -50,7 +51,6 @@ from .services import (
     create_tts_service,
     platform_key_fallback_enabled,
 )
-from utils.bot_utils import FastPunctuationAggregator
 from utils.backend_utils import fetch_integration_key
 from utils.call_management import try_acquire_call_slot, release_call_slot
 
@@ -60,6 +60,17 @@ PUBLISH_SAMPLE_RATE = 16000
 SESSION_TIMEOUT_SECS = int(os.getenv("TRANSLATION_SESSION_TIMEOUT_SECS", "3600"))
 # Bound the per-language backlog so a slow language can't grow memory without limit.
 MAX_SEGMENT_BACKLOG = 50
+# Fan audio out at a fixed cadence: 20 ms mono int16 @ 16 kHz = 640 bytes/frame.
+# A steady frame size keeps every listener's jitter buffer smooth instead of
+# forwarding whatever variable-length blob the TTS backend happened to emit.
+LISTEN_FRAME_MS = 20
+LISTEN_CHUNK_BYTES = int(LISTEN_SAMPLE_RATE * LISTEN_FRAME_MS / 1000) * 2
+# Per-listener outbound buffer (~2 s of audio). A slow socket drops its own
+# oldest frames instead of stalling the whole language for everyone else.
+LISTENER_SEND_BACKLOG = 100
+# Keep a room (and its language workers) alive briefly after the presenter drops,
+# so a transient reconnect doesn't tear down every listener's session.
+PRESENTER_GRACE_SECS = int(os.getenv("TRANSLATION_PRESENTER_GRACE_SECS", "20"))
 
 
 def _translation_model() -> str:
@@ -89,30 +100,50 @@ class TranscriptCollector(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
-class FanOutSink(FrameProcessor):
-    """Terminal sink: serialise each TTS audio frame and broadcast it."""
+# ---------------------------------------------------------------------------
+# Per-listener writer
+# ---------------------------------------------------------------------------
 
-    def __init__(self, broadcast):
-        super().__init__()
-        self._broadcast = broadcast
+class _Listener:
+    """One subscriber socket with its own bounded send queue + writer task.
 
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, AudioRawFrame) and frame.audio:
-            payload = base64.b64encode(frame.audio).decode("utf-8")
-            # The browser honours media.sampleRate, so no server-side resample.
-            message = json.dumps(
-                {
-                    "event": "playAudio",
-                    "media": {
-                        "contentType": "audio/x-l16",
-                        "sampleRate": frame.sample_rate,
-                        "payload": payload,
-                    },
-                }
-            )
-            await self._broadcast(message)
-        await self.push_frame(frame, direction)
+    Decoupling each socket behind its own queue means a slow listener drops its
+    own oldest audio (a brief gap for them) instead of back-pressuring the TTS
+    consumer and stalling every other listener on the language.
+    """
+
+    def __init__(self, websocket: WebSocket):
+        self.ws = websocket
+        self._queue: "asyncio.Queue[str]" = asyncio.Queue(maxsize=LISTENER_SEND_BACKLOG)
+        self._task = asyncio.create_task(self._run())
+
+    async def _run(self) -> None:
+        try:
+            while True:
+                message = await self._queue.get()
+                await self.ws.send_text(message)
+        except Exception:
+            pass  # socket died; run_listener's receive loop will clean us up
+
+    def enqueue(self, message: str) -> None:
+        try:
+            self._queue.put_nowait(message)
+        except asyncio.QueueFull:
+            try:
+                self._queue.get_nowait()  # drop oldest, keep up with live speech
+            except asyncio.QueueEmpty:
+                pass
+            try:
+                self._queue.put_nowait(message)
+            except asyncio.QueueFull:
+                pass
+
+    async def close(self) -> None:
+        self._task.cancel()
+        try:
+            await self._task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -120,21 +151,27 @@ class FanOutSink(FrameProcessor):
 # ---------------------------------------------------------------------------
 
 class LangWorker:
-    """Translate → TTS → fan-out for a single target language."""
+    """Translate → TTS → fan-out for a single target language.
+
+    The TTS service is driven directly (``run_tts``) rather than through a
+    Pipeline: awaiting the generator gives natural back-pressure, so when
+    synthesis can't keep up the bounded source queue fills and drops its oldest
+    segment — keeping the stream close to live speech.
+    """
 
     def __init__(self, room: "TranslationRoom", language: str):
         self.room = room
         self.language = language
-        self.subscribers: "set[WebSocket]" = set()
+        self.subscribers: "dict[WebSocket, _Listener]" = {}
         self._queue: "asyncio.Queue[str]" = asyncio.Queue(maxsize=MAX_SEGMENT_BACKLOG)
-        self._pipeline_task: Optional[PipelineTask] = None
-        self._runner_task: Optional[asyncio.Task] = None
+        self._tts: Optional[Any] = None
         self._consumer_task: Optional[asyncio.Task] = None
+        self._resampler = create_stream_resampler()
         self._slot_acquired = False
         self._start_time = 0.0
 
     async def start(self) -> bool:
-        """Build the TTS pipeline and start consuming. Returns False on capacity/error."""
+        """Build the TTS service and start consuming. Returns False on capacity/error."""
         if not await try_acquire_call_slot(self.room.org_id):
             logger.warning(
                 f"translation[{self.language}]: capacity/budget exceeded, refusing worker"
@@ -152,28 +189,12 @@ class LangWorker:
             if voice:
                 tts_config["speaker"] = voice
                 tts_config["voice_id"] = voice
-            tts = create_tts_service(
-                tts_config, LISTEN_SAMPLE_RATE, org_id=self.room.org_id
+            # create_tts_service does a blocking integration-key lookup for most
+            # providers; keep it off the event loop so many listeners joining at
+            # once can't serialise into a stall.
+            self._tts = await asyncio.to_thread(
+                create_tts_service, tts_config, LISTEN_SAMPLE_RATE, self.room.org_id
             )
-            tts._aggregate_sentences = True
-            tts._text_aggregator = FastPunctuationAggregator()
-
-            sink = FanOutSink(self.broadcast)
-            self._pipeline_task = PipelineTask(
-                Pipeline([tts, sink]),
-                params=PipelineParams(
-                    allow_interruptions=False,
-                    enable_metrics=False,
-                    # Providers that don't take an explicit rate fall back to this
-                    # (pipecat defaults to 24 kHz); pin it so every language emits
-                    # the same rate the listener page expects.
-                    audio_out_sample_rate=LISTEN_SAMPLE_RATE,
-                ),
-            )
-            self._runner_task = asyncio.create_task(
-                PipelineRunner(handle_sigint=False).run(self._pipeline_task)
-            )
-            self._runner_task.add_done_callback(self._log_runner_exit)
             self._consumer_task = asyncio.create_task(self._consume())
             logger.info(f"translation[{self.language}]: worker started")
             return True
@@ -185,14 +206,6 @@ class LangWorker:
             logger.error(f"translation[{self.language}]: worker start failed: {e}")
             await self._release_slot()
             return False
-
-    def _log_runner_exit(self, task: "asyncio.Task") -> None:
-        """Surface a dead TTS pipeline instead of letting the language go silent."""
-        if task.cancelled():
-            return
-        error = task.exception()
-        if error is not None:
-            logger.error(f"translation[{self.language}]: TTS pipeline died: {error}")
 
     def enqueue(self, text: str) -> None:
         # Live interpretation: when we fall behind, drop the OLDEST pending
@@ -218,9 +231,8 @@ class LangWorker:
                 translated = await self.room.translate(text, self.language)
                 if not translated:
                     continue
-                if self._pipeline_task is not None:
-                    await self._pipeline_task.queue_frames([TTSSpeakFrame(translated)])
-                await self.broadcast(
+                # Push the text first so listeners see it even if TTS lags.
+                self.broadcast(
                     json.dumps(
                         {
                             "event": "transcript",
@@ -230,50 +242,85 @@ class LangWorker:
                         }
                     )
                 )
+                await self._synthesize(translated)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 # One bad segment must not kill the language for everyone.
                 logger.error(f"translation[{self.language}]: segment failed: {e}")
 
-    async def broadcast(self, message: str) -> None:
-        """Send one frame to every listener on this language, evicting dead sockets."""
-        dead = []
-        for ws in list(self.subscribers):
-            try:
-                await ws.send_text(message)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.subscribers.discard(ws)
+    async def _synthesize(self, text: str) -> None:
+        """Stream TTS for one segment, resampled to 16 kHz and paced into 20 ms frames."""
+        if self._tts is None:
+            return
+        buffer = bytearray()
+        async for frame in self._tts.run_tts(text):
+            if isinstance(frame, ErrorFrame):
+                logger.warning(f"translation[{self.language}]: TTS error: {frame.error}")
+                return
+            if not (isinstance(frame, AudioRawFrame) and frame.audio):
+                continue
+            pcm = frame.audio
+            if frame.sample_rate != LISTEN_SAMPLE_RATE:
+                pcm = await self._resampler.resample(
+                    pcm, frame.sample_rate, LISTEN_SAMPLE_RATE
+                )
+            buffer.extend(pcm)
+            while len(buffer) >= LISTEN_CHUNK_BYTES:
+                self._send_audio(bytes(buffer[:LISTEN_CHUNK_BYTES]))
+                del buffer[:LISTEN_CHUNK_BYTES]
+        if buffer:
+            self._send_audio(bytes(buffer))
+
+    def _send_audio(self, pcm: bytes) -> None:
+        self.broadcast(
+            json.dumps(
+                {
+                    "event": "playAudio",
+                    "media": {
+                        "contentType": "audio/x-l16",
+                        "sampleRate": LISTEN_SAMPLE_RATE,
+                        "payload": base64.b64encode(pcm).decode("utf-8"),
+                    },
+                }
+            )
+        )
+
+    def add_subscriber(self, websocket: WebSocket) -> None:
+        self.subscribers[websocket] = _Listener(websocket)
+
+    async def remove_subscriber(self, websocket: WebSocket) -> None:
+        listener = self.subscribers.pop(websocket, None)
+        if listener is not None:
+            await listener.close()
+
+    def broadcast(self, message: str) -> None:
+        """Hand one frame to every listener's own send queue (never blocks)."""
+        for listener in self.subscribers.values():
+            listener.enqueue(message)
 
     async def stop(self) -> None:
         if self._consumer_task is not None:
             self._consumer_task.cancel()
-        # Cancel the pipeline first so the runner finishes on its own, then wait
-        # for both tasks so a stopped worker leaves nothing running behind it.
-        if self._pipeline_task is not None:
             try:
-                await self._pipeline_task.cancel()
-            except Exception as e:
-                logger.debug(f"translation[{self.language}]: pipeline cancel: {e}")
-        for task in (self._consumer_task, self._runner_task):
-            if task is None:
-                continue
-            task.cancel()
-            try:
-                await task
+                await self._consumer_task
             except (asyncio.CancelledError, Exception):
                 pass
+        for listener in list(self.subscribers.values()):
+            await listener.close()
+        self.subscribers.clear()
         await self._release_slot()
         logger.info(f"translation[{self.language}]: worker stopped")
 
     async def _release_slot(self) -> None:
         if self._slot_acquired:
             self._slot_acquired = False
-            await release_call_slot(
-                self.room.org_id, time.monotonic() - self._start_time
-            )
+            # Charge 0 minutes: every language is driven by the SAME presenter
+            # speech, so the publisher already accounts for the wall-clock. Charging
+            # each language its own duration would bill N× the real talk length and
+            # exhaust the daily budget after one multi-language broadcast. The
+            # concurrency slot is still released here.
+            await release_call_slot(self.room.org_id, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +337,7 @@ class TranslationRoom:
         self.lock = asyncio.Lock()
         self._openai = None
         self._model = _translation_model()
+        self._grace_task: Optional[asyncio.Task] = None
         self._derive_from_config(config)
 
     def _derive_from_config(self, config: Dict[str, Any]) -> None:
@@ -319,7 +367,33 @@ class TranslationRoom:
         """Tell already-waiting listeners that the presenter just started."""
         notice = json.dumps({"event": "presenter_live"})
         for worker in list(self.workers.values()):
-            await worker.broadcast(notice)
+            worker.broadcast(notice)
+
+    def cancel_grace(self) -> None:
+        """Abort a pending teardown because a presenter (re)claimed the room."""
+        if self._grace_task and not self._grace_task.done():
+            self._grace_task.cancel()
+        self._grace_task = None
+
+    async def schedule_end_broadcast(self) -> None:
+        """Defer teardown by a grace period so a brief presenter drop doesn't kill
+        every listener's session. A reconnecting presenter cancels this."""
+        async with self.lock:
+            if self._grace_task and not self._grace_task.done():
+                return
+            self._grace_task = asyncio.create_task(self._grace_then_end())
+        # Let waiting listeners know the presenter paused (kept, not closed).
+        for worker in list(self.workers.values()):
+            worker.broadcast(json.dumps({"event": "status", "presenter_online": False}))
+
+    async def _grace_then_end(self) -> None:
+        try:
+            await asyncio.sleep(PRESENTER_GRACE_SECS)
+        except asyncio.CancelledError:
+            return
+        if self.publisher is None:
+            await self.end_broadcast()
+            await _maybe_cleanup_room(self)
 
     async def end_broadcast(self) -> None:
         """Tear down every language worker once the presenter is gone.
@@ -334,14 +408,16 @@ class TranslationRoom:
             self.workers.clear()
         notice = json.dumps({"event": "session_ended"})
         for worker in workers:
-            for ws in list(worker.subscribers):
+            sockets = list(worker.subscribers)
+            # Stop the per-listener writer tasks first so nothing else is writing
+            # these sockets while we send the final notice and close them.
+            await worker.stop()
+            for ws in sockets:
                 try:
                     await ws.send_text(notice)
                     await ws.close(code=1000, reason="broadcast ended")
                 except Exception:
                     pass
-            worker.subscribers.clear()
-            await worker.stop()
 
     async def translate(self, text: str, target_language: str) -> Optional[str]:
         client = self.get_openai_client()
@@ -357,19 +433,25 @@ class TranslationRoom:
         # stay authoritative so the output is always just the translation.
         if self.extra_instructions:
             system = f"{system}\n\nAdditional guidance:\n{self.extra_instructions}"
-        try:
-            resp = await client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": text},
-                ],
-                temperature=0.2,
-            )
-            return (resp.choices[0].message.content or "").strip()
-        except Exception as e:
-            logger.warning(f"translation to {target_language} failed: {e}")
-            return None
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": text},
+        ]
+        # One retry: a single transient LLM hiccup (429/timeout) would otherwise
+        # silently drop a whole segment of speech for this language.
+        last_error: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                resp = await client.chat.completions.create(
+                    model=self._model, messages=messages, temperature=0.2
+                )
+                return (resp.choices[0].message.content or "").strip()
+            except Exception as e:
+                last_error = e
+                if attempt == 0:
+                    await asyncio.sleep(0.3)
+        logger.warning(f"translation to {target_language} failed: {last_error}")
+        return None
 
     def get_openai_client(self):
         """Resolve (and cache) the translation client.
@@ -429,6 +511,7 @@ async def try_claim_publisher(
         if room.publisher is not None:
             return None
         room.publisher = websocket
+        room.cancel_grace()  # reconnect within the grace window keeps listeners alive
         room._derive_from_config(config)  # presenter's config wins over any stale one
         return room
 
@@ -510,8 +593,12 @@ async def run_publisher(websocket: WebSocket, agent_id: str, config: Dict[str, A
         stt_config = dict(room.stt_config)
         if room.source_language and not stt_config.get("language"):
             stt_config["language"] = room.source_language
-        stt = create_stt_service(
-            stt_config, PUBLISH_SAMPLE_RATE, vad_analyzer=vad_analyzer, org_id=room.org_id
+        stt = await asyncio.to_thread(
+            create_stt_service,
+            stt_config,
+            PUBLISH_SAMPLE_RATE,
+            vad_analyzer=vad_analyzer,
+            org_id=room.org_id,
         )
         collector = TranscriptCollector(room.on_source_text)
 
@@ -537,8 +624,9 @@ async def run_publisher(websocket: WebSocket, agent_id: str, config: Dict[str, A
             room.publisher = None
         if slot_acquired:
             await release_call_slot(room.org_id, time.monotonic() - start_time)
-        await room.end_broadcast()
-        await _maybe_cleanup_room(room)
+        # Grace period before teardown so a brief presenter reconnect keeps every
+        # listener's session (and warm language workers) alive.
+        await room.schedule_end_broadcast()
 
 
 async def run_listener(websocket: WebSocket, room: TranslationRoom, language: str) -> None:
@@ -553,7 +641,7 @@ async def run_listener(websocket: WebSocket, room: TranslationRoom, language: st
                 await _maybe_cleanup_room(room)
                 return
             room.workers[language] = worker
-        worker.subscribers.add(websocket)
+        worker.add_subscriber(websocket)
     logger.info(f"translation[{room.agent_id}]: listener joined lang={language}")
 
     # Without this a listener who opens the link before the talk starts sees
@@ -578,7 +666,7 @@ async def run_listener(websocket: WebSocket, room: TranslationRoom, language: st
         pass
     finally:
         async with room.lock:
-            worker.subscribers.discard(websocket)
+            await worker.remove_subscriber(websocket)
             # Only tear down if THIS worker is still the registered one. A
             # presenter restart (end_broadcast) or reconnect can replace it with
             # a new worker for the same language; popping by key would orphan the

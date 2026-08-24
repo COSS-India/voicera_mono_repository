@@ -60,6 +60,21 @@ services:
     build: ../../voice_2_voice_server
     restart: unless-stopped
     env_file: ../../voice_2_voice_server/.env.translate
+    # These override .env.translate and are REQUIRED for live translation.
+    environment:
+      # Translation rooms are process-local (in-memory registry + per-language
+      # workers). It MUST run single-worker: with >1 the presenter and listeners
+      # can land on different processes and never meet — listeners then hear
+      # silence. See api/translation_room.py and the warning in api/server.py.
+      - VOICE_SERVER_NUM_WORKERS=1
+      # A translation room takes 1 call slot for the publisher + 1 per ACTIVE
+      # target language (not per listener). Size for publisher + languages with
+      # headroom instead of the telephony default of 5, or extra languages get
+      # refused with WS 1013 mid-session.
+      - MAX_CONCURRENT_CALLS_PER_ORG=${MAX_CONCURRENT_CALLS_PER_ORG:-30}
+      # Language workers bill 0 minutes (the publisher accounts for the real
+      # wall-clock); keep the daily cap generous for long talks.
+      - MAX_MINUTES_PER_ORG_PER_DAY=${MAX_MINUTES_PER_ORG_PER_DAY:-100000}
     depends_on: [backend, minio]
     # Dual-homed: `internal` for its own backend/minio, `prodnet` to reach the
     # existing prod stt/tts. On `prodnet` the names backend/minio/nginx are
