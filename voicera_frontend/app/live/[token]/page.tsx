@@ -262,6 +262,10 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
       if (ev.code === 4404 || ev.code === 4400) {
         wantConnectedRef.current = false
         setError("This live translation link is no longer available.")
+      } else if (ev.code === 4503) {
+        // Server misconfigured (multi-worker): retrying can't help.
+        wantConnectedRef.current = false
+        setError("Live translation is temporarily unavailable. Please try again later.")
       } else if (ev.code === 1013) {
         // At capacity: keep retrying (a slot may free up) but say so, instead of
         // showing a bare "reconnecting…" that looks like a fault.

@@ -39,6 +39,21 @@ load_dotenv()
 AGENT_CONFIGS_DIR = Path("agent_configs")
 
 
+def _translation_single_worker() -> bool:
+    """True when this process can safely host translation rooms.
+
+    Rooms are process-local (in-memory registry + per-language workers), so with
+    more than one worker a presenter and a listener can land on different
+    processes and never meet — the listener would hear silence. run_server writes
+    the resolved worker count into the env so every worker process reads the same
+    value here; default 1 covers a plain single-process ``uvicorn`` launch.
+    """
+    try:
+        return int(os.environ.get("VOICE_SERVER_NUM_WORKERS", "1")) <= 1
+    except ValueError:
+        return True
+
+
 # === TCP_NODELAY WebSocket Protocol ===
 
 try:
@@ -615,6 +630,14 @@ async def translate_publish_endpoint(websocket: WebSocket, agent_id: str):
     await websocket.accept()
     logger.info(f"🔌 Translation publish connected: agent={agent_id}")
     try:
+        if not _translation_single_worker():
+            logger.error(
+                "translation publish refused: server started with "
+                "VOICE_SERVER_NUM_WORKERS>1. Rooms are process-local; run the "
+                "translation service single-worker (see docker-compose.translate.yml)."
+            )
+            await websocket.close(code=4503, reason="translation requires single-worker deployment")
+            return
         token = websocket.query_params.get("token")
         # resolve_broadcast_token is blocking (sync requests); run it off the
         # event loop so one slow/hung backend call can't stall every other
@@ -644,6 +667,14 @@ async def translate_listen_endpoint(websocket: WebSocket, share_token: str):
     """Public listener leg: pick a language and hear the live translation."""
     await websocket.accept()
     try:
+        if not _translation_single_worker():
+            logger.error(
+                "translation listen refused: server started with "
+                "VOICE_SERVER_NUM_WORKERS>1. Rooms are process-local; run the "
+                "translation service single-worker (see docker-compose.translate.yml)."
+            )
+            await websocket.close(code=4503, reason="translation requires single-worker deployment")
+            return
         language = websocket.query_params.get("lang")
         # Public, unauthenticated endpoint: keep the blocking backend lookup off
         # the event loop so a connection flood can't starve the worker.
@@ -692,6 +723,9 @@ def run_server(host: str = "0.0.0.0", port: int = 7860, log_level: str = "info")
         logger.warning("⚠️ Could not enable TCP_NODELAY, latency may be affected")
 
     num_workers = int(os.environ.get("VOICE_SERVER_NUM_WORKERS", "4"))
+    # Publish the resolved count so worker processes (and _translation_single_worker)
+    # read the real value even when the env var was left at its default.
+    os.environ["VOICE_SERVER_NUM_WORKERS"] = str(num_workers)
     if num_workers > 1:
         logger.warning(
             "⚠️ VOICE_SERVER_NUM_WORKERS={} > 1: live-translation rooms are "
