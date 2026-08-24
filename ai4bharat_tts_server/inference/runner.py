@@ -655,6 +655,17 @@ class ParlerTTSModelRunner:
         self.free(request, compact=True)
         self._pending_final_tokens[pid] = (token_cache, audio_to_yield)
 
+    def pending_final_pids(self):
+        """Requests whose EOS tail has been queued but not yet DAC'd.
+
+        The server must not tell a client "done" while its pid is in here: the
+        final decode is capped per tick (``_dac_max_finals_per_tick``), so a tail
+        queued now may only be decoded several ticks later — and a client that
+        already saw "done" has stopped reading, so that tail would be discarded
+        and the utterance would end mid-word.
+        """
+        return set(self._pending_final_tokens.keys())
+
     def _flush_pending_final_tokens(self):
         """DAC any utterances queued at evict time."""
         out = {}

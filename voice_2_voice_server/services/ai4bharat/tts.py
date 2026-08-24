@@ -33,6 +33,22 @@ def _parse_gain() -> float:
     return gain
 
 
+def _sock_read_timeout() -> float:
+    """Seconds to wait for the next audio frame before giving up on the server.
+
+    Was 600: a server that accepted the request and then stalled held the caller
+    silent for ten minutes with no way to recover. Long enough for a queue wait
+    behind a busy batch, short enough that the caller can retry within a sentence.
+    """
+    raw = os.getenv("INDIC_TTS_SOCK_READ_SECS", "30").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Invalid INDIC_TTS_SOCK_READ_SECS={!r}, using 30", raw)
+        return 30.0
+    return value if value > 0 else 30.0
+
+
 def _ws_url(raw: str) -> str:
     base = raw.strip().rstrip("/")
     for suffix in ("/tts/stream", "/tts"):
@@ -78,7 +94,9 @@ class IndicParlerRESTTTSService(TTSService):
         else:
             logger.info("Starting IndicParler TTS service")
         connector = aiohttp.TCPConnector(limit=0, ttl_dns_cache=300)
-        timeout = aiohttp.ClientTimeout(total=None, connect=10, sock_read=600)
+        timeout = aiohttp.ClientTimeout(
+            total=None, connect=10, sock_read=_sock_read_timeout()
+        )
         self._session = aiohttp.ClientSession(connector=connector, timeout=timeout)
         await super().start(frame)
 
@@ -105,7 +123,9 @@ class IndicParlerRESTTTSService(TTSService):
         if not session or session.closed:
             logger.warning("TTS session not available, creating temporary session")
             session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=None, connect=10, sock_read=600)
+                timeout=aiohttp.ClientTimeout(
+                    total=None, connect=10, sock_read=_sock_read_timeout()
+                )
             )
             should_close = True
 

@@ -17,15 +17,30 @@ const DEFAULT_SAMPLE_RATE = 16000
 // frames doesn't cause audible gaps. Kept small to minimise added latency; raise
 // it if listeners on jittery links hear dropouts.
 const JITTER_BUFFER_SECS = 0.15
-// Safety valve for genuine long-run drift only: if translated speech is
-// consistently longer than the source, a listener would fall further and further
-// behind, so past this much buffered-but-unplayed audio we drop the backlog and
-// resync to now. It must stay well ABOVE one utterance's worth of audio: the
-// backend sends a whole sentence's frames as fast as TTS yields them, so normal
-// buffering routinely runs several seconds ahead. Setting this too low makes the
-// resync fire mid-sentence, discarding translated speech the listener never hears
-// (and, before the sources were tracked, layering it into a doubled voice).
-const MAX_LEAD_SECS = 8
+// Translated speech is routinely longer than the source it came from, so a
+// listener's backlog grows for as long as the presenter keeps talking. Two
+// mechanisms drain it, in order of how audible they are:
+//
+// 1. Above SOFT_LEAD_SECS, play slightly fast. At 5 % the pitch shift is barely
+//    perceptible on speech and it costs nothing — no audio is discarded.
+// 2. Above MAX_LEAD_SECS, skip forward. Speeding up alone cannot beat an accrual
+//    rate of tens of percent, so a real skip is eventually unavoidable; what
+//    matters is *where* it lands. We cut at a sentence boundary when one is
+//    close, else at the end of the 20 ms frame that is sounding right now, and we
+//    never stop a buffer that is already playing — stopping mid-buffer is exactly
+//    the mid-word "chop" this used to produce.
+const SOFT_LEAD_SECS = 2.5
+const SOFT_DRAIN_RATE = 1.05
+const MAX_LEAD_SECS = 6
+// How long a skip will wait for the next sentence end before cutting at the
+// current frame instead. Beyond this the wait costs more than the cleaner cut.
+const BOUNDARY_CUT_WAIT_SECS = 1.5
+// Frames arrive 20 ms at a time but are scheduled in blocks of about this long.
+// A block is resampled as one window, so the catch-up playback rate above costs
+// two interpolated edges per block instead of two per 20 ms frame. Only applies
+// once there is audio in hand to play: while the buffer is starved, every frame
+// is scheduled the moment it arrives, so this never delays speech.
+const COALESCE_SECS = 0.2
 
 function base64ToInt16(base64: string): Int16Array {
   const binary = atob(base64)
@@ -64,6 +79,12 @@ function getListenerStatus({
   return { state: "idle", label: "Not connected" }
 }
 
+interface ScheduledFrame {
+  source: AudioBufferSourceNode
+  startAt: number
+  endAt: number
+}
+
 interface LiveTranslationPageProps {
   params: Promise<{ token: string }>
 }
@@ -87,9 +108,17 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
 
   const wsRef = useRef<WebSocket | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
-  // Every audio frame we schedule, so a resync can stop the ones already queued
-  // instead of layering new audio on top of them.
-  const scheduledSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set())
+  // Every audio frame we schedule, with the window it occupies, so a skip can
+  // drop the ones still queued without touching the one that is sounding and
+  // without layering new audio on top of either.
+  const scheduledSourcesRef = useRef<Set<ScheduledFrame>>(new Set())
+  // Playout times at which a translated sentence finishes, ascending — the safe
+  // places to skip forward from.
+  const boundariesRef = useRef<number[]>([])
+  // Frames received but not yet scheduled (see COALESCE_SECS).
+  const pendingChunksRef = useRef<Float32Array[]>([])
+  const pendingLenRef = useRef(0)
+  const pendingRateRef = useRef(DEFAULT_SAMPLE_RATE)
   const playbackTimeRef = useRef(0)
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
   const wantConnectedRef = useRef(false)
@@ -134,15 +163,48 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
   }, [])
 
   const stopScheduledSources = useCallback(() => {
-    for (const source of scheduledSourcesRef.current) {
-      source.onended = null
+    for (const frame of scheduledSourcesRef.current) {
+      frame.source.onended = null
       try {
-        source.stop()
+        frame.source.stop()
       } catch {
         // already stopped/ended
       }
     }
     scheduledSourcesRef.current.clear()
+    boundariesRef.current = []
+    pendingChunksRef.current = []
+    pendingLenRef.current = 0
+  }, [])
+
+  // Drop only what is still queued at or after `from`, leaving anything already
+  // sounding to finish. Frames are contiguous, so cutting at a frame end or a
+  // sentence end means nothing kept can overlap what we schedule next.
+  const dropQueuedFrom = useCallback((from: number) => {
+    for (const frame of Array.from(scheduledSourcesRef.current)) {
+      if (frame.startAt >= from - 1e-6) {
+        frame.source.onended = null
+        try {
+          frame.source.stop()
+        } catch {
+          // already stopped/ended
+        }
+        scheduledSourcesRef.current.delete(frame)
+      }
+    }
+    boundariesRef.current = boundariesRef.current.filter((b) => b <= from)
+  }, [])
+
+  // Where a catch-up skip should land: the next sentence end if one is close,
+  // otherwise the end of the frame currently being played.
+  const chooseCutTime = useCallback((now: number) => {
+    const boundary = boundariesRef.current.find((b) => b > now + 0.02)
+    if (boundary !== undefined && boundary - now <= BOUNDARY_CUT_WAIT_SECS) return boundary
+    let end = now
+    for (const frame of scheduledSourcesRef.current) {
+      if (frame.startAt <= now && frame.endAt > end) end = frame.endAt
+    }
+    return end
   }, [])
 
   const teardown = useCallback(async () => {
@@ -179,32 +241,74 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     if (viewport) viewport.scrollTop = viewport.scrollHeight
   }, [transcripts])
 
-  const handleIncomingAudio = useCallback((payloadB64: string, sampleRate: number) => {
+  const scheduleBuffer = useCallback((float32: Float32Array<ArrayBuffer>, sampleRate: number) => {
     const ctx = audioContextRef.current
     if (!ctx) return
-    const int16 = base64ToInt16(payloadB64)
-    if (!int16.length) return
-    const float32 = int16ToFloat32(int16)
     const buffer = ctx.createBuffer(1, float32.length, sampleRate)
     buffer.copyToChannel(float32, 0)
     const source = ctx.createBufferSource()
     source.buffer = buffer
     source.connect(ctx.destination)
-    const earliest = ctx.currentTime + JITTER_BUFFER_SECS
-    let startAt = Math.max(earliest, playbackTimeRef.current)
-    // Drifted too far ahead → drop the accumulated lead and resync to now.
-    // Stop everything already scheduled out to the old cursor first; otherwise
-    // the resync'd frames play *on top* of it and the listener hears the same
-    // translation twice for up to MAX_LEAD_SECS.
-    if (startAt - ctx.currentTime > MAX_LEAD_SECS) {
-      stopScheduledSources()
-      startAt = earliest
+    const now = ctx.currentTime
+    // Boundaries already in the past can never be a cut point again.
+    if (boundariesRef.current.length) {
+      boundariesRef.current = boundariesRef.current.filter((b) => b > now - 1)
     }
+    // Drifted too far behind live speech → skip forward. Cut at a sentence end
+    // if one is close, else at the end of the frame that is sounding now, and
+    // drop everything queued past that point (otherwise the new frames would
+    // play *on top* of it and the listener hears a doubled voice).
+    if (playbackTimeRef.current - now > MAX_LEAD_SECS) {
+      const cutAt = chooseCutTime(now)
+      dropQueuedFrom(cutAt)
+      playbackTimeRef.current = cutAt
+    }
+    const startAt = Math.max(now + JITTER_BUFFER_SECS, playbackTimeRef.current)
+    // Still behind, but not enough to justify discarding speech: shave the lead
+    // down by playing a little fast.
+    const rate = startAt - now > SOFT_LEAD_SECS ? SOFT_DRAIN_RATE : 1
+    source.playbackRate.value = rate
+    const endAt = startAt + buffer.duration / rate
     source.start(startAt)
-    scheduledSourcesRef.current.add(source)
-    source.onended = () => scheduledSourcesRef.current.delete(source)
-    playbackTimeRef.current = startAt + buffer.duration
-  }, [stopScheduledSources])
+    const frame: ScheduledFrame = { source, startAt, endAt }
+    scheduledSourcesRef.current.add(frame)
+    source.onended = () => scheduledSourcesRef.current.delete(frame)
+    playbackTimeRef.current = endAt
+  }, [chooseCutTime, dropQueuedFrom])
+
+  const flushPendingAudio = useCallback(() => {
+    const chunks = pendingChunksRef.current
+    if (!chunks.length) return
+    const merged = new Float32Array(pendingLenRef.current)
+    let offset = 0
+    for (const chunk of chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.length
+    }
+    pendingChunksRef.current = []
+    pendingLenRef.current = 0
+    scheduleBuffer(merged, pendingRateRef.current)
+  }, [scheduleBuffer])
+
+  const handleIncomingAudio = useCallback((payloadB64: string, sampleRate: number) => {
+    const ctx = audioContextRef.current
+    if (!ctx) return
+    const int16 = base64ToInt16(payloadB64)
+    if (!int16.length) return
+    if (sampleRate !== pendingRateRef.current) {
+      flushPendingAudio()
+      pendingRateRef.current = sampleRate
+    }
+    pendingChunksRef.current.push(int16ToFloat32(int16))
+    pendingLenRef.current += int16.length
+    // Nothing (or nearly nothing) left to play → schedule at once; a gap now is
+    // worse than the extra nodes. Otherwise let the block fill first.
+    const starved =
+      playbackTimeRef.current - ctx.currentTime < JITTER_BUFFER_SECS + 0.05
+    if (starved || pendingLenRef.current >= COALESCE_SECS * sampleRate) {
+      flushPendingAudio()
+    }
+  }, [flushPendingAudio])
 
   const scheduleReconnect = useCallback(() => {
     if (!wantConnectedRef.current) return
@@ -265,11 +369,23 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
             msg.media.payload,
             Number(msg?.media?.sampleRate) || DEFAULT_SAMPLE_RATE,
           )
+        } else if (msg?.event === "audio_boundary") {
+          // End of one translated sentence, in playout time. Recorded so a
+          // catch-up skip can land between sentences instead of mid-word. Flush
+          // first so the boundary accounts for all of that sentence's audio.
+          flushPendingAudio()
+          const boundary = playbackTimeRef.current
+          const boundaries = boundariesRef.current
+          if (!boundaries.length || boundary > boundaries[boundaries.length - 1]) {
+            boundaries.push(boundary)
+          }
         } else if (msg?.event === "status") {
           setPresenterOnline(Boolean(msg.presenter_online))
         } else if (msg?.event === "presenter_live") {
           setPresenterOnline(true)
         } else if (msg?.event === "session_ended") {
+          // Nothing more is coming, so play out whatever is still held back.
+          flushPendingAudio()
           // Presenter ended on purpose — don't fight it with reconnects.
           wantConnectedRef.current = false
           setSessionEnded(true)
@@ -333,7 +449,7 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
         setIsReconnecting(false)
       }
     }
-  }, [token, handleIncomingAudio, scheduleReconnect, stopScheduledSources])
+  }, [token, handleIncomingAudio, flushPendingAudio, scheduleReconnect, stopScheduledSources])
 
   useEffect(() => {
     openSocketRef.current = openSocket
@@ -349,7 +465,16 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     setIsConnecting(true)
     setTranscripts([])
     try {
-      const ctx = new AudioContext()
+      // Ask for a context at the stream's own rate. Otherwise every 20 ms buffer
+      // is resampled to the device rate in isolation, with no filter state carried
+      // across buffers — a discontinuity at each frame edge, i.e. a 50 Hz buzz on
+      // top of the speech. Not all browsers honour the hint, so fall back.
+      let ctx: AudioContext
+      try {
+        ctx = new AudioContext({ sampleRate: DEFAULT_SAMPLE_RATE })
+      } catch {
+        ctx = new AudioContext()
+      }
       audioContextRef.current = ctx
       await ctx.resume()
       languageRef.current = language

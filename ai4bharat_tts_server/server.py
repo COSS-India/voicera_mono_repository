@@ -65,6 +65,9 @@ def worker_main(
     runner = ParlerTTSModelRunner(checkpoint_path, play_steps=decode_every, use_cuda_graph=use_cuda_graph)
     print(f"[worker startup] use_cuda_graph={use_cuda_graph}", flush=True)
     pending_pids: set[str] = set()
+    # Evicted (EOS) requests whose "done" is held back until their final tail has
+    # actually been decoded and dispatched -- see runner.pending_final_pids().
+    done_pending: set[str] = set()
     step_count = 0
     last_empty_cache = 0.0
     ready_q.put(worker_id)
@@ -103,6 +106,8 @@ def worker_main(
                         results_q.put((req.pid, "error", str(e)))
 
             # 2) One global step, batched over whatever this worker is running.
+            audio_dict = {}
+            evicted: set[str] = set()
             if runner.running_requests:
                 pids_before = set(runner.running_requests.keys())
                 try:
@@ -126,7 +131,13 @@ def worker_main(
                 evicted = pids_before - pids_after
                 step_count += 1
 
-                should_audio_decode = bool(evicted) or (step_count % decode_every == 0)
+                # Keep decoding while any EOS tail is still queued, not just on the
+                # periodic tick: a held-back "done" waits on that decode.
+                should_audio_decode = (
+                    bool(evicted)
+                    or bool(runner.pending_final_pids())
+                    or (step_count % decode_every == 0)
+                )
                 try:
                     audio_dict = runner.audio_decode() if should_audio_decode else {}
                 except Exception as e:
@@ -141,21 +152,48 @@ def worker_main(
                         runner.running_requests.pop(p, None)
                         pending_pids.discard(p)
                         results_q.put((p, "error", f"audio decode failed: {e}"))
+                    # Their tails are unrecoverable, but these clients have already
+                    # had most of their audio: close them out rather than leaving
+                    # them waiting on a "done" that can no longer come.
+                    for p in list(done_pending):
+                        done_pending.discard(p)
+                        pending_pids.discard(p)
+                        results_q.put((p, "done", None))
                     continue
-
-                for p, arr in audio_dict.items():
-                    if p in pending_pids:
-                        results_q.put((p, "audio", arr))
-
-                for p in evicted:
-                    pending_pids.discard(p)
-                    results_q.put((p, "done", None))
+            elif done_pending or runner.pending_final_pids():
+                # The batch has drained but EOS tails are still queued. Without
+                # this the last chunk of the final utterances -- and their "done"
+                # -- would never be sent, because the decode only ran inside the
+                # branch above.
+                try:
+                    audio_dict = runner.audio_decode()
+                except Exception as e:
+                    traceback.print_exc()
+                    for p in list(done_pending):
+                        done_pending.discard(p)
+                        pending_pids.discard(p)
+                        results_q.put((p, "error", f"audio decode failed: {e}"))
+                    continue
             else:
                 now = time.monotonic()
                 if now - last_empty_cache > 1.0:
                     torch.cuda.empty_cache()
                     last_empty_cache = now
                 time.sleep(0.005)
+                continue
+
+            for p, arr in audio_dict.items():
+                if p in pending_pids:
+                    results_q.put((p, "audio", arr))
+
+            # "done" only once this pid has no tail left to decode, so a client
+            # never stops reading with its last ~100 ms still on the GPU.
+            done_pending |= evicted
+            if done_pending:
+                for p in sorted(done_pending - runner.pending_final_pids()):
+                    done_pending.discard(p)
+                    pending_pids.discard(p)
+                    results_q.put((p, "done", None))
 
 
 def results_dispatcher(

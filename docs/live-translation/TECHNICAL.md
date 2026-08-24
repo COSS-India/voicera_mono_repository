@@ -333,6 +333,32 @@ UX correctness
 - Listeners receive a `status` event on join and `presenter_live` when the talk starts, so opening the link early reads as "waiting for the presenter" rather than an apparent fault.
 - The presenter-language picker is constrained to a single language in translation mode; extra selections were previously accepted and then silently ignored (STT only ever uses the first).
 
+### 13.2 Audio continuity, latency and stall handling
+
+A second pass after listening to real broadcasts. Every audible "chop" traced to one of five causes, none of them the TTS model itself:
+
+Playback (`app/live/[token]/page.tsx`)
+- **The listener was cutting itself off mid-word.** Translated speech runs longer than the source it came from, so a listener's buffered lead grows for as long as the presenter talks. On crossing the lead ceiling the client called `stopScheduledSources()`, which stopped the buffer *currently sounding* — an instant amplitude jump mid-word, discarding up to 8 s of speech, on a period set by how fast the lead accrued. Replaced with two graded mechanisms: above `SOFT_LEAD_SECS` playback runs at `SOFT_DRAIN_RATE` (5 % fast, no audio discarded), and above `MAX_LEAD_SECS` it skips forward — but only ever dropping frames *still queued*, cutting at a sentence end when one is within `BOUNDARY_CUT_WAIT_SECS` and otherwise at the end of the 20 ms frame that is playing. Sentence ends are known because the server now emits an `audio_boundary` event after each synthesised chunk (unknown events are ignored by older clients).
+- **The audio context now opens at the stream's 16 kHz.** At the device rate every 20 ms buffer was resampled in isolation with no filter state carried across buffers, putting a discontinuity at each frame edge — a 50 Hz buzz layered over the speech. Falls back to the default rate on browsers that ignore the hint.
+
+Fan-out (`translation_room.py`)
+- **Per-listener send buffer raised to ~10 s and now drops in blocks.** The queue was sized in audio seconds (2 s) but filled in bursts — a language worker hands over a whole sentence as fast as TTS yields it — so ordinary sentences overflowed it and the drop-oldest policy ate the *head* of each one. Overflow now sheds one contiguous block (one clean skip) instead of a frame per push (a burst of holes through a word), and logs how much was skipped.
+- **A dead listener writer no longer means silent forever.** The writer task swallowed its exception and exited, leaving the socket open and the listener watching a "live" indicator with nothing playing. It now logs, marks itself dead and closes the socket so the client reconnects.
+- **A TTS failure before any audio retries once.** Previously any `ErrorFrame` returned mid-chunk, so a provider that died at connect dropped the sentence outright. Retry only happens when nothing has been spoken yet — re-running a chunk that was half spoken would repeat it.
+
+Latency
+- **Translate and synthesise now overlap.** `_consume` was awaiting `_synthesize` before pulling the next segment, so every segment paid the LLM's full time-to-first-token as dead air. The worker is now two stages joined by a bounded `_synth_queue`: translation of segment *n+1* proceeds while segment *n* is still being spoken. Order is preserved by a single synth task draining a FIFO, and the bounded queue keeps the original back-pressure path (source queue fills → oldest segment dropped) intact.
+- **Every segment logs its own breakdown** (`llm_ttft`, `tts_ttfa`, audio duration, synth wall-clock, and `rtf` — above 1 means this language synthesises slower than it is spoken, so listener lag will grow without bound). Previously the only way to attribute lag to a stage was to guess from the audio.
+
+Stall handling — a hung provider must not mute a language for the rest of the broadcast. All three are *inactivity* limits, so a legitimately long sentence is never cut short: `TRANSLATION_LLM_TIMEOUT_SECS` (10 s, per token, also passed to the OpenAI client), `TRANSLATION_TTS_STALL_SECS` (20 s, per audio frame), and `INDIC_TTS_SOCK_READ_SECS` (30 s, was a hard-coded 600).
+
+On-prem Parler backend (`ai4bharat_tts_server`)
+- **`done` was racing the final audio tail.** DAC of an EOS tail is capped at `_dac_max_finals_per_tick` (2) per tick and the remainder stays queued, but `done` was sent for every evicted pid in the same iteration. A client that saw `done` stopped reading and its pid was dropped from the dispatch table, so that tail — including the ~93 ms every live window holds back as `_audio_stride` — was decoded and thrown away. Clipped sentence endings, sporadic, worse under concurrency (and translation mode issues many short requests, so EOS collisions are frequent). `done` is now held in `done_pending` until `runner.pending_final_pids()` no longer lists the pid; the decode also runs whenever tails are queued, including after the batch has fully drained, so nothing waits on a tick that never comes.
+
+Deliberately unchanged: whole-segment drops at `MAX_SEGMENT_BACKLOG` (correct policy for live interpretation — stay near live speech; already logged), and the single-worker room constraint of §7.3.
+
+Not fixed here: `test-browser-dialog.tsx` schedules playback the same way as the listener page did and has the same per-frame resampling artefact on the 1:1 path.
+
 Not implemented (deliberately out of scope): the generic 1:1 public share for *non*-translation agents. The opt-in flag, `share_token`, public endpoint and public page all exist and are type-agnostic, but `/live/[token]` currently renders an explanatory message for a non-translation agent instead of a microphone session. Wiring it to the existing `/browser/agent/{agent_id}` flow is a small, additive follow-up.
 
 ---

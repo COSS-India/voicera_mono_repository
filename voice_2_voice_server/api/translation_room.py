@@ -66,9 +66,17 @@ MAX_SEGMENT_BACKLOG = 50
 # forwarding whatever variable-length blob the TTS backend happened to emit.
 LISTEN_FRAME_MS = 20
 LISTEN_CHUNK_BYTES = int(LISTEN_SAMPLE_RATE * LISTEN_FRAME_MS / 1000) * 2
-# Per-listener outbound buffer (~2 s of audio). A slow socket drops its own
+# Per-listener outbound buffer (~10 s of audio). A slow socket drops its own
 # oldest frames instead of stalling the whole language for everyone else.
-LISTENER_SEND_BACKLOG = 100
+# Sized in *audio* seconds, but filled in bursts: a language worker hands over a
+# whole sentence as fast as TTS yields it, which for a long sentence is several
+# seconds of audio in well under a second of wall clock. At 2 s this overflowed on
+# ordinary sentences and quietly ate the head of each one.
+LISTENER_SEND_BACKLOG = 500
+# On overflow, drop a contiguous block rather than one frame per push. Dropping
+# single 20 ms frames repeatedly punches a burst of holes through the middle of a
+# word; dropping one block is a single clean skip the listener reads as a cut.
+LISTENER_DROP_BLOCK = LISTENER_SEND_BACKLOG // 2
 # Keep a room (and its language workers) alive briefly after the presenter drops,
 # so a transient reconnect doesn't tear down every listener's session.
 PRESENTER_GRACE_SECS = int(os.getenv("TRANSLATION_PRESENTER_GRACE_SECS", "20"))
@@ -86,15 +94,30 @@ VAD_STOP_SECS = float(os.getenv("TRANSLATION_VAD_STOP_SECS", "0.4"))
 # of waiting for the whole segment. Break on sentence-final punctuation (Latin +
 # Indic danda) once whitespace confirms the sentence closed.
 _SENTENCE_END = re.compile(r"[.!?।॥]+[\"'”’)\]]*\s")
+# Fallback break for a rambling clause with no sentence-final punctuation: prefer
+# a clause boundary (comma/semicolon/colon/dash) over a bare word gap, so the cut
+# lands where a speaker would pause anyway instead of mid-phrase.
+_CLAUSE_END = re.compile(r"[,;:—–]\s")
 # A rambling clause with no sentence-final punctuation would otherwise never
-# flush; past this many buffered chars, break at the last word boundary so audio
-# keeps flowing. Sentence breaks are always preferred when present.
+# flush; past this many buffered chars, break at the last clause (else word)
+# boundary so audio keeps flowing. Sentence breaks are always preferred.
 MAX_TTS_CHUNK_CHARS = 240
 # Don't cut a chunk this short: an abbreviation ("Dr. ") or a decimal would
 # otherwise become its own micro-utterance, spoken with sentence-final intonation
-# and a pause. Kept small so it never meaningfully delays the first audio; a short
-# final sentence is still flushed by the end-of-stream tail.
-MIN_TTS_CHUNK_CHARS = 16
+# and a pause. Also a floor on prompt length for the on-prem Parler backend, which
+# clips and garbles very short prompts. A short final sentence is still flushed by
+# the end-of-stream tail, so this only delays audio when more text is coming.
+MIN_TTS_CHUNK_CHARS = 40
+# Sentences waiting to be synthesised for this language. Translation of the next
+# segment runs while the current one is still being spoken (see LangWorker), so
+# this queue is what decouples the two stages; bounded so a slow TTS backend
+# back-pressures translation instead of buffering the whole talk.
+MAX_SENTENCE_BACKLOG = 8
+# A stalled provider must not mute a language for the rest of the broadcast.
+# Both are *inactivity* limits (time since the last token / audio frame), not
+# total-duration limits, so a legitimately long sentence is never cut short.
+TRANSLATION_LLM_TIMEOUT_SECS = float(os.getenv("TRANSLATION_LLM_TIMEOUT_SECS", "10"))
+TTS_STALL_TIMEOUT_SECS = float(os.getenv("TRANSLATION_TTS_STALL_SECS", "20"))
 
 
 def _translation_model() -> str:
@@ -109,6 +132,14 @@ def _next_chunk_end(buffer: str) -> Optional[int]:
     if match:
         return match.end()
     if len(buffer) >= MAX_TTS_CHUNK_CHARS:
+        # Last clause boundary inside the window beats the last word gap: the
+        # chunk is spoken with sentence-final intonation either way, and a pause
+        # after a comma passes for natural where one mid-phrase does not.
+        clause = None
+        for m in _CLAUSE_END.finditer(buffer, MIN_TTS_CHUNK_CHARS, MAX_TTS_CHUNK_CHARS):
+            clause = m
+        if clause:
+            return clause.end()
         space = buffer.rfind(" ", 0, MAX_TTS_CHUNK_CHARS)
         if space > 0:
             return space + 1
@@ -145,13 +176,15 @@ class TranscriptCollector(FrameProcessor):
 class _Listener:
     """One subscriber socket with its own bounded send queue + writer task.
 
-    Decoupling each socket behind its own queue means a slow listener drops its
-    own oldest audio (a brief gap for them) instead of back-pressuring the TTS
+    Decoupling each socket behind its own queue means a slow listener skips its
+    own oldest audio (one gap for them) instead of back-pressuring the TTS
     consumer and stalling every other listener on the language.
     """
 
-    def __init__(self, websocket: WebSocket):
+    def __init__(self, websocket: WebSocket, label: str = ""):
         self.ws = websocket
+        self._label = label
+        self._alive = True
         self._queue: "asyncio.Queue[str]" = asyncio.Queue(maxsize=LISTENER_SEND_BACKLOG)
         self._task = asyncio.create_task(self._run())
 
@@ -160,21 +193,48 @@ class _Listener:
             while True:
                 message = await self._queue.get()
                 await self.ws.send_text(message)
-        except Exception:
-            pass  # socket died; run_listener's receive loop will clean us up
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            # The writer is this socket's only path to audio, so a dead writer is
+            # permanent silence. Close the socket so the receive loop unblocks and
+            # cleans us up (and the browser client reconnects) instead of leaving
+            # the listener staring at a "live" indicator hearing nothing.
+            self._alive = False
+            logger.warning(f"translation{self._label}: listener writer stopped: {e}")
+            try:
+                await self.ws.close(code=1011, reason="send failed")
+            except Exception:
+                pass
 
     def enqueue(self, message: str) -> None:
+        if not self._alive:
+            return
+        try:
+            self._queue.put_nowait(message)
+            return
+        except asyncio.QueueFull:
+            pass
+        # This socket is more than LISTENER_SEND_BACKLOG frames behind live speech.
+        # Drop one contiguous block so the listener takes a single skip forward,
+        # rather than shedding a frame per push and hearing the rest of the talk
+        # riddled with 20 ms holes.
+        dropped = 0
+        for _ in range(LISTENER_DROP_BLOCK):
+            try:
+                self._queue.get_nowait()
+                dropped += 1
+            except asyncio.QueueEmpty:
+                break
+        if dropped:
+            logger.warning(
+                f"translation{self._label}: listener too slow, skipped {dropped} "
+                f"frames (~{dropped * LISTEN_FRAME_MS / 1000:.1f}s of audio)"
+            )
         try:
             self._queue.put_nowait(message)
         except asyncio.QueueFull:
-            try:
-                self._queue.get_nowait()  # drop oldest, keep up with live speech
-            except asyncio.QueueEmpty:
-                pass
-            try:
-                self._queue.put_nowait(message)
-            except asyncio.QueueFull:
-                pass
+            pass
 
     async def close(self) -> None:
         self._task.cancel()
@@ -188,22 +248,103 @@ class _Listener:
 # Per-language worker
 # ---------------------------------------------------------------------------
 
+class _SegmentTiming:
+    """Per-segment stopwatch for one language.
+
+    The lag a listener actually feels is the sum of VAD wait, STT, LLM
+    time-to-first-token, TTS time-to-first-byte and their own jitter buffer.
+    Without this the only way to tell which stage owns the delay is to guess from
+    the audio, so every segment logs its own breakdown once it finishes.
+    """
+
+    __slots__ = (
+        "chars", "t_recv", "t_first_token", "t_first_audio", "t_last_audio",
+        "audio_bytes", "sentences", "_pending", "_closed", "_logged",
+    )
+
+    def __init__(self, text: str, t_recv: float):
+        self.chars = len(text)
+        self.t_recv = t_recv
+        self.t_first_token = 0.0
+        self.t_first_audio = 0.0
+        self.t_last_audio = 0.0
+        self.audio_bytes = 0
+        self.sentences = 0
+        self._pending = 0
+        self._closed = False
+        self._logged = False
+
+    def note_token(self) -> None:
+        if not self.t_first_token:
+            self.t_first_token = time.monotonic()
+
+    def note_sentence(self) -> None:
+        self.sentences += 1
+        self._pending += 1
+
+    def note_first_audio(self) -> None:
+        if not self.t_first_audio:
+            self.t_first_audio = time.monotonic()
+
+    def note_sentence_done(self, emitted: int) -> None:
+        self._pending -= 1
+        if emitted:
+            self.audio_bytes += emitted
+            self.t_last_audio = time.monotonic()
+
+    def close(self) -> None:
+        self._closed = True
+
+    def report_ready(self) -> bool:
+        """True exactly once, when translation has ended and all audio is out."""
+        if self._logged or not self._closed or self._pending > 0:
+            return False
+        self._logged = True
+        return True
+
+    def summary(self) -> str:
+        audio_secs = self.audio_bytes / 2 / LISTEN_SAMPLE_RATE
+        ttft = (self.t_first_token - self.t_recv) if self.t_first_token else -1.0
+        ttfa = (self.t_first_audio - self.t_recv) if self.t_first_audio else -1.0
+        synth_wall = (self.t_last_audio - self.t_first_audio) if self.t_last_audio else 0.0
+        # >1 means this language synthesises slower than it is spoken, so every
+        # listener's backlog grows for as long as the presenter keeps talking.
+        rtf = (synth_wall / audio_secs) if audio_secs > 0 else 0.0
+        return (
+            f"segment done | {self.chars} chars → {self.sentences} chunk(s) | "
+            f"llm_ttft={ttft:.2f}s tts_ttfa={ttfa:.2f}s | "
+            f"audio={audio_secs:.1f}s synth={synth_wall:.1f}s rtf={rtf:.2f}"
+        )
+
+
 class LangWorker:
     """Translate → TTS → fan-out for a single target language.
 
+    Two stages, decoupled by ``_synth_queue``: the translate stage pulls source
+    segments and streams sentences out, the synth stage speaks them in order.
+    Overlapping them hides one LLM time-to-first-token per segment, which would
+    otherwise be dead air on every listener's clock. Ordering is preserved because
+    a single synth task drains a FIFO.
+
     The TTS service is driven directly (``run_tts``) rather than through a
     Pipeline: awaiting the generator gives natural back-pressure, so when
-    synthesis can't keep up the bounded source queue fills and drops its oldest
-    segment — keeping the stream close to live speech.
+    synthesis can't keep up the bounded queues fill and the source queue drops its
+    oldest segment — keeping the stream close to live speech.
     """
 
     def __init__(self, room: "TranslationRoom", language: str):
         self.room = room
         self.language = language
         self.subscribers: "dict[WebSocket, _Listener]" = {}
-        self._queue: "asyncio.Queue[str]" = asyncio.Queue(maxsize=MAX_SEGMENT_BACKLOG)
+        self._queue: "asyncio.Queue[tuple[str, float]]" = asyncio.Queue(
+            maxsize=MAX_SEGMENT_BACKLOG
+        )
+        self._synth_queue: "asyncio.Queue[tuple[str, _SegmentTiming]]" = asyncio.Queue(
+            maxsize=MAX_SENTENCE_BACKLOG
+        )
         self._tts: Optional[Any] = None
         self._consumer_task: Optional[asyncio.Task] = None
+        self._synth_task: Optional[asyncio.Task] = None
         self._resampler = create_stream_resampler()
         self._slot_acquired = False
         self._start_time = 0.0
@@ -234,6 +375,7 @@ class LangWorker:
                 create_tts_service, tts_config, LISTEN_SAMPLE_RATE, self.room.org_id
             )
             self._consumer_task = asyncio.create_task(self._consume())
+            self._synth_task = asyncio.create_task(self._run_synth())
             logger.info(f"translation[{self.language}]: worker started")
             return True
         except ServiceCreationError as e:
@@ -248,13 +390,14 @@ class LangWorker:
     def enqueue(self, text: str) -> None:
         # Live interpretation: when we fall behind, drop the OLDEST pending
         # segment so the stream stays close to what the presenter is saying now.
+        item = (text, time.monotonic())
         while True:
             try:
-                self._queue.put_nowait(text)
+                self._queue.put_nowait(item)
                 return
             except asyncio.QueueFull:
                 try:
-                    dropped = self._queue.get_nowait()
+                    dropped, _ = self._queue.get_nowait()
                     logger.warning(
                         f"translation[{self.language}]: backlog full, dropped oldest "
                         f"segment: {dropped[:40]!r}"
@@ -263,11 +406,20 @@ class LangWorker:
                     return
 
     async def _consume(self) -> None:
+        """Translate stage: source segments → sentences on the synth queue.
+
+        Deliberately does not wait for audio. The next segment starts translating
+        while the current one is still being spoken, so the LLM's
+        time-to-first-token overlaps synthesis instead of adding to it.
+        """
         while True:
-            text = await self._queue.get()
+            text, t_recv = await self._queue.get()
+            seg = _SegmentTiming(text, t_recv)
             try:
                 first = True
-                async for sentence in self.room.translate_stream(text, self.language):
+                async for sentence in self.room.translate_stream(
+                    text, self.language, on_token=seg.note_token
+                ):
                     # Push each sentence's text just before its audio so listeners
                     # see it even if TTS lags; tag the source only on the first
                     # sentence so the original isn't repeated on every chunk.
@@ -282,39 +434,130 @@ class LangWorker:
                         )
                     )
                     first = False
-                    await self._synthesize(sentence)
+                    seg.note_sentence()
+                    await self._synth_queue.put((sentence, seg))
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 # One bad segment must not kill the language for everyone.
                 logger.error(f"translation[{self.language}]: segment failed: {e}")
+            finally:
+                seg.close()
+                # A segment that yielded no sentences never reaches the synth
+                # stage, so it has to be reported from here.
+                if seg.report_ready():
+                    logger.info(f"translation[{self.language}]: {seg.summary()}")
 
-    async def _synthesize(self, text: str) -> None:
-        """Stream TTS for one segment, resampled to 16 kHz and paced into 20 ms frames."""
+    async def _run_synth(self) -> None:
+        """Synth stage: speak queued sentences in order, one at a time."""
+        while True:
+            sentence, seg = await self._synth_queue.get()
+            emitted = 0
+            try:
+                emitted = await self._synthesize(sentence, seg)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"translation[{self.language}]: synthesis failed: {e}")
+            finally:
+                # Mark where this chunk's audio ends in the listener's own stream.
+                # A client that has fallen behind uses these to catch up between
+                # sentences instead of cutting itself off mid-word.
+                self.broadcast(json.dumps({"event": "audio_boundary"}))
+                seg.note_sentence_done(emitted)
+                if seg.report_ready():
+                    logger.info(f"translation[{self.language}]: {seg.summary()}")
+
+    async def _synthesize(self, text: str, seg: Optional[_SegmentTiming] = None) -> int:
+        """Speak one chunk; returns the bytes fanned out.
+
+        Retries once, but only when the failure happened before any audio went
+        out: a provider that dies mid-chunk has already had part of the sentence
+        spoken, and re-running it would repeat that part. A provider that dies at
+        connect used to lose the chunk outright — the listener heard the sentence
+        simply missing from the middle of the talk.
+        """
+        for attempt in range(2):
+            emitted, error = await self._synthesize_once(text, seg)
+            if error is None:
+                return emitted
+            if emitted:
+                logger.warning(
+                    f"translation[{self.language}]: TTS failed after {emitted} bytes "
+                    f"({error}); chunk truncated"
+                )
+                return emitted
+            if attempt == 0:
+                logger.warning(
+                    f"translation[{self.language}]: TTS failed before any audio "
+                    f"({error}); retrying once"
+                )
+                await asyncio.sleep(0.2)
+                continue
+            logger.error(f"translation[{self.language}]: TTS failed, chunk dropped: {error}")
+        return 0
+
+    async def _synthesize_once(
+        self, text: str, seg: Optional[_SegmentTiming] = None
+    ) -> "tuple[int, Optional[str]]":
+        """Stream TTS for one chunk, resampled to 16 kHz and paced into 20 ms frames.
+
+        Returns ``(bytes_sent, error)``; ``error`` is None on a clean finish.
+        """
         if self._tts is None:
-            return
+            return 0, "no TTS service"
         buffer = bytearray()
-        async for frame in self._tts.run_tts(text):
-            if isinstance(frame, ErrorFrame):
-                logger.warning(f"translation[{self.language}]: TTS error: {frame.error}")
-                return
-            if not (isinstance(frame, AudioRawFrame) and frame.audio):
-                continue
-            pcm = frame.audio
-            in_rate = frame.sample_rate
-            if in_rate <= 0:
-                # Defensive: a provider that never reported its rate would make
-                # the resampler divide by zero. Skip rather than crash the worker.
-                logger.warning(f"translation[{self.language}]: TTS frame missing sample_rate; dropped")
-                continue
-            if in_rate != LISTEN_SAMPLE_RATE:
-                pcm = await self._resampler.resample(pcm, in_rate, LISTEN_SAMPLE_RATE)
-            buffer.extend(pcm)
-            while len(buffer) >= LISTEN_CHUNK_BYTES:
-                self._send_audio(bytes(buffer[:LISTEN_CHUNK_BYTES]))
-                del buffer[:LISTEN_CHUNK_BYTES]
+        emitted = 0
+        error: Optional[str] = None
+        gen = self._tts.run_tts(text)
+        try:
+            while True:
+                try:
+                    # Inactivity bound, not a total-duration bound: a hung provider
+                    # would otherwise hold this language silent for its socket
+                    # timeout (ten minutes on the on-prem backend) with no recovery.
+                    frame = await asyncio.wait_for(
+                        gen.__anext__(), TTS_STALL_TIMEOUT_SECS
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    error = f"no audio for {TTS_STALL_TIMEOUT_SECS:.0f}s"
+                    break
+                if isinstance(frame, ErrorFrame):
+                    error = str(frame.error)
+                    break
+                if not (isinstance(frame, AudioRawFrame) and frame.audio):
+                    continue
+                pcm = frame.audio
+                in_rate = frame.sample_rate
+                if in_rate <= 0:
+                    # Defensive: a provider that never reported its rate would make
+                    # the resampler divide by zero. Skip rather than crash the worker.
+                    logger.warning(f"translation[{self.language}]: TTS frame missing sample_rate; dropped")
+                    continue
+                if in_rate != LISTEN_SAMPLE_RATE:
+                    pcm = await self._resampler.resample(pcm, in_rate, LISTEN_SAMPLE_RATE)
+                buffer.extend(pcm)
+                while len(buffer) >= LISTEN_CHUNK_BYTES:
+                    if seg is not None:
+                        seg.note_first_audio()
+                    self._send_audio(bytes(buffer[:LISTEN_CHUNK_BYTES]))
+                    emitted += LISTEN_CHUNK_BYTES
+                    del buffer[:LISTEN_CHUNK_BYTES]
+        finally:
+            # Release the provider's socket/session even when we abandoned the
+            # generator on a stall.
+            try:
+                await gen.aclose()
+            except Exception:
+                pass
         if buffer:
+            if seg is not None:
+                seg.note_first_audio()
             self._send_audio(bytes(buffer))
+            emitted += len(buffer)
+        return emitted, error
 
     def _send_audio(self, pcm: bytes) -> None:
         self.broadcast(
@@ -331,7 +574,7 @@ class LangWorker:
         )
 
     def add_subscriber(self, websocket: WebSocket) -> None:
-        self.subscribers[websocket] = _Listener(websocket)
+        self.subscribers[websocket] = _Listener(websocket, f"[{self.language}]")
 
     async def remove_subscriber(self, websocket: WebSocket) -> None:
         listener = self.subscribers.pop(websocket, None)
@@ -344,12 +587,15 @@ class LangWorker:
             listener.enqueue(message)
 
     async def stop(self) -> None:
-        if self._consumer_task is not None:
-            self._consumer_task.cancel()
-            try:
-                await self._consumer_task
-            except (asyncio.CancelledError, Exception):
-                pass
+        for task in (self._consumer_task, self._synth_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+        self._consumer_task = None
+        self._synth_task = None
         for listener in list(self.subscribers.values()):
             await listener.close()
         self.subscribers.clear()
@@ -464,13 +710,16 @@ class TranslationRoom:
                     pass
 
     async def translate_stream(
-        self, text: str, target_language: str
+        self, text: str, target_language: str, on_token=None
     ) -> AsyncIterator[str]:
         """Yield the translation one sentence at a time as the model produces it.
 
         Streaming lets TTS start on the first sentence while later sentences are
         still being translated, cutting time-to-first-audio for a segment from
         "whole paragraph" down to "first sentence".
+
+        ``on_token`` (optional) is called on the first content token, purely for
+        latency accounting.
         """
         client = self.get_openai_client()
         if client is None:
@@ -495,17 +744,38 @@ class TranslationRoom:
         for attempt in range(2):
             buffer = ""
             produced = False
+            stream = None
             try:
                 stream = await client.chat.completions.create(
                     model=self._model,
                     messages=messages,
                     temperature=0.2,
                     stream=True,
+                    # Bound connect + time-to-first-token; a stalled provider must
+                    # not hold a language silent for the whole broadcast.
+                    timeout=TRANSLATION_LLM_TIMEOUT_SECS,
                 )
-                async for chunk in stream:
+                # Iterated by hand so each token read carries its own inactivity
+                # deadline. Note the deadline only covers the wait for the model:
+                # while this generator is suspended at a ``yield`` (the caller
+                # back-pressuring on a full synth queue) no timer is running.
+                chunks = stream.__aiter__()
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(
+                            chunks.__anext__(), TRANSLATION_LLM_TIMEOUT_SECS
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        raise TimeoutError(
+                            f"no token for {TRANSLATION_LLM_TIMEOUT_SECS:.0f}s"
+                        )
                     delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
                     if not delta:
                         continue
+                    if on_token is not None:
+                        on_token()
                     buffer += delta
                     while True:
                         cut = _next_chunk_end(buffer)
@@ -526,6 +796,12 @@ class TranslationRoom:
                     continue
                 logger.warning(f"translation to {target_language} failed: {e}")
                 return
+            finally:
+                if stream is not None:
+                    try:
+                        await stream.close()
+                    except Exception:
+                        pass
 
     def get_openai_client(self):
         """Resolve (and cache) the translation client.
