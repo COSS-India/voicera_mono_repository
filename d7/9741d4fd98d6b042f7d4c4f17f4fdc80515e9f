@@ -1,0 +1,29 @@
+voice_2_voice_server/api/translation_room.py
+  s_efee2bd76c77cf::t_0fa7fda055bec5 456-464,468,482-484,486-487,489-493,495-512,514,516-518
+  s_efee2bd76c77cf::t_05247d1b7e89ca 642
+  s_efee2bd76c77cf::t_310d9276a43c6b 75-79
+  s_efee2bd76c77cf::t_5406268b272cb4 259-272,274-275
+  s_efee2bd76c77cf::t_eba07044e78447 81-89,96-105
+  s_efee2bd76c77cf::t_5ed089d502c09d 28,30
+  s_efee2bd76c77cf::t_177e7400e7d15e 80
+  s_efee2bd76c77cf::t_3b350dd2feb1d0 106-107
+voicera_frontend/app/live/[token]/page.tsx
+  s_efee2bd76c77cf::t_d81aac06853365 17,19-27
+  s_efee2bd76c77cf::t_bba30564c04c54 16,18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "d79741d4fd98d6b042f7d4c4f17f4fdc80515e9f",
+  "prompts": {},
+  "sessions": {
+    "s_efee2bd76c77cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25cc3008-a23d-4c76-a4bc-3023dc8a3a09",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
