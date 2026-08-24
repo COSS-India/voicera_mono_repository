@@ -73,10 +73,13 @@ LISTENER_SEND_BACKLOG = 100
 # so a transient reconnect doesn't tear down every listener's session.
 PRESENTER_GRACE_SECS = int(os.getenv("TRANSLATION_PRESENTER_GRACE_SECS", "20"))
 # Silence (seconds) before VAD declares the utterance finished and the pipeline
-# (STT → translate → TTS) fires. Lower = translation starts sooner after the
-# presenter pauses, at the cost of occasionally splitting on a mid-sentence
-# breath. Env-tunable per deployment / speaker cadence.
-VAD_STOP_SECS = float(os.getenv("TRANSLATION_VAD_STOP_SECS", "0.25"))
+# (STT → translate → TTS) fires. Tempting to shorten for "real time", but an
+# ordinary mid-sentence breath is 200-300 ms: drop below that and clauses split
+# in half. A translator handed half a clause cannot reorder it (English SVO into
+# Hindi/Tamil SOV needs the whole thought), and each fragment costs its own VAD
+# wait + LLM call + TTS call — so over-shortening this makes the pipeline both
+# slower and worse. Env-tunable per speaker cadence.
+VAD_STOP_SECS = float(os.getenv("TRANSLATION_VAD_STOP_SECS", "0.4"))
 
 # Streamed translation is flushed to TTS one sentence at a time so the listener
 # hears the first sentence while the model is still translating the rest, instead
@@ -87,6 +90,11 @@ _SENTENCE_END = re.compile(r"[.!?।॥]+[\"'”’)\]]*\s")
 # flush; past this many buffered chars, break at the last word boundary so audio
 # keeps flowing. Sentence breaks are always preferred when present.
 MAX_TTS_CHUNK_CHARS = 240
+# Don't cut a chunk this short: an abbreviation ("Dr. ") or a decimal would
+# otherwise become its own micro-utterance, spoken with sentence-final intonation
+# and a pause. Kept small so it never meaningfully delays the first audio; a short
+# final sentence is still flushed by the end-of-stream tail.
+MIN_TTS_CHUNK_CHARS = 16
 
 
 def _translation_model() -> str:
@@ -95,7 +103,9 @@ def _translation_model() -> str:
 
 def _next_chunk_end(buffer: str) -> Optional[int]:
     """Index to cut ``buffer`` at for the next TTS chunk, or None to wait for more."""
-    match = _SENTENCE_END.search(buffer)
+    # Search past the minimum so a sentence break that lands too early ("Dr. ")
+    # is skipped and folded into the following sentence instead of splitting off.
+    match = _SENTENCE_END.search(buffer, MIN_TTS_CHUNK_CHARS)
     if match:
         return match.end()
     if len(buffer) >= MAX_TTS_CHUNK_CHARS:
