@@ -52,9 +52,15 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
 
   const wsRef = useRef<WebSocket | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
+  // Every audio frame we schedule, so a resync can stop the ones already queued
+  // instead of layering new audio on top of them.
+  const scheduledSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set())
   const playbackTimeRef = useRef(0)
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
   const wantConnectedRef = useRef(false)
+  // Synchronous connect guard: React state (isConnecting) lags a render behind,
+  // so two fast clicks would both pass an isConnecting check and open two sockets.
+  const connectingRef = useRef(false)
   const keepAliveRef = useRef<number | null>(null)
   const reconnectRef = useRef<number | null>(null)
   const reconnectAttemptsRef = useRef(0)
@@ -92,10 +98,23 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     }
   }, [])
 
+  const stopScheduledSources = useCallback(() => {
+    for (const source of scheduledSourcesRef.current) {
+      source.onended = null
+      try {
+        source.stop()
+      } catch {
+        // already stopped/ended
+      }
+    }
+    scheduledSourcesRef.current.clear()
+  }, [])
+
   const teardown = useCallback(async () => {
     // User-initiated stop (or unmount): stop wanting a connection so the socket's
     // own close handler doesn't try to reconnect us.
     wantConnectedRef.current = false
+    connectingRef.current = false
     clearTimers()
     const ws = wsRef.current
     wsRef.current = null
@@ -103,13 +122,14 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
       ws.onclose = null
       ws.close()
     }
+    stopScheduledSources()
     const ctx = audioContextRef.current
     audioContextRef.current = null
     if (ctx && ctx.state !== "closed") await ctx.close()
     playbackTimeRef.current = 0
     setIsConnected(false)
     setIsConnecting(false)
-  }, [clearTimers])
+  }, [clearTimers, stopScheduledSources])
 
   useEffect(() => {
     return () => {
@@ -136,10 +156,18 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     const earliest = ctx.currentTime + JITTER_BUFFER_SECS
     let startAt = Math.max(earliest, playbackTimeRef.current)
     // Drifted too far ahead → drop the accumulated lead and resync to now.
-    if (startAt - ctx.currentTime > MAX_LEAD_SECS) startAt = earliest
+    // Stop everything already scheduled out to the old cursor first; otherwise
+    // the resync'd frames play *on top* of it and the listener hears the same
+    // translation twice for up to MAX_LEAD_SECS.
+    if (startAt - ctx.currentTime > MAX_LEAD_SECS) {
+      stopScheduledSources()
+      startAt = earliest
+    }
     source.start(startAt)
+    scheduledSourcesRef.current.add(source)
+    source.onended = () => scheduledSourcesRef.current.delete(source)
     playbackTimeRef.current = startAt + buffer.duration
-  }, [])
+  }, [stopScheduledSources])
 
   const scheduleReconnect = useCallback(() => {
     if (!wantConnectedRef.current) return
@@ -154,6 +182,18 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
 
   const openSocket = useCallback(() => {
     if (!audioContextRef.current) return
+    // Defensive: never leave a previous socket open when spinning up a new one.
+    // A second live socket would feed every segment into the same context twice.
+    const prev = wsRef.current
+    if (prev) {
+      prev.onclose = null
+      prev.onmessage = null
+      try {
+        prev.close()
+      } catch {
+        // already closed
+      }
+    }
     const ws = new WebSocket(getTranslationListenWebSocketUrl(token, languageRef.current))
     wsRef.current = ws
 
@@ -162,6 +202,10 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
       setIsConnecting(false)
       setIsConnected(true)
       setError("")
+      // Fresh stream: drop any audio still scheduled from a prior socket and
+      // reset the playout cursor so a reconnect can't overlap the old tail.
+      stopScheduledSources()
+      playbackTimeRef.current = 0
       if (keepAliveRef.current !== null) window.clearInterval(keepAliveRef.current)
       // Keep the socket warm: an idle proxy (a Cloudflare quick tunnel drops
       // idle connections ~100s) would otherwise cut a waiting listener before
@@ -242,14 +286,15 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
         setIsConnecting(false)
       }
     }
-  }, [token, handleIncomingAudio, scheduleReconnect])
+  }, [token, handleIncomingAudio, scheduleReconnect, stopScheduledSources])
 
   useEffect(() => {
     openSocketRef.current = openSocket
   }, [openSocket])
 
   const connect = async () => {
-    if (!agent || !language || isConnecting || isConnected) return
+    if (!agent || !language || isConnecting || isConnected || connectingRef.current) return
+    connectingRef.current = true
     setError("")
     setNotice("")
     setIsConnecting(true)
