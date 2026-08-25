@@ -18,7 +18,8 @@ from pipecat.services.google.tts import GoogleTTSService
 from pipecat.services.openai.stt import OpenAISTTService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.services.sarvam.stt import SarvamSTTService
-from pipecat.services.sarvam.tts import SarvamTTSService
+from pipecat.services.sarvam.tts import SarvamTTSService, SarvamHttpTTSService
+from services.sarvam_http_broadcast import SarvamHttpBroadcastTTSService
 from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
@@ -571,17 +572,23 @@ def create_tts_service(
     tts_config: dict,
     sample_rate: int,
     org_id: Optional[str] = None,
+    aiohttp_session: Optional[Any] = None,
 ) -> Any:
     """Create a TTS service based on configuration.
-    
+
     Args:
         tts_config: TTS configuration dict with 'name', 'language', and optional 'args'
         sample_rate: Audio sample rate in Hz (used for some services)
         org_id: Optional organization ID to fetch integration API key from backend
-        
+        aiohttp_session: When set, providers with a websocket/streaming default
+            fall back to an HTTP variant whose ``run_tts`` yields audio directly.
+            The broadcast/translation path passes this because it drains
+            ``run_tts`` outside a pipeline; the 1:1 pipeline leaves it None and
+            keeps the streaming services.
+
     Returns:
         Configured TTS service instance
-        
+
     Raises:
         ServiceCreationError: If the TTS provider is unknown
     """
@@ -731,9 +738,30 @@ def create_tts_service(
                 raise ServiceCreationError(
                     "SARVAM_API_KEY is required for Sarvam TTS when not using org integration."
                 )
+        sarvam_lang = TTS_LANGUAGE_MAP[provider][language]
+        if aiohttp_session is not None:
+            # Broadcast path: HTTP TTS whose run_tts yields audio for the direct
+            # drain. Pin target_language_code from our map — pipecat's Language
+            # enum table omits several Indian languages (e.g. Assamese) and would
+            # silently fall back to en-IN.
+            params = SarvamHttpTTSService.InputParams(
+                pitch=pitch if pitch is not None else 0.0,
+                pace=pace if pace is not None else 1.0,
+                loudness=loudness if loudness is not None else 1.0,
+            )
+            service = SarvamHttpBroadcastTTSService(
+                api_key=api_key,
+                aiohttp_session=aiohttp_session,
+                voice_id=speaker,
+                model=model,
+                sample_rate=sample_rate,
+                params=params,
+            )
+            service._settings["language"] = sarvam_lang
+            return service
         return SarvamTTSService(
             api_key=api_key,
-            target_language_code=TTS_LANGUAGE_MAP[provider][language],
+            target_language_code=sarvam_lang,
             model=model,
             voice_id=speaker,
             pitch=pitch,

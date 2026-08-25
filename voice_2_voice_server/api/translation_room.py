@@ -26,6 +26,8 @@ import base64
 import json
 import os
 import time
+
+import aiohttp
 from typing import Any, Dict, Optional
 
 from loguru import logger
@@ -311,6 +313,7 @@ class LangWorker:
             maxsize=MAX_SENTENCE_BACKLOG
         )
         self._tts: Optional[Any] = None
+        self._http_session: Optional[Any] = None
         self._consumer_task: Optional[asyncio.Task] = None
         self._synth_task: Optional[asyncio.Task] = None
         self._resampler = create_stream_resampler()
@@ -343,22 +346,29 @@ class LangWorker:
             if voice:
                 tts_config["speaker"] = voice
                 tts_config["voice_id"] = voice
+            # Own an aiohttp session so create_tts_service can hand back an HTTP TTS
+            # variant whose run_tts yields audio for our direct drain (the streaming
+            # services push audio out-of-band and don't fit). Created here, on the
+            # loop, so the session binds to the running loop before being used.
+            self._http_session = aiohttp.ClientSession()
             # create_tts_service does a blocking integration-key lookup for most
             # providers; keep it off the event loop so many listeners joining at
             # once can't serialise into a stall.
             self._tts = await asyncio.to_thread(
-                create_tts_service, tts_config, LISTEN_SAMPLE_RATE, self.room.org_id
+                create_tts_service,
+                tts_config,
+                LISTEN_SAMPLE_RATE,
+                self.room.org_id,
+                self._http_session,
             )
-            # We drive run_tts directly, outside a pipeline, so the frames that a
-            # pipeline would normally deliver never arrive. Two of them matter:
-            #   setup()  wires the TaskManager run_tts needs to spawn its
-            #            websocket-receive task (else "TaskManager is still not
+            # We drive run_tts directly, outside a pipeline, so the lifecycle frames
+            # a pipeline delivers never arrive. Two steps still have to run:
+            #   setup()  wires the TaskManager/clock a FrameProcessor needs before
+            #            it can create any task (else "TaskManager is still not
             #            initialized").
-            #   start()  runs the service's StartFrame handler, which sets
-            #            speech_sample_rate from our output rate and opens the
-            #            socket. Skipping it leaves speech_sample_rate=0, and Sarvam
-            #            rejects the config ("Input parameters has to be a valid
-            #            dictionary"), dropping every chunk.
+            #   start()  runs the service's StartFrame handler, which resolves the
+            #            output sample rate run_tts stamps onto its audio; skipping
+            #            it leaves the rate at 0.
             tm = TaskManager()
             tm.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
             await self._tts.setup(
@@ -373,12 +383,23 @@ class LangWorker:
             return True
         except ServiceCreationError as e:
             logger.error(f"translation[{self.language}]: TTS setup failed: {e}")
-            await self._release_slot()
+            await self._cleanup_on_start_failure()
             return False
         except Exception as e:
             logger.error(f"translation[{self.language}]: worker start failed: {e}")
-            await self._release_slot()
+            await self._cleanup_on_start_failure()
             return False
+
+    async def _cleanup_on_start_failure(self) -> None:
+        """Clean up resources allocated during start() when it fails partway through."""
+        if self._http_session is not None:
+            try:
+                await self._http_session.close()
+            except Exception:
+                pass
+            self._http_session = None
+        self._tts = None
+        await self._release_slot()
 
     def enqueue(self, text: str) -> None:
         # Live interpretation: when we fall behind, drop the OLDEST pending
@@ -602,6 +623,12 @@ class LangWorker:
             except Exception:
                 pass
             self._tts = None
+        if self._http_session is not None:
+            try:
+                await self._http_session.close()
+            except Exception:
+                pass
+            self._http_session = None
         for listener in list(self.subscribers.values()):
             await listener.close()
         self.subscribers.clear()
