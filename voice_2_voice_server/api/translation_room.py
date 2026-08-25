@@ -35,7 +35,13 @@ from pipecat.frames.frames import AudioRawFrame, ErrorFrame, TranscriptionFrame,
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.processors.frame_processor import (
+    FrameDirection,
+    FrameProcessor,
+    FrameProcessorSetup,
+)
+from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
+from pipecat.clocks.system_clock import SystemClock
 from pipecat.audio.utils import create_stream_resampler
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -336,6 +342,15 @@ class LangWorker:
             self._tts = await asyncio.to_thread(
                 create_tts_service, tts_config, LISTEN_SAMPLE_RATE, self.room.org_id
             )
+            # We drive run_tts directly, outside a pipeline, so the service's
+            # TaskManager is never initialised by a StartFrame. run_tts spawns its
+            # websocket-receive task via create_task, which raises "TaskManager is
+            # still not initialized" until setup() runs. Wire it to this loop once.
+            tm = TaskManager()
+            tm.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
+            await self._tts.setup(
+                FrameProcessorSetup(clock=SystemClock(), task_manager=tm)
+            )
             self._consumer_task = asyncio.create_task(self._consume())
             self._synth_task = asyncio.create_task(self._run_synth())
             logger.info(f"translation[{self.language}]: worker started")
@@ -558,6 +573,13 @@ class LangWorker:
                     pass
         self._consumer_task = None
         self._synth_task = None
+        if self._tts is not None:
+            # Tear down the TaskManager/websocket-receive tasks setup() started.
+            try:
+                await self._tts.cleanup()
+            except Exception:
+                pass
+            self._tts = None
         for listener in list(self.subscribers.values()):
             await listener.close()
         self.subscribers.clear()
