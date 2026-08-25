@@ -757,7 +757,15 @@ async def run_publisher(websocket: WebSocket, agent_id: str, config: Dict[str, A
                 f"translation[{agent_id}]: {room.engine.name} engine not ready for "
                 f"org={room.org_id}: {engine_error}"
             )
-            await websocket.close(code=4402, reason="translation engine not ready")
+            # Close reason is surfaced verbatim in the broadcast dialog and is
+            # capped at 123 bytes by the WS spec, so keep it short and specific
+            # to the engine rather than echoing the full internal message.
+            reason = (
+                "NMT translation backend unreachable"
+                if room.engine.name == "nmt"
+                else "No OpenAI credential configured for translation"
+            )
+            await websocket.close(code=4402, reason=reason)
             return
 
         first_message = await websocket.receive_text()

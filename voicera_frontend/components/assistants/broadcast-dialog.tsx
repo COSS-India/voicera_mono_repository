@@ -221,7 +221,13 @@ export function BroadcastDialog({
         if (ev.code === 4409) setError("Someone else is already broadcasting this agent")
         else if (ev.code === 4401) setError("Not authorized to broadcast this agent")
         else if (ev.code === 4402)
-          setError("Translation isn't configured for this agent (no OpenAI credential)")
+          // 4402 = the selected translation engine failed its pre-flight. The
+          // server sends an engine-specific reason (LLM: missing credential;
+          // NMT: backend unreachable); show it verbatim.
+          setError(
+            ev.reason ||
+              "Translation engine not ready. Check the agent's translation settings."
+          )
         else if (ev.code === 1013) setError("Capacity or usage limit reached — try again later")
         void teardown()
       }

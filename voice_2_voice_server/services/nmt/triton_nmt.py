@@ -84,6 +84,10 @@ class NmtClient:
         self._max_batch = max(1, _env_int("NMT_MAX_BATCH", 64))
         self._max_inflight = max(1, _env_int("NMT_MAX_INFLIGHT", 4))
         self._timeout_s = _env_float("NMT_TIMEOUT_SECS", 8.0)
+        # Readiness probe budget. Kept short so a bad NMT host fails the presenter
+        # fast rather than hanging the connect, but env-tunable for a slow first
+        # connect over a distant link.
+        self._ready_timeout_s = _env_float("NMT_READY_TIMEOUT_SECS", 3.0)
         self._max_queue = max(1, _env_int("NMT_MAX_QUEUE", 2048))
 
         self._queue: "asyncio.Queue[_Row]" = asyncio.Queue(maxsize=self._max_queue)
@@ -125,11 +129,28 @@ class NmtClient:
         assert self._session is not None
         try:
             async with self._session.get(
-                self._ready_url, timeout=aiohttp.ClientTimeout(total=2)
+                self._ready_url,
+                timeout=aiohttp.ClientTimeout(total=self._ready_timeout_s),
             ) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        "NMT readiness probe {} returned HTTP {}",
+                        self._ready_url,
+                        resp.status,
+                    )
                 return resp.status == 200
         except Exception as e:
-            logger.warning("NMT readiness probe failed: {}", e)
+            # A bare TimeoutError str()s to "", which reads as a blank log line and
+            # hides the actual cause. Name the exception type explicitly. A timeout
+            # here almost always means the host cannot REACH the NMT box (firewall /
+            # security group), not that the model is down.
+            detail = str(e) or type(e).__name__
+            logger.warning(
+                "NMT readiness probe failed for {} ({}). Check egress/firewall to "
+                "the NMT host.",
+                self._ready_url,
+                detail,
+            )
             return False
 
     async def aclose(self) -> None:

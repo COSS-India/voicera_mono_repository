@@ -10,7 +10,7 @@ Companion to [TECHNICAL.md](TECHNICAL.md). Anchors below are load-bearing.
 
 ## 1. Measured facts about the NMT backend
 
-Probed directly against `http://13.200.133.97:8000` (2026-08-25). These numbers drive every design choice below.
+Probed directly against the hosted Triton endpoint (2026-08-25). The address is private and lives only in the gitignored `.env.translate` — never commit it. These numbers drive every design choice below.
 
 **Model config** (`GET /v2/models/nmt/config`):
 
@@ -248,7 +248,7 @@ New env, `voice_2_voice_server/.env.example` (+ the `voice_server` block of `dep
 
 ```bash
 # --- NMT translation engine (agent_config.translation_engine = "nmt") ---
-# NMT_SERVER_URL=http://13.200.133.97:8000     # Triton root; REQUIRED for the nmt engine
+# NMT_SERVER_URL=http://<nmt-host>:8000        # Triton root; REQUIRED for nmt; private — gitignored .env only
 # NMT_MODEL_NAME=nmt
 # NMT_BATCH_WINDOW_MS=8        # coalescing window; widen (20-30) before adding in-flight
 # NMT_MAX_BATCH=64             # rows per request; server cap is 512
