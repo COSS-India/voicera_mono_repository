@@ -1,0 +1,22 @@
+voice_2_voice_server/api/translation_room.py
+  s_ceb54dc8545d54::t_bd064babecc34c 34-41
+  s_ceb54dc8545d54::t_c86aec95f2c745 593-599
+  s_ceb54dc8545d54::t_3cd5a7937c8848 352-361,367-368
+  s_ceb54dc8545d54::t_25e73b959eeba1 369
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "48297b2ef5f1fcf16c50eded165448e447bf1a09",
+  "prompts": {},
+  "sessions": {
+    "s_ceb54dc8545d54": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dd49552-cf36-439e-a2a8-e1a856f50ea4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
