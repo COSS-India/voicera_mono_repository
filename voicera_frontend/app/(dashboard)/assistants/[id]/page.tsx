@@ -40,7 +40,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { isProviderAvailable, isTelephonyProviderAvailable } from "@/lib/provider-availability"
+import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getSelfHostedProviders, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
 import { sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
 import {
   agentCategoryForProvider,
@@ -261,6 +262,8 @@ export default function AgentDetailPage() {
   const [hasChanges, setHasChanges] = useState(false)
   const [originalConfig, setOriginalConfig] = useState<any>(null)
   const [integratedProviders, setIntegratedProviders] = useState<Set<string>>(new Set())
+  // Self-hosted models the voice server can reach, keyed "llm:qwen", "stt:ai4bharat", "tts:ai4bharat"
+  const [selfHostedProviders, setSelfHostedProviders] = useState<Set<string>>(new Set())
   const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
   const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(false)
@@ -536,11 +539,13 @@ export default function AgentDetailPage() {
 
         // Fetch integrations to know which providers have API keys
         try {
-          const [integrations, customLlms] = await Promise.all([
+          const [integrations, customLlms, selfHosted] = await Promise.all([
             getIntegrations(),
             getCustomLLMIntegrations(),
+            getSelfHostedProviders(),
           ])
           setCustomLLMIntegrations(customLlms)
+          setSelfHostedProviders(new Set(selfHosted))
           const integrated = new Set<string>()
           integrations.forEach((integration: Integration) => {
             integrated.add(integration.model.toLowerCase())
@@ -1311,29 +1316,31 @@ export default function AgentDetailPage() {
                         <SelectValue placeholder="Select provider" />
                       </SelectTrigger>
                       <SelectContent className="z-[100] rounded-md shadow-lg">
-                        {Object.entries(llmProviders).map(([id, provider]) => {
-                          // OpenAI, Qwen, and Kenpath are always available (built-in)
-                          const isBuiltIn = id === "openai" || id === "qwen" || id === "kenpath"
-                          // Check if provider has integration (API key configured)
-                          const isIntegrated = integratedProviders.has(id) || integratedProviders.has(provider.name.toLowerCase())
-                          const isAvailable = isBuiltIn || isIntegrated
-                          
-                          return (
-                            <SelectItem
-                              key={id}
-                              value={id}
-                              className="font-medium hover:bg-slate-100 transition"
-                              disabled={!isAvailable}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span>{provider.name}</span>
-                                {!isAvailable && (
-                                  <span className="text-xs text-slate-400">(not integrated)</span>
-                                )}
-                              </div>
-                            </SelectItem>
+                        {Object.entries(llmProviders)
+                          .filter(([id, provider]) =>
+                            id === llmProvider ||
+                            isProviderAvailable("llm", id, provider.name, integratedProviders, selfHostedProviders)
                           )
-                        })}
+                          .map(([id, provider]) => {
+                            const unavailable = !isProviderAvailable(
+                              "llm", id, provider.name, integratedProviders, selfHostedProviders
+                            )
+                            return (
+                              <SelectItem
+                                key={id}
+                                value={id}
+                                disabled={unavailable}
+                                className="font-medium hover:bg-slate-100 transition"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span>{provider.name}</span>
+                                  {unavailable && (
+                                    <span className="text-xs text-slate-400">(unavailable)</span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            )
+                          })}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1586,34 +1593,26 @@ export default function AgentDetailPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {allSTTProviders
-                          .filter((p) => supportedSTTProviders.has(p.id))
+                          .filter((p) =>
+                            p.id === sttProvider ||
+                            (supportedSTTProviders.has(p.id) &&
+                             isProviderAvailable("stt", p.id, p.name, integratedProviders, selfHostedProviders))
+                          )
                           .map((provider) => {
-                            const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
-                            const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
+                            const unavailable = !isProviderAvailable(
+                              "stt", provider.id, provider.name, integratedProviders, selfHostedProviders
+                            )
                             return (
-                              <SelectItem key={provider.id} value={provider.id} disabled={!isIntegrated}>
+                              <SelectItem key={provider.id} value={provider.id} disabled={unavailable}>
                                 <div className="flex items-center gap-2">
                                   <span>{provider.name}</span>
-                                  {!isIntegrated && <span className="text-xs text-slate-400">(not integrated)</span>}
+                                  {unavailable && (
+                                    <span className="text-xs text-slate-400">(unavailable)</span>
+                                  )}
                                 </div>
                               </SelectItem>
                             )
                           })}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-slate-700 mb-2 block">Model</label>
-                    <Select value={sttModel} onValueChange={setSttModel} disabled={!sttProvider || supportedSTTModels.size === 0}>
-                      <SelectTrigger className="border-slate-200 rounded-md h-11 bg-white">
-                        <SelectValue placeholder="Select model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from(supportedSTTModels).map((model) => (
-                          <SelectItem key={model} value={model} className="font-mono text-sm">
-                            {model}
-                          </SelectItem>
-                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1644,15 +1643,22 @@ export default function AgentDetailPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {allTTSProviders
-                          .filter((p) => supportedTTSProviders.has(p.id))
+                          .filter((p) =>
+                            p.id === ttsProvider ||
+                            (supportedTTSProviders.has(p.id) &&
+                             isProviderAvailable("tts", p.id, p.name, integratedProviders, selfHostedProviders))
+                          )
                           .map((provider) => {
-                            const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
-                            const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
+                            const unavailable = !isProviderAvailable(
+                              "tts", provider.id, provider.name, integratedProviders, selfHostedProviders
+                            )
                             return (
-                              <SelectItem key={provider.id} value={provider.id} disabled={!isIntegrated}>
+                              <SelectItem key={provider.id} value={provider.id} disabled={unavailable}>
                                 <div className="flex items-center gap-2">
                                   <span>{provider.name}</span>
-                                  {!isIntegrated && <span className="text-xs text-slate-400">(not integrated)</span>}
+                                  {unavailable && (
+                                    <span className="text-xs text-slate-400">(unavailable)</span>
+                                  )}
                                 </div>
                               </SelectItem>
                             )
@@ -1859,8 +1865,28 @@ export default function AgentDetailPage() {
                       <SelectValue placeholder="Select delivery mode" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Vobiz">Vobiz</SelectItem>
-                      <SelectItem value="Plivo">Plivo</SelectItem>
+                      {["Vobiz", "Plivo"]
+                        .filter(
+                          (provider) =>
+                            provider === deliveryMode ||
+                            isTelephonyProviderAvailable(provider, integratedProviders)
+                        )
+                        .map((provider) => {
+                          const unavailable = !isTelephonyProviderAvailable(
+                            provider,
+                            integratedProviders
+                          )
+                          return (
+                            <SelectItem key={provider} value={provider} disabled={unavailable}>
+                              <div className="flex items-center gap-2">
+                                <span>{provider}</span>
+                                {unavailable && (
+                                  <span className="text-xs text-slate-400">(unavailable)</span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
                       <SelectItem value={WEBSOCKET_PROVIDER}>WebSocket</SelectItem>
                     </SelectContent>
                   </Select>

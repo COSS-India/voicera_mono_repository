@@ -26,6 +26,7 @@ from utils.backend_utils import (
     fetch_integration_key,
 )
 from utils.batching import create_batch_router
+from utils.provider_probes import available_providers
 
 
 load_dotenv()
@@ -302,6 +303,16 @@ async def root():
 async def health():
     """Detailed health check."""
     return {"status": "healthy"}
+
+
+@app.get("/providers/available")
+async def providers_available():
+    """List self-hosted providers that are currently reachable.
+
+    The frontend unions this with the org's saved API-key integrations to
+    decide which providers to offer in the agent forms.
+    """
+    return await available_providers()
 
 
 @app.post("/outbound/call/")

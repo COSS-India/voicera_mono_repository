@@ -4,7 +4,8 @@ import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
-import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { isProviderAvailable, isTelephonyProviderAvailable } from "@/lib/provider-availability"
+import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getSelfHostedProviders, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
 import { isValidAgentName, sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
 import { agentsQueryKey, useAgentsQuery } from "@/lib/queries/agents"
 import { requireJohnaicServerUrl } from "@/lib/johnaic-config"
@@ -299,8 +300,8 @@ const defaultConfig: AgentConfig = {
   userOnlineDetectionRepeats: 1,
   userOnlineDetectionClosingMessage: "",
   systemPrompt: "You are a helpful agent. You will help the customer with their queries and doubts. You will never speak more than 2 sentences. Keep your responses concise",
-  llmProvider: "openai",
-  llmModel: "gpt-4o",
+  llmProvider: "",
+  llmModel: "",
   customLlmId: "",
   kenpathVariant: "prod",
   knowledgeEnabled: false,
@@ -309,18 +310,18 @@ const defaultConfig: AgentConfig = {
   temperature: 0.2,
   maxTokens: 450,
   selectedLanguages: ["Hindi"],
-  sttProvider: "ai4bharat",
-  sttModel: "indic-conformer-stt",
+  sttProvider: "",
+  sttModel: "",
   keywords: "",
-  ttsProvider: "ai4bharat",
-  ttsModel: "indic-parler-tts",
-  ttsVoice: "Rohit",
-  ttsDescription: "Speaks at a fast pace with a slightly low-pitched voice, captured clearly in a close-sounding environment with excellent recording quality.",
+  ttsProvider: "",
+  ttsModel: "",
+  ttsVoice: "",
+  ttsDescription: "",
   bufferSize: 50,
   speedRate: 1,
   similarityBoost: 75,
   stability: 50,
-  telephonyProvider: "Plivo",
+  telephonyProvider: "",
 }
 
 const formatDurationSeconds = (seconds: number) => {
@@ -353,6 +354,8 @@ export default function AssistantsPage() {
   const [showDeleteSuccessToast, setShowDeleteSuccessToast] = useState(false)
   const [deletingAgentType, setDeletingAgentType] = useState<string | null>(null)
   const [integratedProviders, setIntegratedProviders] = useState<Set<string>>(new Set())
+  // Self-hosted models the voice server can reach, keyed "llm:qwen", "stt:ai4bharat", "tts:ai4bharat"
+  const [selfHostedProviders, setSelfHostedProviders] = useState<Set<string>>(new Set())
   const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([])
   const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(false)
@@ -403,11 +406,13 @@ export default function AssistantsPage() {
 
         // Fetch integrations to know which providers have API keys
         try {
-          const [integrations, customLlms] = await Promise.all([
+          const [integrations, customLlms, selfHosted] = await Promise.all([
             getIntegrations(),
             getCustomLLMIntegrations(),
+            getSelfHostedProviders(),
           ])
           setCustomLLMIntegrations(customLlms)
+          setSelfHostedProviders(new Set(selfHosted))
           const integrated = new Set<string>()
           integrations.forEach((integration: Integration) => {
             integrated.add(integration.model.toLowerCase())
@@ -622,6 +627,46 @@ export default function AssistantsPage() {
     [activeLanguages, config.ttsProvider]
   )
 
+  // Providers offerable right now: self-hosted models that answer their health
+  // probe, plus API providers with a key saved in Integrations.
+  const availableLLMProviders = useMemo(
+    () =>
+      Object.entries(llmProviders).filter(([id, provider]) =>
+        isProviderAvailable("llm", id, provider.name, integratedProviders, selfHostedProviders)
+      ),
+    [integratedProviders, selfHostedProviders]
+  )
+
+  const availableSTTProviders = useMemo(
+    () =>
+      allSTTProviders.filter(
+        (p) =>
+          supportedSTTProviders.has(p.id) &&
+          isProviderAvailable("stt", p.id, p.name, integratedProviders, selfHostedProviders)
+      ),
+    [supportedSTTProviders, integratedProviders, selfHostedProviders]
+  )
+
+  const availableTTSProviders = useMemo(
+    () =>
+      allTTSProviders.filter(
+        (p) =>
+          supportedTTSProviders.has(p.id) &&
+          isProviderAvailable("tts", p.id, p.name, integratedProviders, selfHostedProviders)
+      ),
+    [supportedTTSProviders, integratedProviders, selfHostedProviders]
+  )
+
+  // Telephony providers whose credentials are saved in Integrations. WebSocket
+  // is listed separately since it needs no provider at all.
+  const availableTelephonyProviders = useMemo(
+    () =>
+      ["Vobiz", "Plivo"].filter((provider) =>
+        isTelephonyProviderAvailable(provider, integratedProviders)
+      ),
+    [integratedProviders]
+  )
+
   // Get available TTS voices for primary language + selected provider/model
   const availableTTSVoices = useMemo(() => {
     if (!primaryLanguage || !config.ttsProvider) return []
@@ -696,7 +741,7 @@ export default function AssistantsPage() {
 
   // Handle create new agent
   const handleCreateNew = () => {
-    setConfig({ ...defaultConfig, id: "new", telephonyProvider: "Plivo" })
+    setConfig({ ...defaultConfig, id: "new", telephonyProvider: "" })
     setCreateStep(1)
     setInteractionModeLocked(false)
     setView("create")
@@ -707,7 +752,7 @@ export default function AssistantsPage() {
     setView("list")
     setCreateStep(1)
     setInteractionModeLocked(false)
-    setConfig({ ...defaultConfig, telephonyProvider: "Plivo" })
+    setConfig({ ...defaultConfig, telephonyProvider: "" })
   }
 
 
@@ -1644,6 +1689,22 @@ export default function AssistantsPage() {
                 <div className="space-y-6">
                   <div className="space-y-4">
                     <label className="text-base font-bold text-slate-900">Choose LLM model</label>
+                    {availableLLMProviders.length === 0 ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 mt-4">
+                        <p className="text-sm font-medium text-slate-900">No LLM provider available</p>
+                        <p className="text-sm text-slate-600 mt-1">
+                          Add an API key in{" "}
+                          <button
+                            type="button"
+                            onClick={() => router.push("/integrations")}
+                            className="text-blue-600 underline hover:text-blue-700"
+                          >
+                            Integrations
+                          </button>
+                          , or start a self-hosted model server.
+                        </p>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-2 gap-4 mt-4">
                       <Select value={config.llmProvider} onValueChange={(v) => updateConfig("llmProvider", v)}>
                         <SelectTrigger className="h-12 rounded-lg w-full border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
@@ -1652,24 +1713,15 @@ export default function AssistantsPage() {
                           </div>
                         </SelectTrigger>
                         <SelectContent className="rounded-lg">
-                          {Object.entries(llmProviders).map(([id, provider]) => {
-                            // OpenAI, Qwen, and Kenpath are always available (built-in)
-                            const isBuiltIn = id === "openai" || id === "qwen" || id === "kenpath"
-                            // Check if provider has integration (API key configured)
-                            const isIntegrated = integratedProviders.has(id) || integratedProviders.has(provider.name.toLowerCase())
-                            const isAvailable = isBuiltIn || isIntegrated
-                            
-                            return (
-                              <SelectItem key={id} value={id} className="py-3" disabled={!isAvailable}>
-                                <div className="flex items-center gap-2.5">
-                                  <span className="font-medium">{provider.name}</span>
-                                  {!isAvailable && (
-                                    <span className="ml-2 text-xs text-slate-400">(not integrated)</span>
-                                  )}
-                                </div>
-                              </SelectItem>
-                            )
-                          })}
+                        {availableLLMProviders
+                          .map(([id, provider]) => (
+                            <SelectItem key={id} value={id} className="py-3 hover:bg-slate-100 transition">
+                              <div className="flex items-center gap-2.5">
+                                <span className="font-medium">{provider.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                     
                         </SelectContent>
                       </Select>
 
@@ -1733,6 +1785,7 @@ export default function AssistantsPage() {
                         </Select>
                       )}
                     </div>
+                    )}
                   </div>
 
                   {config.llmProvider === "custom_llm" && config.customLlmId && (
@@ -1915,6 +1968,24 @@ export default function AssistantsPage() {
                   {activeLanguages.length > 0 && config.interactionMode !== "non_conversational" && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select transcriber</label>
+                      {availableSTTProviders.length === 0 ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-sm font-medium text-slate-900">
+                          No transcriber available for {activeLanguages.join(", ")}
+                        </p>
+                        <p className="text-sm text-slate-600 mt-1">
+                          Add an API key in{" "}
+                          <button
+                            type="button"
+                            onClick={() => router.push("/integrations")}
+                            className="text-blue-600 underline hover:text-blue-700"
+                          >
+                            Integrations
+                          </button>
+                          , or start the AI4Bharat STT server.
+                        </p>
+                      </div>
+                      ) : (
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Provider</label>
@@ -1927,36 +1998,13 @@ export default function AssistantsPage() {
                             </SelectTrigger>
                             <SelectContent className="rounded-lg">
                               <div className="px-2 py-1.5 text-xs font-semibold text-slate-500">STT Providers</div>
-                              {[...allSTTProviders]
-                                .sort((a, b) => {
-                                  const aSupported = supportedSTTProviders.has(a.id)
-                                  const bSupported = supportedSTTProviders.has(b.id)
-                                  if (aSupported && !bSupported) return -1
-                                  if (!aSupported && bSupported) return 1
-                                  return 0
-                                })
-                                .map((provider) => {
-                                  const isSupported = supportedSTTProviders.has(provider.id)
-                                  // AI4Bharat is on-prem, always available (no API key needed)
-                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
-                                  // Check if provider has integration (API key configured)
-                                  const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
-                                  // Determine availability status
-                                  const isAvailable = isSupported && isIntegrated
-                                  // Determine the reason for unavailability
-                                  const unavailableReason = !isSupported ? "not supported" : !isIntegrated ? "not integrated" : ""
-                                  
-                                  return (
-                                    <SelectItem key={provider.id} value={provider.id} disabled={!isAvailable} className="py-2.5">
-                                      <span className="flex items-center gap-2">
-                                        <span className={`font-medium ${!isAvailable ? "text-slate-400" : ""}`}>{provider.name}</span>
-                                        {unavailableReason && (
-                                          <span className="text-xs text-slate-400">({unavailableReason})</span>
-                                        )}
-                                      </span>
-                                    </SelectItem>
-                                  )
-                                })}
+                              {availableSTTProviders
+                                .map((provider) => (
+                                  <SelectItem key={provider.id} value={provider.id} className="py-2.5">
+                                    <span className="font-medium">{provider.name}</span>
+                                  </SelectItem>
+                                ))}
+
                             </SelectContent>
                           </Select>
                         </div>
@@ -1968,28 +2016,19 @@ export default function AssistantsPage() {
                               <SelectValue placeholder="Select model" />
                             </SelectTrigger>
                             <SelectContent className="rounded-lg">
-                              {[...(getAllSTTModelsForProvider[config.sttProvider] || [])]
-                                .sort((a, b) => {
-                                  const aSupported = supportedSTTModels.has(a)
-                                  const bSupported = supportedSTTModels.has(b)
-                                  if (aSupported && !bSupported) return -1
-                                  if (!aSupported && bSupported) return 1
-                                  return 0
-                                })
-                                .map((model) => {
-                                  const isSupported = supportedSTTModels.has(model)
-                                  return (
-                                    <SelectItem key={model} value={model} disabled={!isSupported} className="py-2.5 font-mono text-sm">
-                                      <span className="flex items-center gap-2">
-                                        <span className={!isSupported ? "text-slate-400" : ""}>{model}</span>
-                                      </span>
-                                    </SelectItem>
-                                  )
-                                })}
+                            {(getAllSTTModelsForProvider[config.sttProvider] || [])
+                              .filter((model) => supportedSTTModels.has(model))
+                              .map((model) => (
+                                <SelectItem key={model} value={model} className="py-2.5 font-mono text-sm">
+                                  {model}
+                                </SelectItem>
+                              ))}
+
                             </SelectContent>
                           </Select>
                         </div>
                       </div>
+                      )}
                     </div>
                   )}
 
@@ -1997,6 +2036,24 @@ export default function AssistantsPage() {
                   {activeLanguages.length > 0 && (
                     <div className="space-y-4 pt-6 border-t border-slate-100">
                       <label className="text-base font-bold text-slate-900 italic">Select synthesizer</label>
+                      {availableTTSProviders.length === 0 ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-sm font-medium text-slate-900">
+                          No synthesizer available for {activeLanguages.join(", ")}
+                        </p>
+                        <p className="text-sm text-slate-600 mt-1">
+                          Add an API key in{" "}
+                          <button
+                            type="button"
+                            onClick={() => router.push("/integrations")}
+                            className="text-blue-600 underline hover:text-blue-700"
+                          >
+                            Integrations
+                          </button>
+                          , or start the AI4Bharat TTS server.
+                        </p>
+                      </div>
+                      ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Provider</label>
@@ -2009,36 +2066,13 @@ export default function AssistantsPage() {
                             </SelectTrigger>
                             <SelectContent className="rounded-lg">
                               <div className="px-2 py-1.5 text-xs font-semibold text-slate-500">TTS Providers</div>
-                              {[...allTTSProviders]
-                                .sort((a, b) => {
-                                  const aSupported = supportedTTSProviders.has(a.id)
-                                  const bSupported = supportedTTSProviders.has(b.id)
-                                  if (aSupported && !bSupported) return -1
-                                  if (!aSupported && bSupported) return 1
-                                  return 0
-                                })
-                                .map((provider) => {
-                                  const isSupported = supportedTTSProviders.has(provider.id)
-                                  // AI4Bharat is on-prem, always available (no API key needed)
-                                  const isOnPrem = provider.id === "ai4bharat" || provider.id === "bhashini"
-                                  // Check if provider has integration (API key configured)
-                                  const isIntegrated = isOnPrem || integratedProviders.has(provider.id) || integratedProviders.has(provider.name.toLowerCase())
-                                  // Determine availability status
-                                  const isAvailable = isSupported && isIntegrated
-                                  // Determine the reason for unavailability
-                                  const unavailableReason = !isSupported ? "not supported" : !isIntegrated ? "not integrated" : ""
-                                  
-                                  return (
-                                    <SelectItem key={provider.id} value={provider.id} disabled={!isAvailable} className="py-2.5">
-                                      <span className="flex items-center gap-2">
-                                        <span className={`font-medium ${!isAvailable ? "text-slate-400" : ""}`}>{provider.name}</span>
-                                        {unavailableReason && (
-                                          <span className="text-xs text-slate-400">({unavailableReason})</span>
-                                        )}
-                                      </span>
-                                    </SelectItem>
-                                  )
-                                })}
+                              {availableTTSProviders
+                                .map((provider) => (
+                                  <SelectItem key={provider.id} value={provider.id} className="py-2.5">
+                                    <span className="font-medium">{provider.name}</span>
+                                  </SelectItem>
+                                ))}
+
                             </SelectContent>
                           </Select>
                         </div>
@@ -2050,24 +2084,14 @@ export default function AssistantsPage() {
                               <SelectValue placeholder="Select model" />
                             </SelectTrigger>
                             <SelectContent className="rounded-lg">
-                              {[...(getAllTTSModelsForProvider[config.ttsProvider] || [])]
-                                .sort((a, b) => {
-                                  const aSupported = supportedTTSModels.has(a)
-                                  const bSupported = supportedTTSModels.has(b)
-                                  if (aSupported && !bSupported) return -1
-                                  if (!aSupported && bSupported) return 1
-                                  return 0
-                                })
-                                .map((model) => {
-                                  const isSupported = supportedTTSModels.has(model)
-                                  return (
-                                    <SelectItem key={model} value={model} disabled={!isSupported} className="py-2.5 font-mono text-sm">
-                                      <span className="flex items-center gap-2">
-                                        <span className={!isSupported ? "text-slate-400" : ""}>{model}</span>
-                                      </span>
-                                    </SelectItem>
-                                  )
-                                })}
+                            {(getAllTTSModelsForProvider[config.ttsProvider] || [])
+                              .filter((model) => supportedTTSModels.has(model))
+                              .map((model) => (
+                                <SelectItem key={model} value={model} className="py-2.5 font-mono text-sm">
+                                  {model}
+                                </SelectItem>
+                              ))}
+
                             </SelectContent>
                           </Select>
                         </div>
@@ -2099,6 +2123,7 @@ export default function AssistantsPage() {
                           </div>
                         </div>
                       </div>
+                      )}
 
                       {/* TTS Description for AI4Bharat and Bhashini */}
                       {(config.ttsProvider === "ai4bharat" || config.ttsProvider === "bhashini") && (
@@ -2263,12 +2288,11 @@ export default function AssistantsPage() {
                       </div>
                     </SelectTrigger>
                     <SelectContent className="rounded-lg">
-                      <SelectItem value="Vobiz" className="py-3">
-                        <span className="font-medium">Vobiz</span>
-                      </SelectItem>
-                      <SelectItem value="Plivo" className="py-3">
-                        <span className="font-medium">Plivo</span>
-                      </SelectItem>
+                      {availableTelephonyProviders.map((provider) => (
+                        <SelectItem key={provider} value={provider} className="py-3">
+                          <span className="font-medium">{provider}</span>
+                        </SelectItem>
+                      ))}
                       <SelectItem value={WEBSOCKET_PROVIDER} className="py-3">
                         <span className="font-medium">WebSocket</span>
                       </SelectItem>
@@ -2279,6 +2303,19 @@ export default function AssistantsPage() {
                       ? "Browser test only — no phone provider or phone number required."
                       : "Phone calls via the selected telephony provider."}
                   </p>
+                  {availableTelephonyProviders.length === 0 && (
+                    <p className="text-sm text-slate-600">
+                      Phone delivery needs telephony credentials. Add Vobiz or Plivo in{" "}
+                      <button
+                        type="button"
+                        onClick={() => router.push("/integrations")}
+                        className="text-blue-600 underline hover:text-blue-700"
+                      >
+                        Integrations
+                      </button>
+                      .
+                    </p>
+                  )}
                 </div>
 
                 <Button

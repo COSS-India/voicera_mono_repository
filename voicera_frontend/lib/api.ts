@@ -2,6 +2,8 @@
  * API utility functions for making authenticated requests
  */
 
+import { requireJohnaicServerUrl } from "./johnaic-config"
+
 /**
  * Get the stored auth token from localStorage
  */
@@ -1037,6 +1039,25 @@ export async function getIntegrations(): Promise<Integration[]> {
   }
   
   return response.json()
+}
+
+/**
+ * Get the self-hosted providers the voice server can currently reach.
+ *
+ * Returns keys like "llm:qwen", "stt:ai4bharat", "tts:ai4bharat". Callers
+ * union this with getIntegrations() to decide which providers to offer.
+ * Returns an empty list if the voice server is unreachable, so an outage
+ * hides self-hosted options rather than offering ones that would fail.
+ */
+export async function getSelfHostedProviders(): Promise<string[]> {
+  try {
+    const response = await fetch(`${requireJohnaicServerUrl()}/providers/available`)
+    if (!response.ok) return []
+    const data = await response.json()
+    return Array.isArray(data.available) ? data.available : []
+  } catch {
+    return []
+  }
 }
 
 /**
