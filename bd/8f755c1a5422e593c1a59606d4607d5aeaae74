@@ -1,0 +1,29 @@
+voice_2_voice_server/api/services.py
+  s_ceb54dc8545d54::t_40278775438e32 741-761,764
+  s_ceb54dc8545d54::t_6a42da3136393b 21-22
+  s_ceb54dc8545d54::t_1c296b82f26b37 575,578,583-588,591
+voice_2_voice_server/services/sarvam_http_broadcast.py
+  s_ceb54dc8545d54::t_1719403c341d6e 1-94
+voice_2_voice_server/api/translation_room.py
+  s_ceb54dc8545d54::t_a6995b56699920 316
+  s_ceb54dc8545d54::t_c169d29d26fb61 626-631
+  s_ceb54dc8545d54::t_b9a0ab1971186f 349-353,358-362
+  s_ceb54dc8545d54::t_04c0abe2edccb7 29-30
+  s_ceb54dc8545d54::t_ec885a02735e98 364-367,369-371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "bd8f755c1a5422e593c1a59606d4607d5aeaae74",
+  "prompts": {},
+  "sessions": {
+    "s_ceb54dc8545d54": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dd49552-cf36-439e-a2a8-e1a856f50ea4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
