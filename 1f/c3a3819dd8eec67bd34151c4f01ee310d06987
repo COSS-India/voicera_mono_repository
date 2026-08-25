@@ -1,0 +1,590 @@
+.gitignore
+  s_0bc1c0b03a021f::t_f5970c55712ef8 14
+  s_0bc1c0b03a021f::t_8c721afaa71d6c 15-17
+legacy/Makefile
+  s_0bc1c0b03a021f::t_629197a1fbc410 27,39
+legacy/setup.sh
+  s_0bc1c0b03a021f::t_fda36302e2abeb 205,237,261,271,312-313,326-328,349,358,398,423
+legacy/voice_2_voice_server/.dockerignore
+  s_0bc1c0b03a021f::t_7cca2dc193553e 1-47
+legacy/voice_2_voice_server/.env.example
+  s_0bc1c0b03a021f::t_c35b424a63fbba 1-66
+legacy/voice_2_voice_server/.gitignore
+  s_0bc1c0b03a021f::t_0879cc766eb516 1-31
+legacy/voice_2_voice_server/Dockerfile
+  s_0bc1c0b03a021f::t_a1ce0f33ab0a7c 1-25
+legacy/voice_2_voice_server/README.md
+  s_0bc1c0b03a021f::t_4134489ad93a5c 1-250
+legacy/voice_2_voice_server/api/__init__.py
+  s_0bc1c0b03a021f::t_f7487d4b102be5 1-29
+legacy/voice_2_voice_server/api/bot.py
+  s_0bc1c0b03a021f::t_de27565afa7e06 1-660
+legacy/voice_2_voice_server/api/server.py
+  s_0bc1c0b03a021f::t_3ac28a5b1fee21 1-632
+legacy/voice_2_voice_server/api/services.py
+  s_0bc1c0b03a021f::t_de54385a7e7577 1-764
+legacy/voice_2_voice_server/config/__init__.py
+  s_0bc1c0b03a021f::t_329e987b01a7cf 1-10
+legacy/voice_2_voice_server/config/llm_mappings.py
+  s_0bc1c0b03a021f::t_dc7808ff3e2188 1-35
+legacy/voice_2_voice_server/config/stt_mappings.py
+  s_0bc1c0b03a021f::t_4cb077fac228bf 1-174
+legacy/voice_2_voice_server/config/tts_mappings.py
+  s_0bc1c0b03a021f::t_2dfab0845f19b8 1-193
+legacy/voice_2_voice_server/main.py
+  s_0bc1c0b03a021f::t_2a3d15b071b14d 1-6
+legacy/voice_2_voice_server/requirements.txt
+  s_0bc1c0b03a021f::t_7bd13f0062ebd4 1-48
+legacy/voice_2_voice_server/serializer/__init__.py
+  s_0bc1c0b03a021f::t_6f266abd898797 1-6
+legacy/voice_2_voice_server/serializer/vobiz_serializer.py
+  s_0bc1c0b03a021f::t_79048e9c91b0d8 1-87
+legacy/voice_2_voice_server/services/__init__.py
+  s_0bc1c0b03a021f::t_554fa883948354 1-2
+legacy/voice_2_voice_server/services/ai4bharat/__init__.py
+  s_0bc1c0b03a021f::t_691fb0d5ca5e83 1-10
+legacy/voice_2_voice_server/services/ai4bharat/stt.py
+  s_0bc1c0b03a021f::t_61d85136052ae3 1-473
+legacy/voice_2_voice_server/services/ai4bharat/tts.py
+  s_0bc1c0b03a021f::t_0d6637aac7551a 1-192
+legacy/voice_2_voice_server/services/bhashini/__init__.py
+  s_0bc1c0b03a021f::t_235229aa7d17ca 1-17
+legacy/voice_2_voice_server/services/bhashini/benchmark_tts.py
+  s_0bc1c0b03a021f::t_c078803f44d54a 1-340
+legacy/voice_2_voice_server/services/bhashini/bhili_stt.py
+  s_0bc1c0b03a021f::t_5a85c5758abe58 1-594
+legacy/voice_2_voice_server/services/bhashini/socketio_stt.py
+  s_0bc1c0b03a021f::t_61a0202655ede9 1-493
+legacy/voice_2_voice_server/services/bhashini/stt.py
+  s_0bc1c0b03a021f::t_debf2daa97d841 1-668
+legacy/voice_2_voice_server/services/bhashini/testing.py
+  s_0bc1c0b03a021f::t_9ccb414cb36e51 1-35
+legacy/voice_2_voice_server/services/bhashini/tts.proto
+  s_0bc1c0b03a021f::t_2bab8f811ebfe8 1-36
+legacy/voice_2_voice_server/services/bhashini/tts.py
+  s_0bc1c0b03a021f::t_741dc5815ad4d4 1-133
+legacy/voice_2_voice_server/services/bhashini/tts_load_test.py
+  s_0bc1c0b03a021f::t_9730d092a3bc29 1-544
+legacy/voice_2_voice_server/services/bhashini/tts_pb2.py
+  s_0bc1c0b03a021f::t_e665390c5a789d 1-36
+legacy/voice_2_voice_server/services/bhashini/tts_pb2_grpc.py
+  s_0bc1c0b03a021f::t_ed3ecd853e85b6 1-66
+legacy/voice_2_voice_server/services/custom_llm/__init__.py
+  s_0bc1c0b03a021f::t_bcc5e34b87f5c2 1-8
+legacy/voice_2_voice_server/services/custom_llm/llm.py
+  s_0bc1c0b03a021f::t_4832b674d510b4 1-84
+legacy/voice_2_voice_server/services/kenpath_llm/__init__.py
+  s_0bc1c0b03a021f::t_5ffecf6ab8ea13 1-6
+legacy/voice_2_voice_server/services/kenpath_llm/llm.py
+  s_0bc1c0b03a021f::t_f46ae344213de2 1-755
+legacy/voice_2_voice_server/services/kenpath_llm/load_test.py
+  s_0bc1c0b03a021f::t_f027d7dc6e326a 1-710
+legacy/voice_2_voice_server/services/openai_kb_llm.py
+  s_0bc1c0b03a021f::t_d89516238adb11 1-99
+legacy/voice_2_voice_server/services/vllm_qwen/__init__.py
+  s_0bc1c0b03a021f::t_6e376ae7bbfa6b 1-25
+legacy/voice_2_voice_server/services/vllm_qwen/llm.py
+  s_0bc1c0b03a021f::t_9cea733e697fe7 1-219
+legacy/voice_2_voice_server/storage/minio_client.py
+  s_0bc1c0b03a021f::t_79cd1927619505 1-240
+legacy/voice_2_voice_server/storage/readme.md
+  s_0bc1c0b03a021f::t_1d74d2d048e253 1-63
+legacy/voice_2_voice_server/utils/audio/greeting_interruption_filter.py
+  s_0bc1c0b03a021f::t_e583b35b5a2f0f 1-103
+legacy/voice_2_voice_server/utils/audio/user_online_detection_filter.py
+  s_0bc1c0b03a021f::t_07e2ee49799977 1-335
+legacy/voice_2_voice_server/utils/backend_utils.py
+  s_0bc1c0b03a021f::t_c56be42a7a301b 1-585
+legacy/voice_2_voice_server/utils/batching.py
+  s_0bc1c0b03a021f::t_0fe9caf4becb44 1-201
+legacy/voice_2_voice_server/utils/bot_utils.py
+  s_0bc1c0b03a021f::t_466923ad55e5c5 1-325
+legacy/voice_2_voice_server/utils/call_goodbye.py
+  s_0bc1c0b03a021f::t_25543520aa6e4e 1-122
+legacy/voice_2_voice_server/utils/call_management/__init__.py
+  s_0bc1c0b03a021f::t_59d66d28019038 1-4
+legacy/voice_2_voice_server/utils/call_management/alert_hangup.py
+  s_0bc1c0b03a021f::t_d5d5994f660a56 1-30
+legacy/voice_2_voice_server/utils/call_management/user_silence_hangup.py
+  s_0bc1c0b03a021f::t_cc02bb9aac27e7 1-79
+legacy/voice_2_voice_server/utils/call_recording_utils.py
+  s_0bc1c0b03a021f::t_5be061ad845eeb 1-95
+legacy/voice_2_voice_server/utils/language_switching.py
+  s_0bc1c0b03a021f::t_e173949c13a81a 1-221
+legacy/voice_2_voice_server/utils/metrics/__init__.py
+  s_0bc1c0b03a021f::t_3f0a5a9f424fb0 1-3
+legacy/voice_2_voice_server/utils/metrics/call_metrics_observer.py
+  s_0bc1c0b03a021f::t_5f2e5855f9264c 1-238
+legacy/voice_2_voice_server/utils/pipelines/__init__.py
+  s_0bc1c0b03a021f::t_fcbed6b5d198bf 1-3
+legacy/voice_2_voice_server/utils/pipelines/alert_bot.py
+  s_0bc1c0b03a021f::t_3fb1521d9170f8 1-107
+legacy/voice_2_voice_server/utils/plivo_recording.py
+  s_0bc1c0b03a021f::t_29728de3ed015e 1-214
+legacy/voice_2_voice_server/utils/telemetry.py
+  s_0bc1c0b03a021f::t_01a3feb3e1fd08 1-164
+legacy/voice_2_voice_server/utils/vobiz_recording.py
+  s_0bc1c0b03a021f::t_a604683a6cf75f 1-159
+legacy/voicera_backend/.dockerignore
+  s_0bc1c0b03a021f::t_e069c447f57a98 1-16
+legacy/voicera_backend/.gitignore
+  s_0bc1c0b03a021f::t_88f96f2f9fe1f0 1-53
+legacy/voicera_backend/Dockerfile
+  s_0bc1c0b03a021f::t_c89195e516fb35 1-24
+legacy/voicera_backend/README.md
+  s_0bc1c0b03a021f::t_07ebf3eec7108a 1-77
+legacy/voicera_backend/app/auth.py
+  s_0bc1c0b03a021f::t_0d891c9c11e0cc 1-206
+legacy/voicera_backend/app/config.py
+  s_0bc1c0b03a021f::t_17eb038803cb0d 1-79
+legacy/voicera_backend/app/database.py
+  s_0bc1c0b03a021f::t_db7521c6b46636 1-46
+legacy/voicera_backend/app/database_init.py
+  s_0bc1c0b03a021f::t_b60ffdaee00e92 1-264
+legacy/voicera_backend/app/main.py
+  s_0bc1c0b03a021f::t_0b8212a5fcc440 1-97
+legacy/voicera_backend/app/models/schemas.py
+  s_0bc1c0b03a021f::t_9e945a1600a748 1-526
+legacy/voicera_backend/app/routers/agents.py
+  s_0bc1c0b03a021f::t_a42bc32b1dc9ae 1-228
+legacy/voicera_backend/app/routers/analytics.py
+  s_0bc1c0b03a021f::t_8f55a81bd16ac2 1-73
+legacy/voicera_backend/app/routers/audience.py
+  s_0bc1c0b03a021f::t_49723774ad0b5c 1-54
+legacy/voicera_backend/app/routers/batches.py
+  s_0bc1c0b03a021f::t_2c9a8222eabfa7 1-390
+legacy/voicera_backend/app/routers/call_recordings.py
+  s_0bc1c0b03a021f::t_d9dce21e726f67 1-36
+legacy/voicera_backend/app/routers/campaigns.py
+  s_0bc1c0b03a021f::t_1e23e8e8a14353 1-80
+legacy/voicera_backend/app/routers/custom_llm_integrations.py
+  s_0bc1c0b03a021f::t_0a1eb19658b45c 1-123
+legacy/voicera_backend/app/routers/integrations.py
+  s_0bc1c0b03a021f::t_3d7c4c66af1251 1-151
+legacy/voicera_backend/app/routers/knowledge.py
+  s_0bc1c0b03a021f::t_c1f500baeede54 1-116
+legacy/voicera_backend/app/routers/meetings.py
+  s_0bc1c0b03a021f::t_3a4ef3d3f7285f 1-285
+legacy/voicera_backend/app/routers/members.py
+  s_0bc1c0b03a021f::t_c567121c3a01ad 1-102
+legacy/voicera_backend/app/routers/phone_numbers.py
+  s_0bc1c0b03a021f::t_e8f694800f7c2c 1-140
+legacy/voicera_backend/app/routers/plivo.py
+  s_0bc1c0b03a021f::t_c5d9a86b35417b 1-117
+legacy/voicera_backend/app/routers/rag.py
+  s_0bc1c0b03a021f::t_c192800d492f9c 1-33
+legacy/voicera_backend/app/routers/users.py
+  s_0bc1c0b03a021f::t_c9e1e413e9ef3f 1-124
+legacy/voicera_backend/app/routers/vobiz.py
+  s_0bc1c0b03a021f::t_930a982647acaf 1-152
+legacy/voicera_backend/app/services/agent_service.py
+  s_0bc1c0b03a021f::t_89b0d10cfbbe9d 1-437
+legacy/voicera_backend/app/services/analytics_service.py
+  s_0bc1c0b03a021f::t_190f0e16babfa6 1-270
+legacy/voicera_backend/app/services/audience_service.py
+  s_0bc1c0b03a021f::t_bfb2a6776733ea 1-88
+legacy/voicera_backend/app/services/batch_scheduler.py
+  s_0bc1c0b03a021f::t_ccadc542c15ace 1-114
+legacy/voicera_backend/app/services/batch_service.py
+  s_0bc1c0b03a021f::t_79280cc98d7461 1-827
+legacy/voicera_backend/app/services/call_recording_service.py
+  s_0bc1c0b03a021f::t_e2a8b70699db88 1-95
+legacy/voicera_backend/app/services/campaign_service.py
+  s_0bc1c0b03a021f::t_275edd307157a9 1-88
+legacy/voicera_backend/app/services/custom_llm_integration_service.py
+  s_0bc1c0b03a021f::t_cce9829d5aa5f5 1-203
+legacy/voicera_backend/app/services/email_service.py
+  s_0bc1c0b03a021f::t_e1e5495897b7a3 1-88
+legacy/voicera_backend/app/services/integration_service.py
+  s_0bc1c0b03a021f::t_13574f0411167d 1-213
+legacy/voicera_backend/app/services/knowledge_service.py
+  s_0bc1c0b03a021f::t_ae8613dad1ccb7 1-405
+legacy/voicera_backend/app/services/meeting_service.py
+  s_0bc1c0b03a021f::t_c2689b69d0c140 1-572
+legacy/voicera_backend/app/services/member_service.py
+  s_0bc1c0b03a021f::t_23ba53fc4299a1 1-249
+legacy/voicera_backend/app/services/phone_number.py
+  s_0bc1c0b03a021f::t_a7f5c1b0deef2f 1-226
+legacy/voicera_backend/app/services/plivo.py
+  s_0bc1c0b03a021f::t_3def3250b8ec8f 1-241
+legacy/voicera_backend/app/services/user_service.py
+  s_0bc1c0b03a021f::t_b0377c5f471e80 1-404
+legacy/voicera_backend/app/services/vobiz.py
+  s_0bc1c0b03a021f::t_e7b61b0a9f5272 1-397
+legacy/voicera_backend/app/storage/__init__.py
+  s_0bc1c0b03a021f::t_7cd193d7db36a3 1-3
+legacy/voicera_backend/app/storage/minio_client.py
+  s_0bc1c0b03a021f::t_c77a01ed016b4e 1-83
+legacy/voicera_backend/app/utils/call_type.py
+  s_0bc1c0b03a021f::t_782492227682ab 1-69
+legacy/voicera_backend/app/utils/mongo_utils.py
+  s_0bc1c0b03a021f::t_4da97c404ca54e 1-54
+legacy/voicera_backend/docker-compose.yml
+  s_0bc1c0b03a021f::t_a44a0f0af4be08 1-70
+legacy/voicera_backend/env.example
+  s_0bc1c0b03a021f::t_c8614b1f3dfbc3 1-41
+legacy/voicera_backend/rag_system/__init__.py
+  s_0bc1c0b03a021f::t_9744c0dbdbe29a 1
+legacy/voicera_backend/rag_system/chunk_text.py
+  s_0bc1c0b03a021f::t_04eb69d435afc9 1-121
+legacy/voicera_backend/rag_system/embed_chunks.py
+  s_0bc1c0b03a021f::t_b099e141cb0804 1-173
+legacy/voicera_backend/rag_system/ingest_pipeline.py
+  s_0bc1c0b03a021f::t_f2360d7d1d533b 1-238
+legacy/voicera_backend/rag_system/pdf_to_text.py
+  s_0bc1c0b03a021f::t_df0e2a0f68106b 1-74
+legacy/voicera_backend/requirements.txt
+  s_0bc1c0b03a021f::t_1516ae36e5a0ef 1-20
+legacy/voicera_backend/run.py
+  s_0bc1c0b03a021f::t_0479b91bbe45a9 1-16
+legacy/voicera_frontend/.dockerignore
+  s_0bc1c0b03a021f::t_9f02e7551263de 1-41
+legacy/voicera_frontend/.env.example
+  s_0bc1c0b03a021f::t_7e19458b45ec54 1-2
+legacy/voicera_frontend/.gitignore
+  s_0bc1c0b03a021f::t_66c68479915baf 1-44
+legacy/voicera_frontend/Dockerfile
+  s_0bc1c0b03a021f::t_f4831d86f6b6c8 1-46
+legacy/voicera_frontend/README.md
+  s_0bc1c0b03a021f::t_f4d5b177174b9b 1-81
+legacy/voicera_frontend/app/(auth)/add-member/[slug]/page.tsx
+  s_0bc1c0b03a021f::t_87f5a1c33a4f4a 1-453
+legacy/voicera_frontend/app/(auth)/forgot-password/page.tsx
+  s_0bc1c0b03a021f::t_e70babb27688f2 1-239
+legacy/voicera_frontend/app/(auth)/layout.tsx
+  s_0bc1c0b03a021f::t_f388a95f8b1b0b 1-14
+legacy/voicera_frontend/app/(auth)/loading.tsx
+  s_0bc1c0b03a021f::t_7aaefda5c24f0a 1-12
+legacy/voicera_frontend/app/(auth)/reset-password/page.tsx
+  s_0bc1c0b03a021f::t_ff417488ac8f15 1-398
+legacy/voicera_frontend/app/(auth)/signup/page.tsx
+  s_0bc1c0b03a021f::t_55c1f4c7a6d933 1-339
+legacy/voicera_frontend/app/(dashboard)/analytics/page.tsx
+  s_0bc1c0b03a021f::t_52bf2c40ea1778 1-742
+legacy/voicera_frontend/app/(dashboard)/assistants/[id]/page.tsx
+  s_0bc1c0b03a021f::t_580ff529c26134 1-2244
+legacy/voicera_frontend/app/(dashboard)/assistants/page.tsx
+  s_0bc1c0b03a021f::t_083e7354f1d753 1-2813
+legacy/voicera_frontend/app/(dashboard)/batches/page.tsx
+  s_0bc1c0b03a021f::t_3f32234a8ee37d 1-1352
+legacy/voicera_frontend/app/(dashboard)/history/page.tsx
+  s_0bc1c0b03a021f::t_6b2cb6f2163b6e 1-1407
+legacy/voicera_frontend/app/(dashboard)/integrations/page.tsx
+  s_0bc1c0b03a021f::t_11f9dacf262b65 1-1306
+legacy/voicera_frontend/app/(dashboard)/knowledge-base/page.tsx
+  s_0bc1c0b03a021f::t_566fafa2960d26 1-353
+legacy/voicera_frontend/app/(dashboard)/layout.tsx
+  s_0bc1c0b03a021f::t_8e05fd3471b54a 1-25
+legacy/voicera_frontend/app/(dashboard)/loading.tsx
+  s_0bc1c0b03a021f::t_951057b5adbdc8 1-29
+legacy/voicera_frontend/app/(dashboard)/meetings/[meeting_id]/page.tsx
+  s_0bc1c0b03a021f::t_aa21c06fb53c19 1-400
+legacy/voicera_frontend/app/(dashboard)/members/page.tsx
+  s_0bc1c0b03a021f::t_92b44ba18495bd 1-418
+legacy/voicera_frontend/app/(dashboard)/numbers/page.tsx
+  s_0bc1c0b03a021f::t_15b2cef8b9cc08 1-1038
+legacy/voicera_frontend/app/(dashboard)/telemetry/page.tsx
+  s_0bc1c0b03a021f::t_526d90b0638896 1-263
+legacy/voicera_frontend/app/api/agents/[id]/route.ts
+  s_0bc1c0b03a021f::t_5b0f7aa43e01e9 1-213
+legacy/voicera_frontend/app/api/agents/route.ts
+  s_0bc1c0b03a021f::t_5156a03357f79b 1-166
+legacy/voicera_frontend/app/api/analytics/route.ts
+  s_0bc1c0b03a021f::t_b9372096b3d71b 1-60
+legacy/voicera_frontend/app/api/audiences/[audience_name]/route.ts
+  s_0bc1c0b03a021f::t_3ddda153792a7b 1-53
+legacy/voicera_frontend/app/api/audiences/route.ts
+  s_0bc1c0b03a021f::t_e4d1effc013585 1-110
+legacy/voicera_frontend/app/api/batches/[batchId]/route.ts
+  s_0bc1c0b03a021f::t_cf2b61da2200eb 1-43
+legacy/voicera_frontend/app/api/batches/[batchId]/run/route.ts
+  s_0bc1c0b03a021f::t_375a6af79827e6 1-46
+legacy/voicera_frontend/app/api/batches/[batchId]/schedule/cancel/route.ts
+  s_0bc1c0b03a021f::t_9a37161dda6990 1-43
+legacy/voicera_frontend/app/api/batches/[batchId]/schedule/reschedule/route.ts
+  s_0bc1c0b03a021f::t_8b34016fa58553 1-46
+legacy/voicera_frontend/app/api/batches/[batchId]/schedule/route.ts
+  s_0bc1c0b03a021f::t_eb4e1313e6ac02 1-46
+legacy/voicera_frontend/app/api/batches/[batchId]/stop/route.ts
+  s_0bc1c0b03a021f::t_a48400143ceb86 1-43
+legacy/voicera_frontend/app/api/batches/route.ts
+  s_0bc1c0b03a021f::t_50445abe4b5c51 1-81
+legacy/voicera_frontend/app/api/campaigns/[campaign_name]/route.ts
+  s_0bc1c0b03a021f::t_559ec30cc70550 1-53
+legacy/voicera_frontend/app/api/campaigns/route.ts
+  s_0bc1c0b03a021f::t_e60efb0ff23c79 1-55
+legacy/voicera_frontend/app/api/custom-llm-integrations/[id]/route.ts
+  s_0bc1c0b03a021f::t_fdb6235e5e10f4 1-81
+legacy/voicera_frontend/app/api/custom-llm-integrations/route.ts
+  s_0bc1c0b03a021f::t_6337e2fb324b58 1-74
+legacy/voicera_frontend/app/api/forgot-password/route.ts
+  s_0bc1c0b03a021f::t_9bf4fa24cae20e 1-43
+legacy/voicera_frontend/app/api/get-campaigns/route.ts
+  s_0bc1c0b03a021f::t_9ee47b37f59b9d 1-57
+legacy/voicera_frontend/app/api/integrations/[model]/route.ts
+  s_0bc1c0b03a021f::t_2bb76247410835 1-96
+legacy/voicera_frontend/app/api/integrations/route.ts
+  s_0bc1c0b03a021f::t_4aea64d74a58a0 1-95
+legacy/voicera_frontend/app/api/knowledge-base/[documentId]/route.ts
+  s_0bc1c0b03a021f::t_848be0914e89bd 1-46
+legacy/voicera_frontend/app/api/knowledge-base/route.ts
+  s_0bc1c0b03a021f::t_453e70123809de 1-75
+legacy/voicera_frontend/app/api/login/route.ts
+  s_0bc1c0b03a021f::t_c49c4bf56a6d31 1-47
+legacy/voicera_frontend/app/api/meetings/[meeting_id]/recording/route.ts
+  s_0bc1c0b03a021f::t_15f41a156efeb5 1-74
+legacy/voicera_frontend/app/api/meetings/[meeting_id]/route.ts
+  s_0bc1c0b03a021f::t_a745fbb328799f 1-67
+legacy/voicera_frontend/app/api/meetings/filter-options/route.ts
+  s_0bc1c0b03a021f::t_3f6080afa82d52 1-40
+legacy/voicera_frontend/app/api/meetings/route.ts
+  s_0bc1c0b03a021f::t_c4bc7e69783379 1-92
+legacy/voicera_frontend/app/api/outbound-call/route.ts
+  s_0bc1c0b03a021f::t_24aae2fbc2e81a 1-25
+legacy/voicera_frontend/app/api/phone-numbers/attach/route.ts
+  s_0bc1c0b03a021f::t_d8022ed7f3b76f 1-54
+legacy/voicera_frontend/app/api/phone-numbers/detach/route.ts
+  s_0bc1c0b03a021f::t_d175f156baae73 1-54
+legacy/voicera_frontend/app/api/phone-numbers/route.ts
+  s_0bc1c0b03a021f::t_b05ab569a24446 1-64
+legacy/voicera_frontend/app/api/plivo/application/[application_id]/route.ts
+  s_0bc1c0b03a021f::t_5529af864d30e9 1-52
+legacy/voicera_frontend/app/api/plivo/application/route.ts
+  s_0bc1c0b03a021f::t_bff237b49bc788 1-47
+legacy/voicera_frontend/app/api/plivo/numbers/link/route.ts
+  s_0bc1c0b03a021f::t_2d77ffa6f895af 1-47
+legacy/voicera_frontend/app/api/plivo/numbers/route.ts
+  s_0bc1c0b03a021f::t_b8b78e1cd1e1bf 1-37
+legacy/voicera_frontend/app/api/plivo/numbers/unlink/route.ts
+  s_0bc1c0b03a021f::t_f93da9a59d2d03 1-47
+legacy/voicera_frontend/app/api/reset-password/route.ts
+  s_0bc1c0b03a021f::t_97e1b591aa6597 1-43
+legacy/voicera_frontend/app/api/signup/route.ts
+  s_0bc1c0b03a021f::t_8c95d5c6989ec8 1-43
+legacy/voicera_frontend/app/api/telemetry/gpu/route.ts
+  s_0bc1c0b03a021f::t_16c3c6c98cce86 1-24
+legacy/voicera_frontend/app/api/users/route.ts
+  s_0bc1c0b03a021f::t_ef40de2bd00252 1-58
+legacy/voicera_frontend/app/api/v1/members/[orgId]/route.ts
+  s_0bc1c0b03a021f::t_b2ac0e3d83bd1d 1-43
+legacy/voicera_frontend/app/api/v1/members/add-member/route.ts
+  s_0bc1c0b03a021f::t_23ff2918c4d2e1 1-30
+legacy/voicera_frontend/app/api/v1/members/delete-member/route.ts
+  s_0bc1c0b03a021f::t_327cbe6e3fed89 1-39
+legacy/voicera_frontend/app/api/v1/members/transfer-ownership/route.ts
+  s_0bc1c0b03a021f::t_d01d80573ffce8 1-39
+legacy/voicera_frontend/app/api/v1/users/[email]/route.ts
+  s_0bc1c0b03a021f::t_7cb093606b2ad8 1-34
+legacy/voicera_frontend/app/api/v1/users/check/[email]/route.ts
+  s_0bc1c0b03a021f::t_7dc41af97a70a1 1-37
+legacy/voicera_frontend/app/api/v1/users/me/route.ts
+  s_0bc1c0b03a021f::t_5ebfeef79a2501 1-36
+legacy/voicera_frontend/app/api/vobiz/application/[application_id]/route.ts
+  s_0bc1c0b03a021f::t_c848c33deaa324 1-59
+legacy/voicera_frontend/app/api/vobiz/application/route.ts
+  s_0bc1c0b03a021f::t_653bac30543cfd 1-54
+legacy/voicera_frontend/app/api/vobiz/numbers/link/route.ts
+  s_0bc1c0b03a021f::t_e972ca8e96a267 1-54
+legacy/voicera_frontend/app/api/vobiz/numbers/route.ts
+  s_0bc1c0b03a021f::t_5e4dcc10bbd172 1-45
+legacy/voicera_frontend/app/api/vobiz/numbers/unlink/route.ts
+  s_0bc1c0b03a021f::t_b5da744326b7d0 1-54
+legacy/voicera_frontend/app/globals.css
+  s_0bc1c0b03a021f::t_491250cba82087 1-214
+legacy/voicera_frontend/app/layout.tsx
+  s_0bc1c0b03a021f::t_86bd849da936f4 1-42
+legacy/voicera_frontend/app/page.tsx
+  s_0bc1c0b03a021f::t_577f5bd96b3c11 1-282
+legacy/voicera_frontend/components.json
+  s_0bc1c0b03a021f::t_4bab78e7e31280 1-22
+legacy/voicera_frontend/components/app-sidebar.tsx
+  s_0bc1c0b03a021f::t_9db1d0958e7e3a 1-270
+legacy/voicera_frontend/components/assistants/agent-card.tsx
+  s_0bc1c0b03a021f::t_a02e33fb9e9a6e 1-338
+legacy/voicera_frontend/components/assistants/create-new-agent-card.tsx
+  s_0bc1c0b03a021f::t_6717cc248a2656 1-46
+legacy/voicera_frontend/components/assistants/greeting-comma-banner.tsx
+  s_0bc1c0b03a021f::t_19de211b12d4cc 1-37
+legacy/voicera_frontend/components/assistants/greeting-translate-suggestion.tsx
+  s_0bc1c0b03a021f::t_d17c1ee4e9bb15 1-343
+legacy/voicera_frontend/components/assistants/language-selection-section.tsx
+  s_0bc1c0b03a021f::t_613e4a6033e652 1-385
+legacy/voicera_frontend/components/assistants/spoken-message-field.tsx
+  s_0bc1c0b03a021f::t_24001bbc8990a5 1-54
+legacy/voicera_frontend/components/assistants/test-browser-dialog.tsx
+  s_0bc1c0b03a021f::t_0dc4e746525e44 1-482
+legacy/voicera_frontend/components/assistants/test-call-sheet.tsx
+  s_0bc1c0b03a021f::t_c96f9e1084efc9 1-346
+legacy/voicera_frontend/components/history/call-type-badge.tsx
+  s_0bc1c0b03a021f::t_f6921d14941160 1-45
+legacy/voicera_frontend/components/history/meeting-detail-sheet.tsx
+  s_0bc1c0b03a021f::t_03cb41ec099d3d 1-974
+legacy/voicera_frontend/components/members/member-card.tsx
+  s_0bc1c0b03a021f::t_722bcac63e8ac9 1-225
+legacy/voicera_frontend/components/navigation-progress.tsx
+  s_0bc1c0b03a021f::t_4e29d94633c4b4 1-127
+legacy/voicera_frontend/components/providers/query-provider.tsx
+  s_0bc1c0b03a021f::t_ed638ee2bbdee1 1-24
+legacy/voicera_frontend/components/telemetry/call-latency-section.tsx
+  s_0bc1c0b03a021f::t_b6f965642a163d 1-702
+legacy/voicera_frontend/components/telemetry/telemetry-skeletons.tsx
+  s_0bc1c0b03a021f::t_59a31215c50915 1-96
+legacy/voicera_frontend/components/ui/alert-dialog.tsx
+  s_0bc1c0b03a021f::t_22c2d03312228f 1-157
+legacy/voicera_frontend/components/ui/avatar.tsx
+  s_0bc1c0b03a021f::t_aac2e00e3c1571 1-53
+legacy/voicera_frontend/components/ui/badge.tsx
+  s_0bc1c0b03a021f::t_788cc06a3eeb8a 1-46
+legacy/voicera_frontend/components/ui/button.tsx
+  s_0bc1c0b03a021f::t_b96efedfe413e9 1-62
+legacy/voicera_frontend/components/ui/calendar.tsx
+  s_0bc1c0b03a021f::t_f2a7d36ffde752 1-220
+legacy/voicera_frontend/components/ui/calendar_popover.tsx
+  s_0bc1c0b03a021f::t_73b85660ea4b2a 1-96
+legacy/voicera_frontend/components/ui/card.tsx
+  s_0bc1c0b03a021f::t_1bf0c4c9dac1db 1-92
+legacy/voicera_frontend/components/ui/command.tsx
+  s_0bc1c0b03a021f::t_372297c2708be8 1-154
+legacy/voicera_frontend/components/ui/dialog.tsx
+  s_0bc1c0b03a021f::t_afc13592353e2b 1-145
+legacy/voicera_frontend/components/ui/dropdown-menu.tsx
+  s_0bc1c0b03a021f::t_8f5b3132f9785a 1-257
+legacy/voicera_frontend/components/ui/hover-card.tsx
+  s_0bc1c0b03a021f::t_00030e0a47d91e 1-32
+legacy/voicera_frontend/components/ui/input.tsx
+  s_0bc1c0b03a021f::t_c803e8324f6153 1-21
+legacy/voicera_frontend/components/ui/label.tsx
+  s_0bc1c0b03a021f::t_1f2d90f247cd23 1-24
+legacy/voicera_frontend/components/ui/orb.tsx
+  s_0bc1c0b03a021f::t_cc25556be8ff52 1-499
+legacy/voicera_frontend/components/ui/popover.tsx
+  s_0bc1c0b03a021f::t_c93ad3079ab5e4 1-34
+legacy/voicera_frontend/components/ui/scroll-area.tsx
+  s_0bc1c0b03a021f::t_b8bb13c4f34817 1-55
+legacy/voicera_frontend/components/ui/select.tsx
+  s_0bc1c0b03a021f::t_32aad5ba3e44bb 1-190
+legacy/voicera_frontend/components/ui/separator.tsx
+  s_0bc1c0b03a021f::t_0f056a997553ee 1-28
+legacy/voicera_frontend/components/ui/sheet.tsx
+  s_0bc1c0b03a021f::t_e922ffd84eeaa0 1-139
+legacy/voicera_frontend/components/ui/sidebar.tsx
+  s_0bc1c0b03a021f::t_760c89e6511134 1-747
+legacy/voicera_frontend/components/ui/skeleton.tsx
+  s_0bc1c0b03a021f::t_52d80d3bfc787c 1-13
+legacy/voicera_frontend/components/ui/slider.tsx
+  s_0bc1c0b03a021f::t_d1c1e6a9450af4 1-59
+legacy/voicera_frontend/components/ui/table.tsx
+  s_0bc1c0b03a021f::t_b188fbc702cb7f 1-116
+legacy/voicera_frontend/components/ui/tabs.tsx
+  s_0bc1c0b03a021f::t_cc0a878e018dac 1-66
+legacy/voicera_frontend/components/ui/textarea.tsx
+  s_0bc1c0b03a021f::t_163968113022c2 1-21
+legacy/voicera_frontend/components/ui/tooltip.tsx
+  s_0bc1c0b03a021f::t_82e962babe3d45 1-61
+legacy/voicera_frontend/components/ui/voice-sphere.tsx
+  s_0bc1c0b03a021f::t_b068c4fb28e3cd 1-374
+legacy/voicera_frontend/descriptions.json
+  s_0bc1c0b03a021f::t_e65e3a90dcad60 1-32
+legacy/voicera_frontend/eslint.config.mjs
+  s_0bc1c0b03a021f::t_7686bcd9ca5153 1-18
+legacy/voicera_frontend/hooks/use-mobile.ts
+  s_0bc1c0b03a021f::t_9c6cb23e0f3e9c 1-19
+legacy/voicera_frontend/lib/agent-delivery.ts
+  s_0bc1c0b03a021f::t_7cc9e20a0c92ed 1-28
+legacy/voicera_frontend/lib/agent-name.ts
+  s_0bc1c0b03a021f::t_7cf98dc611bc91 1-29
+legacy/voicera_frontend/lib/api-config.ts
+  s_0bc1c0b03a021f::t_26d290c61839b8 1-2
+legacy/voicera_frontend/lib/api.ts
+  s_0bc1c0b03a021f::t_7a62f9790b0aed 1-1695
+legacy/voicera_frontend/lib/browser-test-connection-audio.ts
+  s_0bc1c0b03a021f::t_45193c18c6fc53 1-135
+legacy/voicera_frontend/lib/call-type.ts
+  s_0bc1c0b03a021f::t_9481755366cde7 1-36
+legacy/voicera_frontend/lib/chrome-translation.ts
+  s_0bc1c0b03a021f::t_26829b033d72cb 1-161
+legacy/voicera_frontend/lib/dedupe-latency-turns.ts
+  s_0bc1c0b03a021f::t_b7eada443cede5 1-78
+legacy/voicera_frontend/lib/export-analytics-pdf.ts
+  s_0bc1c0b03a021f::t_b65fc4498341fb 1-149
+legacy/voicera_frontend/lib/greeting-message.ts
+  s_0bc1c0b03a021f::t_6934117b72c126 1-187
+legacy/voicera_frontend/lib/johnaic-config.ts
+  s_0bc1c0b03a021f::t_b86ded80520615 1-18
+legacy/voicera_frontend/lib/kenpath.ts
+  s_0bc1c0b03a021f::t_ae2b053f03049a 1-82
+legacy/voicera_frontend/lib/knowledge-base-errors.ts
+  s_0bc1c0b03a021f::t_89e8f141fa13d2 1-42
+legacy/voicera_frontend/lib/languageLabels.ts
+  s_0bc1c0b03a021f::t_67f22fa95899d8 1-9
+legacy/voicera_frontend/lib/languageModelSupport.ts
+  s_0bc1c0b03a021f::t_799465ff931152 1-10,13-25,28-30,33-34,37-39,42-53,56-83,86-109,112-126,128-143,145-160,163-180,183-211
+legacy/voicera_frontend/lib/mask-phone.ts
+  s_0bc1c0b03a021f::t_7afe0a2c94b68e 1-61
+legacy/voicera_frontend/lib/meetings-params.ts
+  s_0bc1c0b03a021f::t_5ad213e881c39f 1-66
+legacy/voicera_frontend/lib/queries/agents.ts
+  s_0bc1c0b03a021f::t_52df962292517f 1-16
+legacy/voicera_frontend/lib/queries/meetings.ts
+  s_0bc1c0b03a021f::t_73263cb543ad61 1-29
+legacy/voicera_frontend/lib/spoken-message.ts
+  s_0bc1c0b03a021f::t_ebb8596e97a585 1-7
+legacy/voicera_frontend/lib/utils.ts
+  s_0bc1c0b03a021f::t_705d87f864aa0b 1-6
+legacy/voicera_frontend/next.config.ts
+  s_0bc1c0b03a021f::t_ed6f82b4c5b060 1-7
+legacy/voicera_frontend/package-lock.json
+  s_0bc1c0b03a021f::t_c750ce43cd724c 1-9807
+legacy/voicera_frontend/package.json
+  s_0bc1c0b03a021f::t_830aff81f00d2a 1-65
+legacy/voicera_frontend/postcss.config.mjs
+  s_0bc1c0b03a021f::t_b9c3aa329b849b 1-5
+legacy/voicera_frontend/public/ekstep.svg
+  s_0bc1c0b03a021f::t_362df0fb8c627e 1-10
+legacy/voicera_frontend/public/file.svg
+  s_0bc1c0b03a021f::t_e01ab2eee372b8 1
+legacy/voicera_frontend/public/globe.svg
+  s_0bc1c0b03a021f::t_eb07f45e0b1906 1
+legacy/voicera_frontend/public/next.svg
+  s_0bc1c0b03a021f::t_ad38f859bfd58a 1
+legacy/voicera_frontend/public/vercel.svg
+  s_0bc1c0b03a021f::t_dfb033eb0c3e3d 1
+legacy/voicera_frontend/public/window.svg
+  s_0bc1c0b03a021f::t_f0c2e6c373d247 1
+legacy/voicera_frontend/stt.json
+  s_0bc1c0b03a021f::t_10f67a270c4728 1-372
+legacy/voicera_frontend/tsconfig.json
+  s_0bc1c0b03a021f::t_1a95cdd3b8fbc7 1-34
+legacy/voicera_frontend/tts.json
+  s_0bc1c0b03a021f::t_5b8444c2dcc4fe 1-1224
+model-server/llm/qwen3-8b/.gitignore
+  s_02817c089d2f37::t_b5f55dbbcc1e31 1
+model-server/llm/qwen3-8b/server.py
+  s_02817c089d2f37::t_5194eafd847116 1-239
+model-server/llm/qwen3-8b/test_server.py
+  s_02817c089d2f37::t_4a561bf536f530 1-320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "1fc3a3819dd8eec67bd34151c4f01ee310d06987",
+  "prompts": {},
+  "sessions": {
+    "s_02817c089d2f37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ee31536-5c84-42b8-a46a-b51a40dd66af",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    },
+    "s_0bc1c0b03a021f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95ffc78d-f99d-4a99-89d9-dedf0798142b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
