@@ -1,0 +1,14 @@
+voice_2_voice_server/api/translation_room.py
+  h_a4c7a095c48ef7 349-354
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "5548c57b3f01203b0a26bec07b9061e77d5bfde5",
+  "prompts": {},
+  "humans": {
+    "h_a4c7a095c48ef7": {
+      "author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
