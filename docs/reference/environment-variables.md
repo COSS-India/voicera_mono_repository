@@ -20,7 +20,7 @@ Every VoicEra service is configured through environment variables, typically loa
 | AI4Bharat STT (optional) | `ai4bharat_stt_server/.env` |
 | AI4Bharat TTS (optional) | `ai4bharat_tts_server/.env` |
 
-In Docker Compose deployments the same files are mounted via `env_file:` in `docker-compose.yml`. Service-name aliases (e.g. `mongodb`, `minio`, `backend`) resolve inside the `voicera_network` bridge.
+In Docker Compose deployments the same files are mounted via `env_file:` in `../../legacy/docker-compose.yml`. Service-name aliases (e.g. `mongodb`, `minio`, `backend`) resolve inside the `voicera_network` bridge.
 
 ---
 

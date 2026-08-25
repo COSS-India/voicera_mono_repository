@@ -1,0 +1,162 @@
+version: '3.8'
+
+services:
+  # FerretDB (MongoDB wire protocol) backed by PostgreSQL + DocumentDB extension.
+  # Credentials match existing MONGODB_USER / MONGODB_PASSWORD defaults (admin/admin123).
+  postgres:
+    image: ghcr.io/ferretdb/postgres-documentdb:17-0.107.0-ferretdb-2.7.0
+    container_name: voicera_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: postgres
+    volumes:
+      - ferretdb_postgres_data:/var/lib/postgresql/data
+    networks:
+      - voicera_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  ferretdb:
+    image: ghcr.io/ferretdb/ferretdb:2.7.0
+    container_name: voicera_ferretdb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      FERRETDB_POSTGRESQL_URL: postgres://admin:admin123@postgres:5432/postgres
+    networks:
+      voicera_network:
+        # Keep alias so existing MONGODB_HOST=mongodb keeps working
+        aliases:
+          - mongodb
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Distroless image: no shell/wget for a custom probe. Podman also may not
+    # surface the image HEALTHCHECK; backend waits for service_started below.
+
+  backend:
+    build:
+      context: ../apps/api
+      dockerfile: ../apps/api/Dockerfile
+    container_name: voicera_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../apps/api/.env
+    environment:
+      - MONGODB_HOST=mongodb
+    depends_on:
+      ferretdb:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    working_dir: /app
+    networks:
+      - voicera_network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  minio:
+    image: minio/minio:latest
+    container_name: voicera_minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - voicera_network
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  frontend:
+    build:
+      context: ../apps/dashboard
+      dockerfile: ../apps/dashboard/Dockerfile
+      secrets:
+        - frontend_env
+    container_name: voicera_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../apps/dashboard/.env.local
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://backend:8000
+      - VOICE_SERVER_URL=http://voice_server:7860
+    networks:
+      - voicera_network
+    depends_on:
+      - backend
+
+  voice_server:
+    build:
+      context: ../apps/voice-runtime
+      dockerfile: ../apps/voice-runtime/Dockerfile
+    container_name: voicera_voice_server
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./apps/voice-runtime:/app
+    working_dir: /app
+    environment:
+      - VOICERA_BACKEND_URL=http://backend:8000
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_SECURE=false
+    networks:
+      - voicera_network
+    depends_on:
+      - backend
+      - minio
+
+  nginx:
+    image: nginx:alpine
+    container_name: voicera_nginx
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - voicera_network
+
+volumes:
+  # New FerretDB backing store (PostgreSQL)
+  ferretdb_postgres_data:
+    driver: local
+  # Legacy MongoDB volume is intentionally NOT declared here so compose
+  # will not recreate/attach it. Existing *_mongodb_data volumes on disk
+  # are left untouched for rollback until you verify FerretDB, then:
+  #   docker volume ls | grep mongodb_data
+  #   docker volume rm <name>
+  minio_data:
+    driver: local
+
+networks:
+  voicera_network:
+    driver: bridge
+
+secrets:
+  frontend_env:
+    file: ../apps/dashboard/.env.local

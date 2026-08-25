@@ -1,0 +1,14 @@
+venv/**
+venv/*
+__pycache__/
+__pycache__/*
+*.log
+
+*.env
+
+# Model files (large binaries)
+models/IndicConformer.nemo
+IndicConformer.nemo
+bhili-asr/
+
+run_stt_benchmark.py

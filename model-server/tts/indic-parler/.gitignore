@@ -1,0 +1,12 @@
+checkpoints/
+checkpoints_bhili/
+hf_bhili_tts/
+__pycache__
+files/
+.venv
+*.wav
+venv/
+*.ipynb
+.env 
+run_tts_benchmark.py
+tests/

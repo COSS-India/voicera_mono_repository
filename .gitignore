@@ -11,9 +11,9 @@ backups/mongodb/*.json
 !backups/mongodb/.gitkeep
 
 # Frontend local env (compose secret); may be empty placeholder
-voicera_frontend/.env.local
-ai4bharat_tts_server/compare_marathi_tts_metrics.py
-ai4bharat_tts_server/server_grpc.py
-ai4bharat_tts_server/tts_pb2_grpc.py
-ai4bharat_tts_server/tts_pb2.py
+apps/dashboard/.env.local
+model-server/TTS/indic-parler/compare_marathi_tts_metrics.py
+model-server/TTS/indic-parler/server_grpc.py
+model-server/TTS/indic-parler/tts_pb2_grpc.py
+model-server/TTS/indic-parler/tts_pb2.py
 docs/guides/deployment/mongodb-to-ferretdb.md

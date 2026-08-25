@@ -4,7 +4,7 @@ description: Build, run, and manage VoicEra with Docker Compose using the bundle
 
 # Docker Compose deployment
 
-VoicEra ships as five containers orchestrated by `docker-compose.yml` at the repository root. This page is for hosting partners and operators who run the standard packaged stack on a single Linux host.
+VoicEra ships as five containers orchestrated by `../../../legacy/docker-compose.yml` at the repository root. This page is for hosting partners and operators who run the standard packaged stack on a single Linux host.
 
 ## Service inventory
 

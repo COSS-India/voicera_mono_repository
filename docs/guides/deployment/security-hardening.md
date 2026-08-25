@@ -14,12 +14,12 @@ Do not connect a VoicEra deployment to live phone numbers, real users, or produc
 
 ## 1. Default credentials to change
 
-Every value in this table is set somewhere in the bundled `docker-compose.yml` or in the example env files. Each one must change before production traffic.
+Every value in this table is set somewhere in the bundled `../../../legacy/docker-compose.yml` or in the example env files. Each one must change before production traffic.
 
 | Component | Default | Where it lives | Risk if unchanged |
 |-----------|---------|----------------|-------------------|
-| MongoDB root | `admin` / `admin123` | `docker-compose.yml` env on `mongodb` | Full database read and write |
-| MinIO root | `minioadmin` / `minioadmin` | `docker-compose.yml` env on `minio` and `voice_server` | All recordings, transcripts, uploads exposed |
+| MongoDB root | `admin` / `admin123` | `../../../legacy/docker-compose.yml` env on `mongodb` | Full database read and write |
+| MinIO root | `minioadmin` / `minioadmin` | `../../../legacy/docker-compose.yml` env on `minio` and `voice_server` | All recordings, transcripts, uploads exposed |
 | Backend `SECRET_KEY` | Example value | `voicera_backend/.env` | Session cookie forgery, JWT spoofing |
 | `INTERNAL_API_KEY` | Example value | Backend and voice server `.env` | Service-to-service impersonation |
 | CORS `allow_origins` | `["*"]` | `voicera_backend/app/main.py` | Any browser origin can call the API |

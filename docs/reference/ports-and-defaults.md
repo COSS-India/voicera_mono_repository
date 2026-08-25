@@ -7,7 +7,7 @@ description: Canonical port map, service URLs, and pointer to default credential
 A stock `docker-compose up -d` from the repository root brings up six containers on the `voicera_network` bridge. This page lists the host ports they expose, the in-network DNS aliases, and where to find default credentials.
 
 {% hint style="info" %}
-**Source of truth:** `docker-compose.yml` at the repo root. If ports drift, that file wins.
+**Source of truth:** `../../legacy/docker-compose.yml` at the repo root. If ports drift, that file wins.
 {% endhint %}
 
 ## Host port map
@@ -38,7 +38,7 @@ Use these when developing against a local stack.
 | MinIO API | `http://localhost:9000` | S3-compatible endpoint |
 | MinIO Console | `http://localhost:9001` | Web UI for buckets |
 | MongoDB | `mongodb://localhost:27017` | Use a client like `mongosh` |
-| Nginx | `http://localhost:8080` | Only when `nginx.conf` is configured |
+| Nginx | `http://localhost:8080` | Only when `../../legacy/nginx.conf` is configured |
 
 ## In-cluster DNS
 
@@ -67,7 +67,7 @@ The repository ships with these out-of-the-box passwords. **Change every one of 
 For the full table including dashboard seed users, the rotation procedure, and rotation order, see [../quickstart/default-credentials.md](../quickstart/default-credentials.md).
 
 {% hint style="danger" %}
-The defaults above are public knowledge — they're in `docker-compose.yml` on GitHub. Treat any deployment that still uses them as effectively unauthenticated.
+The defaults above are public knowledge — they're in `../../legacy/docker-compose.yml` on GitHub. Treat any deployment that still uses them as effectively unauthenticated.
 {% endhint %}
 
 ## Reserved or commonly-conflicting ports

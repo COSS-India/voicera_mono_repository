@@ -171,7 +171,7 @@ docker images | grep voicera
 {% endhint %}
 
 {% hint style="warning" %}
-**Port already in use** — find the process with `lsof -i :8000`, stop it, or change the port mapping in `docker-compose.yml`. `make stop-all-ports` force-frees 3000, 8000, 8001, 8002, 7860, and 27017.
+**Port already in use** — find the process with `lsof -i :8000`, stop it, or change the port mapping in `../../legacy/docker-compose.yml`. `make stop-all-ports` force-frees 3000, 8000, 8001, 8002, 7860, and 27017.
 {% endhint %}
 
 {% hint style="warning" %}

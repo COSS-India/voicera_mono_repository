@@ -1,0 +1,1306 @@
+"use client"
+
+import { useState, useMemo, useEffect } from "react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
+  Search,
+  Eye,
+  EyeOff,
+  Save,
+  Mic,
+  Volume2,
+  Brain,
+  Check,
+  Settings2,
+  Plus,
+  Trash2,
+  Loader2,
+  Phone,
+} from "lucide-react"
+import { getOrgId, getCurrentUser, getIntegrations, createIntegration, deleteIntegration, Integration, getCustomLLMIntegrations, createCustomLLMIntegration, updateCustomLLMIntegration, deleteCustomLLMIntegration, CustomLLMIntegration } from "@/lib/api"
+
+/** Backend integration model names for Vobiz (stored in MongoDB Integrations collection). */
+const VOBIZ_AUTH_ID_MODEL = "VobizAuthId"
+const VOBIZ_AUTH_TOKEN_MODEL = "VobizAuthToken"
+const PLIVO_AUTH_ID_MODEL = "PlivoAuthId"
+const PLIVO_AUTH_TOKEN_MODEL = "PlivoAuthToken"
+
+// Provider type definitions
+type ProviderCapability = "stt" | "tts" | "llm"
+
+interface Provider {
+  id: string
+  name: string
+  capabilities: ProviderCapability[]
+  description: string
+}
+
+// All providers with their capabilities
+const providers: Provider[] = [
+  {
+    id: "deepgram",
+    name: "Deepgram",
+    capabilities: ["stt", "tts"],
+    description: "Real-time speech recognition and text-to-speech",
+  },
+  {
+    id: "sarvam",
+    name: "Sarvam",
+    capabilities: ["stt", "tts"],
+    description: "Speech recognition and synthesis for English (India) and Indian languages",
+  },
+  {
+    id: "bhashini",
+    name: "Bhashini",
+    capabilities: ["stt", "tts"],
+    description: "Indic language AI models",
+  },
+  {
+    id: "cartesia",
+    name: "Cartesia",
+    capabilities: ["tts"],
+    description: "Low-latency voice synthesis with emotion control",
+  },
+  {
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    capabilities: ["stt", "tts"],
+    description: "Speech recognition and high-quality voice synthesis in 90+ languages",
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    capabilities: ["llm"],
+    description: "GPT-4o, GPT-4, and other advanced models",
+  },
+  {
+    id: "azure",
+    name: "Azure",
+    capabilities: ["llm"],
+    description: "Azure OpenAI Service models",
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    capabilities: ["llm"],
+    description: "Claude family of AI assistants",
+  },
+  {
+    id: "groq",
+    name: "Groq",
+    capabilities: ["llm"],
+    description: "Ultra-fast LLM inference",
+  },
+  {
+    id: "grok",
+    name: "Grok",
+    capabilities: ["llm"],
+    description: "x.AI Grok models with OpenAI-compatible API",
+  },
+]
+
+interface TelephonyProvider {
+  id: string
+  name: string
+  description: string
+}
+
+const telephonyProviders: TelephonyProvider[] = [
+  {
+    id: "plivo",
+    name: "Plivo",
+    description: "Telephony API for voice calls (Auth ID and Auth Token from your Plivo account)",
+  },
+  {
+    id: "vobiz",
+    name: "Vobiz",
+    description: "Telephony API for voice calls (Auth ID and Auth Token from your Vobiz account)",
+  },
+]
+
+// Capability configuration
+const capabilityConfig: Record<
+  ProviderCapability,
+  { label: string; fullLabel: string; icon: React.ReactNode; color: string; badgeClass: string }
+> = {
+  llm: {
+    label: "LLM",
+    fullLabel: "Language Models",
+    icon: <Brain className="h-4 w-4" />,
+    color: "text-purple-500",
+    badgeClass: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+  },
+  stt: {
+    label: "STT",
+    fullLabel: "Speech-to-Text",
+    icon: <Mic className="h-4 w-4" />,
+    color: "text-blue-500",
+    badgeClass: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  },
+  tts: {
+    label: "TTS",
+    fullLabel: "Text-to-Speech",
+    icon: <Volume2 className="h-4 w-4" />,
+    color: "text-green-500",
+    badgeClass: "bg-green-500/10 text-green-600 border-green-500/20",
+  },
+}
+
+export default function IntegrationsPage() {
+  const [searchQuery, setSearchQuery] = useState("")
+  const [activeTab, setActiveTab] = useState<"all" | ProviderCapability>("all")
+  
+  // Connected providers state (fetched from backend)
+  const [connectedProviders, setConnectedProviders] = useState<Record<string, boolean>>({})
+  
+  // API keys state
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
+  const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({})
+  
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
+  const [modalApiKey, setModalApiKey] = useState("")
+  const [isModalKeyVisible, setIsModalKeyVisible] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Telephony (Vobiz) — two integration rows in backend
+  const [vobizModalOpen, setVobizModalOpen] = useState(false)
+  const [vobizAuthId, setVobizAuthId] = useState("")
+  const [vobizAuthToken, setVobizAuthToken] = useState("")
+  const [plivoAuthId, setPlivoAuthId] = useState("")
+  const [plivoAuthToken, setPlivoAuthToken] = useState("")
+  const [vobizConnected, setVobizConnected] = useState(false)
+  const [plivoConnected, setPlivoConnected] = useState(false)
+  const [modalVobizAuthId, setModalVobizAuthId] = useState("")
+  const [modalVobizAuthToken, setModalVobizAuthToken] = useState("")
+  const [vobizTokenVisible, setVobizTokenVisible] = useState(false)
+  const [telephonyProviderModal, setTelephonyProviderModal] = useState<"vobiz" | "plivo">("vobiz")
+
+  // Custom LLM integrations
+  const [customLLMIntegrations, setCustomLLMIntegrations] = useState<CustomLLMIntegration[]>([])
+  const [customLLMApiKeys, setCustomLLMApiKeys] = useState<Record<string, string>>({})
+  const [customLLMModalOpen, setCustomLLMModalOpen] = useState(false)
+  const [editingCustomLLM, setEditingCustomLLM] = useState<CustomLLMIntegration | null>(null)
+  const [modalCustomLLMName, setModalCustomLLMName] = useState("")
+  const [modalCustomLLMBaseUrl, setModalCustomLLMBaseUrl] = useState("")
+  const [modalCustomLLMApiKey, setModalCustomLLMApiKey] = useState("")
+  const [modalCustomLLMModel, setModalCustomLLMModel] = useState("")
+  const [customLLMApiKeyVisible, setCustomLLMApiKeyVisible] = useState(false)
+  const [customLLMDocsOpen, setCustomLLMDocsOpen] = useState(false)
+  
+  // Loading state
+  const [isLoading, setIsLoading] = useState(true)
+  const [canManageIntegrations, setCanManageIntegrations] = useState(false)
+
+  // Fetch user role and integrations on mount
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const user = await getCurrentUser()
+        const isOwner = user.is_owner === true
+        setCanManageIntegrations(isOwner)
+        await fetchIntegrations(isOwner)
+      } catch (error) {
+        console.error("Error fetching current user:", error)
+        setCanManageIntegrations(false)
+        await fetchIntegrations(false)
+      }
+    }
+    void load()
+  }, [])
+
+  const fetchIntegrations = async (storeCredentials = canManageIntegrations) => {
+    try {
+      setIsLoading(true)
+      const [integrations, customLlms] = await Promise.all([
+        getIntegrations(),
+        getCustomLLMIntegrations(),
+      ])
+      setCustomLLMIntegrations(customLlms)
+      const customKeys: Record<string, string> = {}
+      if (storeCredentials) {
+        customLlms.forEach((llm) => {
+          if (llm.api_key) customKeys[llm.id] = llm.api_key
+        })
+      }
+      setCustomLLMApiKeys(customKeys)
+
+      const connected: Record<string, boolean> = {}
+      const keys: Record<string, string> = {}
+      setVobizAuthId("")
+      setVobizAuthToken("")
+      setPlivoAuthId("")
+      setPlivoAuthToken("")
+
+      let hasVobizId = false
+      let hasVobizToken = false
+      let hasPlivoId = false
+      let hasPlivoToken = false
+
+      integrations.forEach((integration: Integration) => {
+        if (integration.model === VOBIZ_AUTH_ID_MODEL) {
+          hasVobizId = true
+          if (storeCredentials) setVobizAuthId(integration.api_key)
+        } else if (integration.model === VOBIZ_AUTH_TOKEN_MODEL) {
+          hasVobizToken = true
+          if (storeCredentials) setVobizAuthToken(integration.api_key)
+        } else if (integration.model === PLIVO_AUTH_ID_MODEL) {
+          hasPlivoId = true
+          if (storeCredentials) setPlivoAuthId(integration.api_key)
+        } else if (integration.model === PLIVO_AUTH_TOKEN_MODEL) {
+          hasPlivoToken = true
+          if (storeCredentials) setPlivoAuthToken(integration.api_key)
+        } else {
+          const provider = providers.find(
+            (p) => p.name.toLowerCase() === integration.model.toLowerCase()
+          )
+          if (provider) {
+            connected[provider.id] = true
+            if (storeCredentials) {
+              keys[provider.id] = integration.api_key
+            }
+          }
+        }
+      })
+
+      setVobizConnected(hasVobizId && hasVobizToken)
+      setPlivoConnected(hasPlivoId && hasPlivoToken)
+      setConnectedProviders(connected)
+      setApiKeys(keys)
+    } catch (error) {
+      console.error("Error fetching integrations:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Get connected providers list
+  const connectedProvidersList = useMemo(() => {
+    return providers.filter((p) => connectedProviders[p.id])
+  }, [connectedProviders])
+
+  // Get available (not connected) providers filtered by search and tab
+  const availableProviders = useMemo(() => {
+    return providers.filter((provider) => {
+      // Exclude already connected
+      if (connectedProviders[provider.id]) return false
+
+      // Search filter
+      const matchesSearch =
+        searchQuery === "" ||
+        provider.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        provider.description.toLowerCase().includes(searchQuery.toLowerCase())
+
+      // Tab filter
+      const matchesTab =
+        activeTab === "all" || provider.capabilities.includes(activeTab)
+
+      return matchesSearch && matchesTab
+    })
+  }, [searchQuery, activeTab, connectedProviders])
+
+  // Open connect modal (clear search so browser autocomplete doesn't fill it with login email)
+  const openConnectModal = (provider: Provider) => {
+    if (!canManageIntegrations) return
+    setSearchQuery("")
+    setSelectedProvider(provider)
+    setModalApiKey("")
+    setIsModalKeyVisible(false)
+    setIsModalOpen(true)
+  }
+
+  // Open manage modal for connected provider
+  const openManageModal = (provider: Provider) => {
+    if (!canManageIntegrations) return
+    setSelectedProvider(provider)
+    setModalApiKey(apiKeys[provider.id] || "••••••••••••••••")
+    setIsModalKeyVisible(false)
+    setIsModalOpen(true)
+  }
+
+  // Handle save from modal
+  const handleModalSave = async () => {
+    if (!selectedProvider || !modalApiKey) return
+
+    setIsSaving(true)
+
+    try {
+      const orgId = getOrgId()
+      if (!orgId) {
+        throw new Error("Organization ID not found")
+      }
+
+      await createIntegration({
+        org_id: orgId,
+        model: selectedProvider.name,  // Use official name (e.g., "Deepgram", "OpenAI")
+        api_key: modalApiKey,
+      })
+
+      // Update state
+      setApiKeys((prev) => ({ ...prev, [selectedProvider.id]: modalApiKey }))
+      setConnectedProviders((prev) => ({ ...prev, [selectedProvider.id]: true }))
+      setIsModalOpen(false)
+    } catch (error) {
+      console.error("Error saving integration:", error)
+      // Could add toast notification here
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Handle disconnect
+  const handleDisconnect = async () => {
+    if (!selectedProvider) return
+
+    setIsSaving(true)
+
+    try {
+      await deleteIntegration(selectedProvider.name)  // Use official name
+
+      // Update state
+      setConnectedProviders((prev) => {
+        const updated = { ...prev }
+        delete updated[selectedProvider.id]
+        return updated
+      })
+      setApiKeys((prev) => {
+        const updated = { ...prev }
+        delete updated[selectedProvider.id]
+        return updated
+      })
+      setIsModalOpen(false)
+    } catch (error) {
+      console.error("Error disconnecting integration:", error)
+      // Could add toast notification here
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const isEditing = selectedProvider && connectedProviders[selectedProvider.id]
+
+  const openTelephonyModal = (provider: "vobiz" | "plivo") => {
+    if (!canManageIntegrations) return
+    setSearchQuery("")
+    setTelephonyProviderModal(provider)
+    if (provider === "vobiz") {
+      setModalVobizAuthId(vobizAuthId || "")
+      setModalVobizAuthToken(vobizAuthToken || "")
+    } else {
+      setModalVobizAuthId(plivoAuthId || "")
+      setModalVobizAuthToken(plivoAuthToken || "")
+    }
+    setVobizTokenVisible(false)
+    setVobizModalOpen(true)
+  }
+
+  const handleTelephonySave = async () => {
+    if (!modalVobizAuthId.trim() || !modalVobizAuthToken.trim()) return
+    setIsSaving(true)
+    try {
+      const orgId = getOrgId()
+      if (!orgId) throw new Error("Organization ID not found")
+      const authIdModel =
+        telephonyProviderModal === "vobiz" ? VOBIZ_AUTH_ID_MODEL : PLIVO_AUTH_ID_MODEL
+      const authTokenModel =
+        telephonyProviderModal === "vobiz" ? VOBIZ_AUTH_TOKEN_MODEL : PLIVO_AUTH_TOKEN_MODEL
+      await createIntegration({
+        org_id: orgId,
+        model: authIdModel,
+        api_key: modalVobizAuthId.trim(),
+      })
+      await createIntegration({
+        org_id: orgId,
+        model: authTokenModel,
+        api_key: modalVobizAuthToken.trim(),
+      })
+      if (telephonyProviderModal === "vobiz") {
+        setVobizAuthId(modalVobizAuthId.trim())
+        setVobizAuthToken(modalVobizAuthToken.trim())
+        setVobizConnected(true)
+      } else {
+        setPlivoAuthId(modalVobizAuthId.trim())
+        setPlivoAuthToken(modalVobizAuthToken.trim())
+        setPlivoConnected(true)
+      }
+      setVobizModalOpen(false)
+    } catch (error) {
+      console.error("Error saving telephony integration:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleTelephonyDisconnect = async () => {
+    setIsSaving(true)
+    try {
+      const authIdModel =
+        telephonyProviderModal === "vobiz" ? VOBIZ_AUTH_ID_MODEL : PLIVO_AUTH_ID_MODEL
+      const authTokenModel =
+        telephonyProviderModal === "vobiz" ? VOBIZ_AUTH_TOKEN_MODEL : PLIVO_AUTH_TOKEN_MODEL
+      await deleteIntegration(authIdModel)
+      await deleteIntegration(authTokenModel)
+      if (telephonyProviderModal === "vobiz") {
+        setVobizAuthId("")
+        setVobizAuthToken("")
+        setVobizConnected(false)
+      } else {
+        setPlivoAuthId("")
+        setPlivoAuthToken("")
+        setPlivoConnected(false)
+      }
+      setVobizModalOpen(false)
+    } catch (error) {
+      console.error("Error disconnecting telephony provider:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const truncateUrl = (url: string, max = 48) => {
+    if (url.length <= max) return url
+    return `${url.slice(0, max)}…`
+  }
+
+  const openCustomLLMModal = (integration?: CustomLLMIntegration) => {
+    if (!canManageIntegrations) return
+    setSearchQuery("")
+    setEditingCustomLLM(integration ?? null)
+    setModalCustomLLMName(integration?.name ?? "")
+    setModalCustomLLMBaseUrl(integration?.base_url ?? "")
+    setModalCustomLLMApiKey(
+      integration
+        ? customLLMApiKeys[integration.id] || integration.api_key || ""
+        : ""
+    )
+    setModalCustomLLMModel(integration?.model ?? "")
+    setCustomLLMApiKeyVisible(false)
+    setCustomLLMDocsOpen(false)
+    setCustomLLMModalOpen(true)
+  }
+
+  const handleCustomLLMSave = async () => {
+    if (
+      !modalCustomLLMName.trim() ||
+      !modalCustomLLMBaseUrl.trim() ||
+      !modalCustomLLMModel.trim() ||
+      (!editingCustomLLM && !modalCustomLLMApiKey.trim())
+    ) {
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const orgId = getOrgId()
+      if (!orgId) throw new Error("Organization ID not found")
+
+      if (editingCustomLLM) {
+        const updatePayload: {
+          name: string
+          base_url: string
+          model: string
+          api_key?: string
+        } = {
+          name: modalCustomLLMName.trim(),
+          base_url: modalCustomLLMBaseUrl.trim(),
+          model: modalCustomLLMModel.trim(),
+        }
+        if (modalCustomLLMApiKey.trim()) {
+          updatePayload.api_key = modalCustomLLMApiKey.trim()
+        }
+        const updateResult = await updateCustomLLMIntegration(editingCustomLLM.id, updatePayload)
+        if (updateResult.integration?.api_key) {
+          setCustomLLMApiKeys((prev) => ({
+            ...prev,
+            [editingCustomLLM.id]: updateResult.integration.api_key,
+          }))
+        }
+      } else {
+        const createResult = await createCustomLLMIntegration({
+          org_id: orgId,
+          name: modalCustomLLMName.trim(),
+          base_url: modalCustomLLMBaseUrl.trim(),
+          api_key: modalCustomLLMApiKey.trim(),
+          model: modalCustomLLMModel.trim(),
+        })
+        if (createResult.integration?.api_key) {
+          setCustomLLMApiKeys((prev) => ({
+            ...prev,
+            [createResult.integration.id]: createResult.integration.api_key,
+          }))
+        }
+      }
+
+      setCustomLLMModalOpen(false)
+      await fetchIntegrations(canManageIntegrations)
+    } catch (error) {
+      console.error("Error saving custom LLM integration:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleCustomLLMDelete = async (integration: CustomLLMIntegration) => {
+    setIsSaving(true)
+    try {
+      await deleteCustomLLMIntegration(integration.id)
+      setCustomLLMModalOpen(false)
+      await fetchIntegrations(canManageIntegrations)
+    } catch (error) {
+      console.error("Error deleting custom LLM integration:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col h-full overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 p-6 pb-0 space-y-4">
+        {/* Page Header */}
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
+          <p className="text-muted-foreground">
+            Connect API providers to enable speech and language capabilities
+          </p>
+        </div>
+
+        {!isLoading && !canManageIntegrations && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Only organization owners can view or edit API credentials. You can see which
+            integrations are connected.
+          </div>
+        )}
+
+        {/* Connected Integrations Section */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-muted-foreground">Loading integrations...</span>
+          </div>
+        ) : connectedProvidersList.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                Connected
+              </h2>
+              <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                {connectedProvidersList.length}
+              </Badge>
+            </div>
+
+            <Card>
+              <CardContent className="p-0">
+                <div className="divide-y">
+                  {connectedProvidersList.map((provider) => (
+                    <div
+                      key={provider.id}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Connected indicator */}
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-500/10">
+                          <Check className="h-4 w-4 text-green-600" />
+                        </div>
+
+                        {/* Provider info */}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{provider.name}</span>
+                            <div className="flex gap-1">
+                              {provider.capabilities.map((cap) => (
+                                <Tooltip key={cap}>
+                                  <TooltipTrigger asChild>
+                                    <Badge
+                                      variant="outline"
+                                      className={`${capabilityConfig[cap].badgeClass} text-[10px] px-1.5 py-0 cursor-default`}
+                                    >
+                                      {capabilityConfig[cap].label}
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {capabilityConfig[cap].fullLabel}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate max-w-[300px]">
+                            {provider.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openManageModal(provider)}
+                          className="gap-1.5"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                          Manage
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Custom LLM — OpenAI-compatible chat completion endpoints */}
+        {!isLoading && (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                Custom LLM
+              </h2>
+              {canManageIntegrations && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openCustomLLMModal()}
+                  className="gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Custom LLM
+                </Button>
+              )}
+            </div>
+            <Card>
+              <CardContent className="p-0">
+                {customLLMIntegrations.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    Connect your own OpenAI Chat Completions v1-compatible endpoint. You can add
+                    multiple custom LLMs and select them when creating assistants.
+                  </div>
+                ) : (
+                  customLLMIntegrations.map((integration, index) => (
+                    <div
+                      key={integration.id}
+                      className={`flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors ${index > 0 ? "border-t" : ""}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-purple-500/10">
+                          <Brain className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{integration.name}</span>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              Custom LLM
+                            </Badge>
+                            <div className="flex items-center justify-center h-5 w-5 rounded-full bg-green-500/10">
+                              <Check className="h-3 w-3 text-green-600" />
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate max-w-[420px]">
+                            <span className="font-mono">{integration.model}</span>
+                            {" · "}
+                            {truncateUrl(integration.base_url)}
+                          </p>
+                        </div>
+                      </div>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openCustomLLMModal(integration)}
+                          className="gap-1.5 shrink-0"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                          Manage
+                        </Button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Telephony — Vobiz (Auth ID + Auth Token in Integrations) */}
+        {!isLoading && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                Telephony
+              </h2>
+            </div>
+            <Card>
+              <CardContent className="p-0">
+                {telephonyProviders.map((provider, index) => {
+                  const isVobiz = provider.id === "vobiz"
+                  const connected = isVobiz ? vobizConnected : plivoConnected
+                  return (
+                    <div
+                      key={provider.id}
+                      className={`flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors ${index > 0 ? "border-t" : ""}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10">
+                          <Phone className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{provider.name}</span>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              Telephony
+                            </Badge>
+                            {connected && (
+                              <div className="flex items-center justify-center h-5 w-5 rounded-full bg-green-500/10">
+                                <Check className="h-3 w-3 text-green-600" />
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate max-w-[420px]">
+                            {provider.description}
+                          </p>
+                        </div>
+                      </div>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openTelephonyModal(isVobiz ? "vobiz" : "plivo")}
+                          className="gap-1.5 shrink-0"
+                        >
+                          {connected ? (
+                            <>
+                              <Settings2 className="h-3.5 w-3.5" />
+                              Manage
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3.5 w-3.5" />
+                              Connect
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {!isLoading && <Separator />}
+
+        {/* Available Header and Filters - Fixed */}
+        {!isLoading && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Available
+            </h2>
+          </div>
+
+          {/* Search and Filter */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* Search */}
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                name="provider-search"
+                placeholder="Search providers..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9"
+                autoComplete="off"
+                aria-label="Search providers"
+              />
+            </div>
+
+            {/* Filter Tabs */}
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => setActiveTab(v as typeof activeTab)}
+            >
+              <TabsList>
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="llm" className="gap-1.5">
+                  <Brain className="h-3.5 w-3.5" />
+                  LLM
+                </TabsTrigger>
+                <TabsTrigger value="stt" className="gap-1.5">
+                  <Mic className="h-3.5 w-3.5" />
+                  STT
+                </TabsTrigger>
+                <TabsTrigger value="tts" className="gap-1.5">
+                  <Volume2 className="h-3.5 w-3.5" />
+                  TTS
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        </section>
+        )}
+      </div>
+
+      {/* Scrollable Provider Grid */}
+      {!isLoading && (
+      <ScrollArea className="flex-1 px-6 pb-6">
+        <div className="pt-4">
+          {availableProviders.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {availableProviders.map((provider) => (
+                <Card
+                  key={provider.id}
+                  className={`group transition-shadow ${canManageIntegrations ? "hover:shadow-md cursor-pointer" : ""}`}
+                  onClick={canManageIntegrations ? () => openConnectModal(provider) : undefined}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{provider.name}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-1">
+                          {provider.description}
+                        </p>
+                        <div className="flex gap-1 pt-1">
+                          {provider.capabilities.map((cap) => (
+                            <Badge
+                              key={cap}
+                              variant="outline"
+                              className={`${capabilityConfig[cap].badgeClass} text-[10px] px-1.5 py-0`}
+                            >
+                              {capabilityConfig[cap].label}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openConnectModal(provider)
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Connect
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed">
+              <div className="rounded-full bg-muted p-3 mb-3">
+                <Search className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <p className="text-sm text-muted-foreground mb-2">
+                {searchQuery
+                  ? `No providers match "${searchQuery}"`
+                  : "All providers are connected"}
+              </p>
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchQuery("")}
+                >
+                  Clear search
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+      )}
+
+      {/* Connect/Manage Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {isEditing ? "Manage" : "Connect"} {selectedProvider?.name}
+            </DialogTitle>
+            <DialogDescription>
+              {isEditing
+                ? "Update your API key or disconnect this integration."
+                : `Enter your ${selectedProvider?.name} API key to enable ${selectedProvider?.capabilities
+                    .map((c) => capabilityConfig[c].fullLabel)
+                    .join(", ")}.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Capability badges */}
+            <div className="flex gap-1.5">
+              {selectedProvider?.capabilities.map((cap) => (
+                <Badge
+                  key={cap}
+                  variant="outline"
+                  className={`${capabilityConfig[cap].badgeClass}`}
+                >
+                  {capabilityConfig[cap].icon}
+                  <span className="ml-1">{capabilityConfig[cap].fullLabel}</span>
+                </Badge>
+              ))}
+            </div>
+
+            {/* API Key Input */}
+            <div className="space-y-2">
+              <Label htmlFor="api-key">API Key</Label>
+              <div className="relative">
+                <Input
+                  id="api-key"
+                  type={isModalKeyVisible ? "text" : "password"}
+                  placeholder="Enter your API key"
+                  value={modalApiKey}
+                  onChange={(e) => setModalApiKey(e.target.value)}
+                  className="pr-10"
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full w-10 hover:bg-transparent"
+                  onClick={() => setIsModalKeyVisible(!isModalKeyVisible)}
+                  tabIndex={-1}
+                >
+                  {isModalKeyVisible ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Your API key is encrypted and stored securely.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {isEditing && (
+              <Button
+                variant="outline"
+                onClick={handleDisconnect}
+                disabled={isSaving}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 sm:mr-auto"
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Disconnect
+              </Button>
+            )}
+            <Button
+              onClick={handleModalSave}
+              disabled={!modalApiKey || isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-1.5" />
+                  {isEditing ? "Update" : "Connect"}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Telephony Provider — Auth ID + Auth Token */}
+      <Dialog open={vobizModalOpen} onOpenChange={setVobizModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5" />
+              {(telephonyProviderModal === "vobiz" ? vobizConnected : plivoConnected) ? "Manage" : "Connect"} {telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"}
+            </DialogTitle>
+            <DialogDescription>
+              Enter your {telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"} Auth ID and Auth Token from the provider dashboard. These are stored per
+              organization and used for telephony APIs (not from server environment variables).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="vobiz-auth-id">{telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"} Auth ID</Label>
+              <Input
+                id="vobiz-auth-id"
+                type="text"
+                placeholder="e.g. MA_xxxxxxxx"
+                value={modalVobizAuthId}
+                onChange={(e) => setModalVobizAuthId(e.target.value)}
+                autoComplete="off"
+                name="vobiz-auth-id"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vobiz-auth-token">{telephonyProviderModal === "vobiz" ? "Vobiz" : "Plivo"} Auth Token</Label>
+              <div className="relative">
+                <Input
+                  id="vobiz-auth-token"
+                  type={vobizTokenVisible ? "text" : "password"}
+                  placeholder="Your auth token"
+                  value={modalVobizAuthToken}
+                  onChange={(e) => setModalVobizAuthToken(e.target.value)}
+                  className="pr-10"
+                  autoComplete="off"
+                  name="vobiz-auth-token"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full w-10 hover:bg-transparent"
+                  onClick={() => setVobizTokenVisible(!vobizTokenVisible)}
+                  tabIndex={-1}
+                >
+                  {vobizTokenVisible ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {(telephonyProviderModal === "vobiz" ? vobizConnected : plivoConnected) && (
+              <Button
+                variant="outline"
+                onClick={handleTelephonyDisconnect}
+                disabled={isSaving}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 sm:mr-auto"
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Disconnect
+              </Button>
+            )}
+            <Button
+              onClick={handleTelephonySave}
+              disabled={
+                !modalVobizAuthId.trim() || !modalVobizAuthToken.trim() || isSaving
+              }
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-1.5" />
+                  {(telephonyProviderModal === "vobiz" ? vobizConnected : plivoConnected) ? "Update" : "Connect"}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom LLM — endpoint, API key, model */}
+      <Dialog open={customLLMModalOpen} onOpenChange={setCustomLLMModalOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              {editingCustomLLM ? "Manage" : "Add"} Custom LLM
+            </DialogTitle>
+            <DialogDescription>
+              Connect an OpenAI Chat Completions API v1-compatible endpoint. Voicera will send
+              streaming chat completion requests to your URL using your API key.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="custom-llm-name">Display name</Label>
+              <Input
+                id="custom-llm-name"
+                type="text"
+                placeholder="e.g. NVIDIA Gemma"
+                value={modalCustomLLMName}
+                onChange={(e) => setModalCustomLLMName(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="custom-llm-base-url">Endpoint URL</Label>
+              <Input
+                id="custom-llm-base-url"
+                type="url"
+                placeholder="https://your-host/v1/chat/completions"
+                value={modalCustomLLMBaseUrl}
+                onChange={(e) => setModalCustomLLMBaseUrl(e.target.value)}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                Must be compatible with OpenAI Chat Completions API v1. You may paste the full
+                /v1/chat/completions URL or just the /v1 base URL.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="custom-llm-api-key">API key / Bearer token</Label>
+              <div className="relative">
+                <Input
+                  id="custom-llm-api-key"
+                  type={customLLMApiKeyVisible ? "text" : "password"}
+                  placeholder="Your API key or Bearer token"
+                  value={modalCustomLLMApiKey}
+                  onChange={(e) => setModalCustomLLMApiKey(e.target.value)}
+                  className="pr-10"
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full w-10 hover:bg-transparent"
+                  onClick={() => setCustomLLMApiKeyVisible(!customLLMApiKeyVisible)}
+                  tabIndex={-1}
+                >
+                  {customLLMApiKeyVisible ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="custom-llm-model">Model ID</Label>
+              <Input
+                id="custom-llm-model"
+                type="text"
+                placeholder="e.g. google/gemma-4-26B-A4B-it"
+                value={modalCustomLLMModel}
+                onChange={(e) => setModalCustomLLMModel(e.target.value)}
+                autoComplete="off"
+                className="font-mono text-sm"
+              />
+            </div>
+
+            <div className="rounded-lg border bg-muted/30">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium"
+                onClick={() => setCustomLLMDocsOpen(!customLLMDocsOpen)}
+              >
+                Endpoint requirements
+                <span className="text-xs text-muted-foreground">
+                  {customLLMDocsOpen ? "Hide" : "Show"}
+                </span>
+              </button>
+              {customLLMDocsOpen && (
+                <div className="space-y-3 border-t px-3 py-3 text-xs text-muted-foreground">
+                  <p>Your endpoint must implement OpenAI-compatible chat completions:</p>
+                  <ul className="list-disc space-y-1 pl-4">
+                    <li>
+                      <code className="text-foreground">POST {"{base_url}"}/chat/completions</code>
+                    </li>
+                    <li>
+                      Header: <code className="text-foreground">Authorization: Bearer &lt;token&gt;</code>
+                    </li>
+                    <li>
+                      Header: <code className="text-foreground">Content-Type: application/json</code>
+                    </li>
+                    <li>
+                      Body: <code className="text-foreground">model</code>,{" "}
+                      <code className="text-foreground">messages</code>, optional{" "}
+                      <code className="text-foreground">max_tokens</code>
+                    </li>
+                    <li>
+                      Response: streaming SSE with <code className="text-foreground">choices[].delta.content</code>{" "}
+                      (or standard non-streaming JSON)
+                    </li>
+                  </ul>
+                  <pre className="overflow-x-auto rounded-md bg-background p-2 text-[11px] leading-relaxed text-foreground">
+{`curl --location 'https://your-host/v1/chat/completions' \\
+  --header 'Content-Type: application/json' \\
+  --header 'Authorization: Bearer YOUR_API_KEY' \\
+  --data '{
+    "model": "your-model-id",
+    "messages": [
+      { "role": "user", "content": "Hello" }
+    ],
+    "max_tokens": 1024
+  }'`}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {editingCustomLLM && (
+              <Button
+                variant="outline"
+                onClick={() => handleCustomLLMDelete(editingCustomLLM)}
+                disabled={isSaving}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 sm:mr-auto"
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Delete
+              </Button>
+            )}
+            <Button
+              onClick={handleCustomLLMSave}
+              disabled={
+                !modalCustomLLMName.trim() ||
+                !modalCustomLLMBaseUrl.trim() ||
+                !modalCustomLLMModel.trim() ||
+                (!editingCustomLLM && !modalCustomLLMApiKey.trim()) ||
+                isSaving
+              }
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-1.5" />
+                  {editingCustomLLM ? "Update" : "Add"}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
