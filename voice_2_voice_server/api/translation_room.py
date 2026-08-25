@@ -31,7 +31,14 @@ from typing import Any, Dict, Optional
 from loguru import logger
 from fastapi import WebSocket
 
-from pipecat.frames.frames import AudioRawFrame, ErrorFrame, TranscriptionFrame, Frame
+from pipecat.frames.frames import (
+    AudioRawFrame,
+    EndFrame,
+    ErrorFrame,
+    Frame,
+    StartFrame,
+    TranscriptionFrame,
+)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -342,14 +349,23 @@ class LangWorker:
             self._tts = await asyncio.to_thread(
                 create_tts_service, tts_config, LISTEN_SAMPLE_RATE, self.room.org_id
             )
-            # We drive run_tts directly, outside a pipeline, so the service's
-            # TaskManager is never initialised by a StartFrame. run_tts spawns its
-            # websocket-receive task via create_task, which raises "TaskManager is
-            # still not initialized" until setup() runs. Wire it to this loop once.
+            # We drive run_tts directly, outside a pipeline, so the frames that a
+            # pipeline would normally deliver never arrive. Two of them matter:
+            #   setup()  wires the TaskManager run_tts needs to spawn its
+            #            websocket-receive task (else "TaskManager is still not
+            #            initialized").
+            #   start()  runs the service's StartFrame handler, which sets
+            #            speech_sample_rate from our output rate and opens the
+            #            socket. Skipping it leaves speech_sample_rate=0, and Sarvam
+            #            rejects the config ("Input parameters has to be a valid
+            #            dictionary"), dropping every chunk.
             tm = TaskManager()
             tm.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
             await self._tts.setup(
                 FrameProcessorSetup(clock=SystemClock(), task_manager=tm)
+            )
+            await self._tts.start(
+                StartFrame(audio_out_sample_rate=LISTEN_SAMPLE_RATE)
             )
             self._consumer_task = asyncio.create_task(self._consume())
             self._synth_task = asyncio.create_task(self._run_synth())
@@ -574,7 +590,13 @@ class LangWorker:
         self._consumer_task = None
         self._synth_task = None
         if self._tts is not None:
-            # Tear down the TaskManager/websocket-receive tasks setup() started.
+            # Mirror the pipeline shutdown we bypassed at start: stop() closes the
+            # Sarvam socket and cancels its receive/keepalive tasks; cleanup() tears
+            # down the TaskManager. Both best-effort — teardown must not raise.
+            try:
+                await self._tts.stop(EndFrame())
+            except Exception:
+                pass
             try:
                 await self._tts.cleanup()
             except Exception:
