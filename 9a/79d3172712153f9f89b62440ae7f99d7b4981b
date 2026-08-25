@@ -1,0 +1,26 @@
+voice_2_voice_server/services/nmt/triton_nmt.py
+  s_eab2a66171bcc8::t_bcdeb694ed3563 366-380
+  s_eab2a66171bcc8::t_553177226fc156 51-61
+  s_eab2a66171bcc8::t_aebe18437e8822 235-241,243-266
+  s_eab2a66171bcc8::t_8b64f05cd8669d 184-190
+  s_eab2a66171bcc8::t_49e6f4bda02a12 225-230
+  s_eab2a66171bcc8::t_2cf9c0c0e3ca6f 295,300-306,309-314,317
+  s_eab2a66171bcc8::t_d1bf6c2d76fed7 102-106,112-116
+  s_eab2a66171bcc8::t_ae61dfe33e8053 275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "9a79d3172712153f9f89b62440ae7f99d7b4981b",
+  "prompts": {},
+  "sessions": {
+    "s_eab2a66171bcc8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41c409f8-1595-4df0-85de-3ae18579d042",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
