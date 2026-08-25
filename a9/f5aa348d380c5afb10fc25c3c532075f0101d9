@@ -1,0 +1,79 @@
+voice_2_voice_server/config/nmt_mappings.py
+  s_b3a6f72ad7c2e5::t_adcdb2656e2b77 1-63
+voice_2_voice_server/utils/text_chunking.py
+  s_b3a6f72ad7c2e5::t_e32435e0ad011a 1-70
+voicera_frontend/lib/nmt-languages.ts
+  s_b3a6f72ad7c2e5::t_c695b11a9a7e3e 1-42
+voice_2_voice_server/services/nmt/__init__.py
+  s_b3a6f72ad7c2e5::t_dc7225db9df9cb 1-5
+voice_2_voice_server/api/translation_room.py
+  s_b3a6f72ad7c2e5::t_0b0a751a1655c0 95-98
+  s_b3a6f72ad7c2e5::t_65e50254ca0a23 270
+  s_b3a6f72ad7c2e5::t_9586c67c265ea8 379,382
+  s_b3a6f72ad7c2e5::t_899b351b82bf7f 29
+  s_b3a6f72ad7c2e5::t_175ed8ed40afb8 53
+  s_b3a6f72ad7c2e5::t_211672d111c599 214-216,219,222
+  s_b3a6f72ad7c2e5::t_8150f4326ecff1 590,610-617
+  s_b3a6f72ad7c2e5::t_2570f56b2c2f62 309-315
+  s_b3a6f72ad7c2e5::t_79ccf9b5826fac 749-755,757-758,760
+voice_2_voice_server/api/translation_engines.py
+  s_b3a6f72ad7c2e5::t_70f48305281091 24,29
+  s_b3a6f72ad7c2e5::t_29e0f3e14b5a94 1-23,25-28,30-41,45-337
+  s_b3a6f72ad7c2e5::t_60e09ebb4999af 42-44
+docs/live-translation/TECHNICAL.md
+  s_b3a6f72ad7c2e5::t_e731fd3c8d0523 7-8
+voice_2_voice_server/services/nmt/triton_nmt.py
+  s_b3a6f72ad7c2e5::t_3f3959be3f465a 1-244,248-324
+  s_b3a6f72ad7c2e5::t_c318aaaf48dc5d 245-247
+docs/live-translation/NMT_ENGINE_PLAN.md
+  s_b3a6f72ad7c2e5::t_7a8d044de4293d 3
+  s_b3a6f72ad7c2e5::t_c37ff55fb36f72 286-291,294,297,300
+  s_b3a6f72ad7c2e5::t_179702e63d89a4 1-2,4-285,292-293,295-296,298-299,301-327
+voicera_frontend/lib/api.ts
+  s_b3a6f72ad7c2e5::t_a1e9c7763ec95d 392-393
+  s_b3a6f72ad7c2e5::t_282af2a87b9063 383-384
+voicera_frontend/app/(dashboard)/assistants/[id]/page.tsx
+  s_b3a6f72ad7c2e5::t_af33da20770513 44
+  s_b3a6f72ad7c2e5::t_cd3b44a7df5c91 1140
+  s_b3a6f72ad7c2e5::t_5cba611bf2ead2 45
+  s_b3a6f72ad7c2e5::t_f665d37c985db5 2093-2094,2097
+  s_b3a6f72ad7c2e5::t_1f686976b8f9c6 405-406,408-417
+  s_b3a6f72ad7c2e5::t_03f39876edc4ae 911-918
+  s_b3a6f72ad7c2e5::t_79b25866975360 1750-1794
+  s_b3a6f72ad7c2e5::t_9bc1cb713c6a4f 299
+  s_b3a6f72ad7c2e5::t_96ddb99c836c4e 1045-1047
+  s_b3a6f72ad7c2e5::t_888b5ddd484150 1193-1194
+  s_b3a6f72ad7c2e5::t_bc365142640a9f 699-701
+  s_b3a6f72ad7c2e5::t_e72379fe58b2a2 1749
+voice_2_voice_server/.env.example
+  s_b3a6f72ad7c2e5::t_c49848851ccc9b 71,80-92
+  s_b3a6f72ad7c2e5::t_63383ac1f01126 93
+deploy/compose/docker-compose.translate.yml
+  s_b3a6f72ad7c2e5::t_d1511a86829812 78-84
+voicera_backend/app/services/agent_service.py
+  s_b3a6f72ad7c2e5::t_f7d6f35ea5894a 96-102
+voicera_frontend/app/(dashboard)/assistants/page.tsx
+  s_b3a6f72ad7c2e5::t_fd9b20761c7704 7-8
+  s_b3a6f72ad7c2e5::t_618d915b1344f3 341
+  s_b3a6f72ad7c2e5::t_e17e7f2ba84ab0 666-667,669-678
+  s_b3a6f72ad7c2e5::t_f3c5048bb2de19 293
+  s_b3a6f72ad7c2e5::t_d0825c8ec11a73 1204-1207
+  s_b3a6f72ad7c2e5::t_fb0d86edd2ecb7 1822-1824
+  s_b3a6f72ad7c2e5::t_c00b679b8a053c 2121-2167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "a9f5aa348d380c5afb10fc25c3c532075f0101d9",
+  "prompts": {},
+  "sessions": {
+    "s_b3a6f72ad7c2e5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac81eb8-11a4-43f9-9aa8-c56fc5ec8932",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
