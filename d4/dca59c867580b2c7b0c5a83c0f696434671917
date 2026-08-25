@@ -1,0 +1,32 @@
+deploy/compose/docker-compose.translate.yml
+  s_b3a6f72ad7c2e5::t_077067262f23fb 80-84
+voicera_frontend/components/assistants/broadcast-dialog.tsx
+  s_b3a6f72ad7c2e5::t_582ce5341c5ce9 224-226,228-229
+  s_b3a6f72ad7c2e5::t_194b9f0c3d1854 227,230
+voice_2_voice_server/api/translation_room.py
+  s_b3a6f72ad7c2e5::t_c4711d9fcd4c47 760-768
+voice_2_voice_server/.env.example
+  s_b3a6f72ad7c2e5::t_503efca09a407a 82-84
+docs/live-translation/NMT_ENGINE_PLAN.md
+  s_b3a6f72ad7c2e5::t_3bea5bdd3e433f 13
+  s_b3a6f72ad7c2e5::t_2ffd68910e92cf 251
+voice_2_voice_server/services/nmt/triton_nmt.py
+  s_b3a6f72ad7c2e5::t_324ba2eb0911d6 87-90
+  s_b3a6f72ad7c2e5::t_27cfea47fe65f3 132-133,135-140,143-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "d4dca59c867580b2c7b0c5a83c0f696434671917",
+  "prompts": {},
+  "sessions": {
+    "s_b3a6f72ad7c2e5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac81eb8-11a4-43f9-9aa8-c56fc5ec8932",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
