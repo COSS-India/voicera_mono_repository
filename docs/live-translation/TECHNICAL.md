@@ -4,6 +4,8 @@
 **Scope:** New agent type for real-time, one-to-many live translation with public shareable listener links. Opt-in public sharing for any agent as a secondary, generic capability.
 **Guiding constraint:** Minimal, standard, non-breaking. All heavy new logic is additive (new modules, new routes, new optional fields). No existing flow is modified in a way that changes its behaviour.
 
+**Follow-up design:** [NMT_ENGINE_PLAN.md](NMT_ENGINE_PLAN.md) — pluggable translation engine, so a broadcast uses either the streaming LLM (as described here) or an on-prem NMT model, never both.
+
 ---
 
 ## 1. Product summary

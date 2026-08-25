@@ -93,6 +93,13 @@ def _validate_agent_config_for_mode(agent_config: Dict[str, Any]) -> Optional[st
         tts_model = (agent_config or {}).get("tts_model")
         if not isinstance(tts_model, dict) or not tts_model.get("name"):
             return "TTS configuration is required for translation agents"
+        # Which translation engine drives the broadcast. Absent → "llm" (the
+        # original behaviour). Per-language support is enforced by the voice
+        # server, which owns the engine-specific language maps; duplicating them
+        # here would drift.
+        engine = str((agent_config or {}).get("translation_engine") or "llm").strip().lower()
+        if engine not in ("llm", "nmt"):
+            return "Translation engine must be 'llm' or 'nmt'"
     return None
 
 

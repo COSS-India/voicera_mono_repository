@@ -75,6 +75,13 @@ services:
       # Language workers bill 0 minutes (the publisher accounts for the real
       # wall-clock); keep the daily cap generous for long talks.
       - MAX_MINUTES_PER_ORG_PER_DAY=${MAX_MINUTES_PER_ORG_PER_DAY:-100000}
+      # NMT translation engine (agent_config.translation_engine = "nmt"). Points
+      # at the hosted AI4Bharat IndicTrans2 Triton server. Only agents on the nmt
+      # engine use it; llm agents ignore it. Override NMT_SERVER_URL per env.
+      - NMT_SERVER_URL=${NMT_SERVER_URL:-http://13.200.133.97:8000}
+      - NMT_MODEL_NAME=${NMT_MODEL_NAME:-nmt}
+      - NMT_BATCH_WINDOW_MS=${NMT_BATCH_WINDOW_MS:-8}
+      - NMT_MAX_INFLIGHT=${NMT_MAX_INFLIGHT:-4}
     depends_on: [backend, minio]
     # Dual-homed: `internal` for its own backend/minio, `prodnet` to reach the
     # existing prod stt/tts. On `prodnet` the names backend/minio/nginx are

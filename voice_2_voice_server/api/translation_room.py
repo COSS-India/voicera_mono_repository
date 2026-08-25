@@ -25,9 +25,8 @@ import asyncio
 import base64
 import json
 import os
-import re
 import time
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, Dict, Optional
 
 from loguru import logger
 from fastapi import WebSocket
@@ -50,9 +49,8 @@ from .services import (
     ServiceCreationError,
     create_stt_service,
     create_tts_service,
-    platform_key_fallback_enabled,
 )
-from utils.backend_utils import fetch_integration_key
+from .translation_engines import TranslationEngine, create_translation_engine
 from utils.call_management import try_acquire_call_slot, release_call_slot
 
 # Listeners are always our browser client, which streams/plays 16 kHz L16 PCM.
@@ -89,61 +87,16 @@ PRESENTER_GRACE_SECS = int(os.getenv("TRANSLATION_PRESENTER_GRACE_SECS", "20"))
 # slower and worse. Env-tunable per speaker cadence.
 VAD_STOP_SECS = float(os.getenv("TRANSLATION_VAD_STOP_SECS", "0.4"))
 
-# Streamed translation is flushed to TTS one sentence at a time so the listener
-# hears the first sentence while the model is still translating the rest, instead
-# of waiting for the whole segment. Break on sentence-final punctuation (Latin +
-# Indic danda) once whitespace confirms the sentence closed.
-_SENTENCE_END = re.compile(r"[.!?।॥]+[\"'”’)\]]*\s")
-# Fallback break for a rambling clause with no sentence-final punctuation: prefer
-# a clause boundary (comma/semicolon/colon/dash) over a bare word gap, so the cut
-# lands where a speaker would pause anyway instead of mid-phrase.
-_CLAUSE_END = re.compile(r"[,;:—–]\s")
-# A rambling clause with no sentence-final punctuation would otherwise never
-# flush; past this many buffered chars, break at the last clause (else word)
-# boundary so audio keeps flowing. Sentence breaks are always preferred.
-MAX_TTS_CHUNK_CHARS = 240
-# Don't cut a chunk this short: an abbreviation ("Dr. ") or a decimal would
-# otherwise become its own micro-utterance, spoken with sentence-final intonation
-# and a pause. Also a floor on prompt length for the on-prem Parler backend, which
-# clips and garbles very short prompts. A short final sentence is still flushed by
-# the end-of-stream tail, so this only delays audio when more text is coming.
-MIN_TTS_CHUNK_CHARS = 40
 # Sentences waiting to be synthesised for this language. Translation of the next
 # segment runs while the current one is still being spoken (see LangWorker), so
 # this queue is what decouples the two stages; bounded so a slow TTS backend
 # back-pressures translation instead of buffering the whole talk.
 MAX_SENTENCE_BACKLOG = 8
-# A stalled provider must not mute a language for the rest of the broadcast.
-# Both are *inactivity* limits (time since the last token / audio frame), not
-# total-duration limits, so a legitimately long sentence is never cut short.
-TRANSLATION_LLM_TIMEOUT_SECS = float(os.getenv("TRANSLATION_LLM_TIMEOUT_SECS", "10"))
+# A stalled TTS provider must not mute a language for the rest of the broadcast.
+# This is an *inactivity* limit (time since the last audio frame), not a
+# total-duration limit, so a legitimately long sentence is never cut short. The
+# per-engine translation timeouts live with the engines (translation_engines.py).
 TTS_STALL_TIMEOUT_SECS = float(os.getenv("TRANSLATION_TTS_STALL_SECS", "20"))
-
-
-def _translation_model() -> str:
-    return os.getenv("TRANSLATION_MODEL") or "gpt-4o-mini"
-
-
-def _next_chunk_end(buffer: str) -> Optional[int]:
-    """Index to cut ``buffer`` at for the next TTS chunk, or None to wait for more."""
-    # Search past the minimum so a sentence break that lands too early ("Dr. ")
-    # is skipped and folded into the following sentence instead of splitting off.
-    match = _SENTENCE_END.search(buffer, MIN_TTS_CHUNK_CHARS)
-    if match:
-        return match.end()
-    if len(buffer) >= MAX_TTS_CHUNK_CHARS:
-        # Last clause boundary inside the window beats the last word gap: the
-        # chunk is spoken with sentence-final intonation either way, and a pause
-        # after a comma passes for natural where one mid-phrase does not.
-        clause = None
-        for m in _CLAUSE_END.finditer(buffer, MIN_TTS_CHUNK_CHARS, MAX_TTS_CHUNK_CHARS):
-            clause = m
-        if clause:
-            return clause.end()
-        space = buffer.rfind(" ", 0, MAX_TTS_CHUNK_CHARS)
-        if space > 0:
-            return space + 1
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -258,13 +211,15 @@ class _SegmentTiming:
     """
 
     __slots__ = (
-        "chars", "t_recv", "t_first_token", "t_first_audio", "t_last_audio",
-        "audio_bytes", "sentences", "_pending", "_closed", "_logged",
+        "chars", "t_recv", "engine", "t_first_token", "t_first_audio",
+        "t_last_audio", "audio_bytes", "sentences", "_pending", "_closed",
+        "_logged",
     )
 
-    def __init__(self, text: str, t_recv: float):
+    def __init__(self, text: str, t_recv: float, engine: str = "llm"):
         self.chars = len(text)
         self.t_recv = t_recv
+        self.engine = engine
         self.t_first_token = 0.0
         self.t_first_audio = 0.0
         self.t_last_audio = 0.0
@@ -312,7 +267,7 @@ class _SegmentTiming:
         rtf = (synth_wall / audio_secs) if audio_secs > 0 else 0.0
         return (
             f"segment done | {self.chars} chars → {self.sentences} chunk(s) | "
-            f"llm_ttft={ttft:.2f}s tts_ttfa={ttfa:.2f}s | "
+            f"{self.engine}_ttft={ttft:.2f}s tts_ttfa={ttfa:.2f}s | "
             f"audio={audio_secs:.1f}s synth={synth_wall:.1f}s rtf={rtf:.2f}"
         )
 
@@ -351,6 +306,13 @@ class LangWorker:
 
     async def start(self) -> bool:
         """Build the TTS service and start consuming. Returns False on capacity/error."""
+        # Refuse a language the selected engine can't translate BEFORE taking a
+        # call slot, so a listener gets a clear rejection instead of a worker
+        # that acquires capacity and then emits silence every segment.
+        reason = self.room.engine.unsupported(self.language)
+        if reason:
+            logger.warning(f"translation[{self.language}]: {reason}")
+            return False
         if not await try_acquire_call_slot(self.room.org_id):
             logger.warning(
                 f"translation[{self.language}]: capacity/budget exceeded, refusing worker"
@@ -414,10 +376,10 @@ class LangWorker:
         """
         while True:
             text, t_recv = await self._queue.get()
-            seg = _SegmentTiming(text, t_recv)
+            seg = _SegmentTiming(text, t_recv, self.room.engine.name)
             try:
                 first = True
-                async for sentence in self.room.translate_stream(
+                async for sentence in self.room.engine.stream(
                     text, self.language, on_token=seg.note_token
                 ):
                     # Push each sentence's text just before its audio so listeners
@@ -625,8 +587,7 @@ class TranslationRoom:
         self.publisher: Optional[WebSocket] = None
         self.workers: "Dict[str, LangWorker]" = {}
         self.lock = asyncio.Lock()
-        self._openai = None
-        self._model = _translation_model()
+        self.engine: TranslationEngine
         self._grace_task: Optional[asyncio.Task] = None
         self._derive_from_config(config)
 
@@ -646,6 +607,14 @@ class TranslationRoom:
             else {}
         )
         self.extra_instructions = str(config.get("system_prompt") or "").strip()
+        # Exactly one engine per room; the unselected one is never constructed.
+        # Default "llm" keeps existing agents (no translation_engine key) intact.
+        self.engine = create_translation_engine(
+            config.get("translation_engine") or "llm",
+            org_id=self.org_id,
+            source_language=self.source_language,
+            extra_instructions=self.extra_instructions,
+        )
 
     async def on_source_text(self, text: str) -> None:
         """Fan a presenter transcript out to every active language worker."""
@@ -708,121 +677,6 @@ class TranslationRoom:
                     await ws.close(code=1000, reason="broadcast ended")
                 except Exception:
                     pass
-
-    async def translate_stream(
-        self, text: str, target_language: str, on_token=None
-    ) -> AsyncIterator[str]:
-        """Yield the translation one sentence at a time as the model produces it.
-
-        Streaming lets TTS start on the first sentence while later sentences are
-        still being translated, cutting time-to-first-audio for a segment from
-        "whole paragraph" down to "first sentence".
-
-        ``on_token`` (optional) is called on the first content token, purely for
-        latency accounting.
-        """
-        client = self.get_openai_client()
-        if client is None:
-            logger.error("translation: no OpenAI key available (org or platform)")
-            return
-        system = (
-            f"You are a translation engine. Translate the user's text from "
-            f"{self.source_language} into {target_language}. Output only the "
-            f"translation, with no commentary, labels or quotation marks."
-        )
-        # The agent's own prompt is extra style/domain guidance; the rules above
-        # stay authoritative so the output is always just the translation.
-        if self.extra_instructions:
-            system = f"{system}\n\nAdditional guidance:\n{self.extra_instructions}"
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": text},
-        ]
-        # One retry, but only before any sentence has been emitted: a transient
-        # LLM hiccup (429/timeout) otherwise drops the segment, yet retrying after
-        # a partial emit would repeat already-spoken text.
-        for attempt in range(2):
-            buffer = ""
-            produced = False
-            stream = None
-            try:
-                stream = await client.chat.completions.create(
-                    model=self._model,
-                    messages=messages,
-                    temperature=0.2,
-                    stream=True,
-                    # Bound connect + time-to-first-token; a stalled provider must
-                    # not hold a language silent for the whole broadcast.
-                    timeout=TRANSLATION_LLM_TIMEOUT_SECS,
-                )
-                # Iterated by hand so each token read carries its own inactivity
-                # deadline. Note the deadline only covers the wait for the model:
-                # while this generator is suspended at a ``yield`` (the caller
-                # back-pressuring on a full synth queue) no timer is running.
-                chunks = stream.__aiter__()
-                while True:
-                    try:
-                        chunk = await asyncio.wait_for(
-                            chunks.__anext__(), TRANSLATION_LLM_TIMEOUT_SECS
-                        )
-                    except StopAsyncIteration:
-                        break
-                    except asyncio.TimeoutError:
-                        raise TimeoutError(
-                            f"no token for {TRANSLATION_LLM_TIMEOUT_SECS:.0f}s"
-                        )
-                    delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
-                    if not delta:
-                        continue
-                    if on_token is not None:
-                        on_token()
-                    buffer += delta
-                    while True:
-                        cut = _next_chunk_end(buffer)
-                        if cut is None:
-                            break
-                        sentence = buffer[:cut].strip()
-                        buffer = buffer[cut:].lstrip()
-                        if sentence:
-                            produced = True
-                            yield sentence
-                tail = buffer.strip()
-                if tail:
-                    yield tail
-                return
-            except Exception as e:
-                if attempt == 0 and not produced:
-                    await asyncio.sleep(0.3)
-                    continue
-                logger.warning(f"translation to {target_language} failed: {e}")
-                return
-            finally:
-                if stream is not None:
-                    try:
-                        await stream.close()
-                    except Exception:
-                        pass
-
-    def get_openai_client(self):
-        """Resolve (and cache) the translation client.
-
-        Uses blocking integration lookup, so callers should warm this before the
-        audio path rather than on the first transcript.
-        """
-        if self._openai is not None:
-            return self._openai
-        api_key = None
-        if self.org_id:
-            api_key = fetch_integration_key(self.org_id, "OpenAI")
-        if not api_key and platform_key_fallback_enabled():
-            api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return None
-        from openai import AsyncOpenAI
-
-        self._openai = AsyncOpenAI(api_key=api_key)
-        return self._openai
-
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -892,15 +746,18 @@ async def run_publisher(websocket: WebSocket, agent_id: str, config: Dict[str, A
             return
         slot_acquired = True
 
-        # Resolve the translation credential up front: without it every segment
-        # would fail mid-broadcast and listeners would just hear silence. The
-        # lookup is blocking (sync requests), so keep it off the event loop.
-        if await asyncio.to_thread(room.get_openai_client) is None:
+        # Pre-flight the selected engine up front: without this every segment
+        # would fail mid-broadcast and listeners would just hear silence. The LLM
+        # engine resolves its credential (off the event loop); the NMT engine
+        # probes model readiness. Neither touches the other's dependencies, so an
+        # NMT broadcast needs no OpenAI key and vice-versa.
+        engine_error = await room.engine.prepare()
+        if engine_error:
             logger.error(
-                f"translation[{agent_id}]: no OpenAI key available for org={room.org_id} "
-                "(configure an OpenAI Integration or enable ALLOW_PLATFORM_KEY_FALLBACK)"
+                f"translation[{agent_id}]: {room.engine.name} engine not ready for "
+                f"org={room.org_id}: {engine_error}"
             )
-            await websocket.close(code=4402, reason="translation credential not configured")
+            await websocket.close(code=4402, reason="translation engine not ready")
             return
 
         first_message = await websocket.receive_text()

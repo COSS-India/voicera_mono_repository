@@ -380,6 +380,8 @@ export interface Agent {
 
 export type InteractionMode = "conversational" | "non_conversational" | "translation"
 
+export type TranslationEngine = "llm" | "nmt"
+
 export interface AgentConfig {
   interaction_mode?: InteractionMode
   system_prompt?: string
@@ -387,6 +389,8 @@ export interface AgentConfig {
   // Live-translation agents only:
   source_language?: string
   target_languages?: string[]
+  /** Which engine translates the broadcast. Absent = "llm" (unchanged behaviour). */
+  translation_engine?: TranslationEngine
   /** Per-target-language TTS voice; voices are language-specific for AI4Bharat/Bhashini. */
   target_voices?: Record<string, string>
   mute_publisher_playback?: boolean

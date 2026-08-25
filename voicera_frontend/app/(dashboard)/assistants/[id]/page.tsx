@@ -41,7 +41,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, fetchApiRoute, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { getCurrentUser, getAgent, updateAgent, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, fetchApiRoute, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode, type TranslationEngine } from "@/lib/api"
+import { isNmtSupportedLanguage } from "@/lib/nmt-languages"
 import { agentsQueryKey } from "@/lib/queries/agents"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
@@ -295,6 +296,7 @@ export default function AgentDetailPage() {
   // Live-translation only
   const [targetLanguages, setTargetLanguages] = useState<string[]>([])
   const [targetVoices, setTargetVoices] = useState<Record<string, string>>({})
+  const [translationEngine, setTranslationEngine] = useState<TranslationEngine>("llm")
   const [publicShareEnabled, setPublicShareEnabled] = useState(false)
   const [shareToken, setShareToken] = useState<string>("")
   const [isRotatingShareToken, setIsRotatingShareToken] = useState(false)
@@ -400,13 +402,19 @@ export default function AgentDetailPage() {
     [ttsProvider]
   )
 
-  /** Listener languages the chosen TTS provider cannot actually speak. */
+  /** Listener languages the current setup cannot serve: the chosen TTS provider
+   * can't speak them, or (NMT engine) the model can't translate them. */
   const unsupportedTargetLanguages = useMemo(() => {
-    if (!isTranslationMode || !ttsProvider) return []
-    return activeTargetLanguages.filter(
-      (lang) => !getIntersectedTTSProviders([lang]).has(ttsProvider)
-    )
-  }, [isTranslationMode, activeTargetLanguages, ttsProvider])
+    if (!isTranslationMode) return []
+    return activeTargetLanguages.filter((lang) => {
+      const ttsUnsupported = ttsProvider
+        ? !getIntersectedTTSProviders([lang]).has(ttsProvider)
+        : false
+      const nmtUnsupported =
+        translationEngine === "nmt" && !isNmtSupportedLanguage(lang)
+      return ttsUnsupported || nmtUnsupported
+    })
+  }, [isTranslationMode, activeTargetLanguages, ttsProvider, translationEngine])
 
   const toggleTargetLanguage = (code: string) => {
     const isAdding = !getActiveLanguages(targetLanguages).includes(code)
@@ -688,6 +696,9 @@ export default function AgentDetailPage() {
             setTargetVoices(
               loadedVoices && typeof loadedVoices === "object" ? { ...loadedVoices } : {}
             )
+            setTranslationEngine(
+              agentData.agent_config?.translation_engine === "nmt" ? "nmt" : "llm"
+            )
           }
           setPublicShareEnabled(Boolean(agentData.public_share_enabled))
           setShareToken(agentData.share_token || "")
@@ -897,6 +908,14 @@ export default function AgentDetailPage() {
                     ""
                 )
               }
+              // Backfill the engine default so an existing (pre-NMT) translation
+              // agent doesn't read as "changed" the moment it loads.
+              if (
+                normalizedOriginal.interaction_mode === "translation" &&
+                normalizedOriginal.translation_engine === undefined
+              ) {
+                normalizedOriginal.translation_engine = "llm"
+              }
               setOriginalConfig(normalizedOriginal)
             } catch (e) {
               console.error("Error parsing Agent configuration on load:", e)
@@ -1023,7 +1042,9 @@ export default function AgentDetailPage() {
         ? {
             ...languageConfigFields,
             interaction_mode: "translation",
-            system_prompt: systemPrompt || "",
+            translation_engine: translationEngine,
+            // NMT translates directly; the agent prompt only steers the LLM engine.
+            system_prompt: translationEngine === "nmt" ? "" : systemPrompt || "",
             source_language: primaryLanguage || "",
             target_languages: activeTargetLanguages,
             target_voices: Object.fromEntries(
@@ -1116,7 +1137,7 @@ export default function AgentDetailPage() {
       publicShareEnabled !== Boolean(agent.public_share_enabled)
     const hasChanged = hasConfigChanged || hasAgentTypeChanged || hasShareChanged
     setHasChanges(hasChanged)
-  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, ttsDescription, speed, originalConfig, agent, interactionMode, activeTargetLanguages, targetVoices, publicShareEnabled])
+  }, [agentType, systemPrompt, greetingMessage, ignoreUserSpeechBeforeGreeting, interruptionMinWords, userSilenceHangupSeconds, callTimeoutSeconds, holdMessages, holdMessageTimeoutSeconds, userOnlineDetectionEnabled, userOnlineDetectionMessage, userOnlineDetectionSeconds, userOnlineDetectionRepeats, userOnlineDetectionClosingMessage, selectedLanguages, languageConfigFields, primaryLanguage, llmProvider, llmModel, customLlmId, kenpathVariant, knowledgeEnabled, knowledgeDocumentIds, knowledgeTopK, sttProvider, sttModel, ttsProvider, ttsModel, ttsVoice, ttsDescription, speed, originalConfig, agent, interactionMode, activeTargetLanguages, targetVoices, translationEngine, publicShareEnabled])
 
   const handleSaveClick = () => {
     setShowConfirmModal(true)
@@ -1169,7 +1190,8 @@ export default function AgentDetailPage() {
             : interactionMode === "translation"
             ? {
                 interaction_mode: "translation",
-                system_prompt: systemPrompt,
+                translation_engine: translationEngine,
+                system_prompt: translationEngine === "nmt" ? "" : systemPrompt,
                 greeting_message: "",
                 ...languageConfigFields,
                 source_language: primaryLanguage,
@@ -1725,6 +1747,52 @@ export default function AgentDetailPage() {
                   Configure Languages
                 </h3>
                 {isTranslationMode && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Translation engine
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {(
+                        [
+                          {
+                            value: "nmt" as TranslationEngine,
+                            title: "NMT (on-prem)",
+                            desc: "Fast, direct translation across 23 Indic languages. No LLM key needed.",
+                          },
+                          {
+                            value: "llm" as TranslationEngine,
+                            title: "LLM",
+                            desc: "Context-aware, follows your guidance prompt. Requires an OpenAI key.",
+                          },
+                        ]
+                      ).map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setTranslationEngine(opt.value)}
+                          className={`text-left rounded-lg border px-4 py-3 transition-colors ${
+                            translationEngine === opt.value
+                              ? "border-slate-900 bg-slate-900/5 ring-1 ring-slate-900"
+                              : "border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="text-sm font-semibold text-slate-900">{opt.title}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{opt.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                    {translationEngine === "nmt" &&
+                      primaryLanguage &&
+                      !isNmtSupportedLanguage(primaryLanguage) && (
+                        <p className="mt-2 text-sm text-amber-600">
+                          The NMT engine does not support {displayLanguageName(primaryLanguage)} as
+                          the presenter language. Pick a supported language or switch to the LLM
+                          engine.
+                        </p>
+                      )}
+                  </div>
+                )}
+                {isTranslationMode && (
                   <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                     The language below is what the <strong>presenter speaks</strong>. Listener
                     languages are configured under it.
@@ -2022,10 +2090,11 @@ export default function AgentDetailPage() {
                   )}
                 </div>
 
-                {interactionMode !== "non_conversational" && (
+                {interactionMode !== "non_conversational" &&
+                  !(isTranslationMode && translationEngine === "nmt") && (
                 <div>
                   <label className="text-sm font-medium text-slate-700 mb-2 block">
-                    System Prompt
+                    {isTranslationMode ? "Translation Guidance" : "System Prompt"}
                   </label>
                   <Textarea
                     value={systemPrompt}

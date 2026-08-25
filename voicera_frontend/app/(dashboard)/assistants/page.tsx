@@ -4,7 +4,8 @@ import { useState, useMemo, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
-import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode, type TranslationEngine } from "@/lib/api"
+import { isNmtSupportedLanguage } from "@/lib/nmt-languages"
 import { agentsQueryKey, useAgentsQuery } from "@/lib/queries/agents"
 import { requireJohnaicServerUrl } from "@/lib/johnaic-config"
 import { Separator } from "@/components/ui/separator"
@@ -289,6 +290,7 @@ interface AgentConfig {
   // Live translation only
   targetLanguages: string[]
   targetVoices: Record<string, string>
+  translationEngine: TranslationEngine
   publicShareEnabled: boolean
 }
 type AgentWithTelephony = Agent & {
@@ -336,6 +338,7 @@ const defaultConfig: AgentConfig = {
   telephonyProvider: "Plivo",
   targetLanguages: [],
   targetVoices: {},
+  translationEngine: "nmt",
   publicShareEnabled: true,
 }
 
@@ -660,13 +663,19 @@ export default function AssistantsPage() {
     [allLanguages]
   )
 
-  /** Selected listener languages the chosen TTS provider cannot actually speak. */
+  /** Selected listener languages the current setup can't serve: the chosen TTS
+   * provider can't speak them, or (NMT engine) the model can't translate them. */
   const unsupportedTargetLanguages = useMemo(() => {
-    if (!isTranslationMode || !config.ttsProvider) return []
-    return translationTargetLanguages.filter(
-      (lang) => !getIntersectedTTSProviders([lang]).has(config.ttsProvider)
-    )
-  }, [isTranslationMode, translationTargetLanguages, config.ttsProvider])
+    if (!isTranslationMode) return []
+    return translationTargetLanguages.filter((lang) => {
+      const ttsUnsupported = config.ttsProvider
+        ? !getIntersectedTTSProviders([lang]).has(config.ttsProvider)
+        : false
+      const nmtUnsupported =
+        config.translationEngine === "nmt" && !isNmtSupportedLanguage(lang)
+      return ttsUnsupported || nmtUnsupported
+    })
+  }, [isTranslationMode, translationTargetLanguages, config.ttsProvider, config.translationEngine])
 
   const toggleTargetLanguage = (code: string) => {
     setConfig((prev) => {
@@ -1192,7 +1201,10 @@ export default function AssistantsPage() {
             : config.interactionMode === "translation"
             ? {
                 interaction_mode: "translation",
-                system_prompt: config.systemPrompt,
+                translation_engine: config.translationEngine,
+                // NMT translates directly; the prompt only steers the LLM engine.
+                system_prompt:
+                  config.translationEngine === "nmt" ? "" : config.systemPrompt,
                 greeting_message: "",
                 // language/languages drive STT; source_language is the explicit
                 // presenter language the translation prompt is built from.
@@ -1807,8 +1819,9 @@ export default function AssistantsPage() {
                   </div>
                   )}
 
-                  {/* Agent Prompt */}
-                  {config.interactionMode !== "non_conversational" && (
+                  {/* Agent Prompt (hidden for NMT: the prompt has no effect there) */}
+                  {config.interactionMode !== "non_conversational" &&
+                    !(isTranslationMode && config.translationEngine === "nmt") && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="text-base font-bold text-slate-900">
@@ -2105,6 +2118,53 @@ export default function AssistantsPage() {
             {currentStepKey === "audio" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
                 <div className="space-y-8">
+                  {/* Translation engine */}
+                  {isTranslationMode && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Translation engine
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {(
+                          [
+                            {
+                              value: "nmt" as TranslationEngine,
+                              title: "NMT (on-prem)",
+                              desc: "Fast, direct translation across 23 Indic languages. No LLM key needed.",
+                            },
+                            {
+                              value: "llm" as TranslationEngine,
+                              title: "LLM",
+                              desc: "Context-aware, follows your guidance prompt. Requires an OpenAI key.",
+                            },
+                          ]
+                        ).map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => updateConfig("translationEngine", opt.value)}
+                            className={`text-left rounded-lg border px-4 py-3 transition-colors ${
+                              config.translationEngine === opt.value
+                                ? "border-slate-900 bg-slate-900/5 ring-1 ring-slate-900"
+                                : "border-slate-200 hover:border-slate-300"
+                            }`}
+                          >
+                            <div className="text-sm font-semibold text-slate-900">{opt.title}</div>
+                            <div className="text-xs text-slate-500 mt-0.5">{opt.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                      {config.translationEngine === "nmt" &&
+                        primaryLanguage &&
+                        !isNmtSupportedLanguage(primaryLanguage) && (
+                          <p className="mt-2 text-sm text-amber-600">
+                            The NMT engine does not support {displayLanguageName(primaryLanguage)} as
+                            the presenter language. Pick a supported language or switch to the LLM
+                            engine.
+                          </p>
+                        )}
+                    </div>
+                  )}
                   {/* Language Selection */}
                   {isTranslationMode && (
                     <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
