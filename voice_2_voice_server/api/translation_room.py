@@ -346,6 +346,12 @@ class LangWorker:
             if voice:
                 tts_config["speaker"] = voice
                 tts_config["voice_id"] = voice
+                # create_tts_service checks args["speaker"] before the top-level
+                # key, so override it there too or the presenter's default voice
+                # (stored in args by the backend) shadows the per-language one.
+                if "args" in tts_config and isinstance(tts_config["args"], dict):
+                    tts_config["args"] = dict(tts_config["args"])
+                    tts_config["args"]["speaker"] = voice
             # Own an aiohttp session so create_tts_service can hand back an HTTP TTS
             # variant whose run_tts yields audio for our direct drain (the streaming
             # services push audio out-of-band and don't fit). Created here, on the
