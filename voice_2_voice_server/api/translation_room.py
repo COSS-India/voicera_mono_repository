@@ -109,6 +109,16 @@ VAD_STOP_SECS = float(os.getenv("TRANSLATION_VAD_STOP_SECS", "0.4"))
 # this queue is what decouples the two stages; bounded so a slow TTS backend
 # back-pressures translation instead of buffering the whole talk.
 MAX_SENTENCE_BACKLOG = 8
+# Fetched (synthesised) audio waiting to be paced out to listeners. Decouples
+# TTS synthesis from real-time delivery (see LangWorker._run_synth /
+# _run_deliver): without this, sentence N+1's TTS round-trip cannot start until
+# sentence N has *finished playing* (real-time pacing means that alone takes as
+# long as the sentence's own audio), so the TTS latency of every sentence stacks
+# on top of every other sentence's playback time and a continuously-talking
+# presenter builds an ever-growing backlog. Small on purpose: this only needs to
+# hide TTS round-trip time behind playback time, not buffer the whole talk --
+# MAX_SENTENCE_BACKLOG upstream is still what absorbs a slow patch.
+AUDIO_PREFETCH_DEPTH = 2
 # A stalled TTS provider must not mute a language for the rest of the broadcast.
 # This is an *inactivity* limit (time since the last audio frame), not a
 # total-duration limit, so a legitimately long sentence is never cut short. The
@@ -345,10 +355,14 @@ class LangWorker:
         self._synth_queue: "asyncio.Queue[tuple[str, _SegmentTiming]]" = asyncio.Queue(
             maxsize=MAX_SENTENCE_BACKLOG
         )
+        self._audio_queue: "asyncio.Queue[tuple[bytes, _SegmentTiming]]" = asyncio.Queue(
+            maxsize=AUDIO_PREFETCH_DEPTH
+        )
         self._tts: Optional[Any] = None
         self._http_session: Optional[Any] = None
         self._consumer_task: Optional[asyncio.Task] = None
         self._synth_task: Optional[asyncio.Task] = None
+        self._deliver_task: Optional[asyncio.Task] = None
         self._resampler = create_stream_resampler()
         self._slot_acquired = False
         self._start_time = 0.0
@@ -433,6 +447,7 @@ class LangWorker:
             )
             self._consumer_task = asyncio.create_task(self._consume())
             self._synth_task = asyncio.create_task(self._run_synth())
+            self._deliver_task = asyncio.create_task(self._run_deliver())
             logger.info(f"translation[{self.language}]: worker started")
             return True
         except ServiceCreationError as e:
@@ -517,44 +532,52 @@ class LangWorker:
                     logger.info(f"translation[{self.language}]: {seg.summary()}")
 
     async def _run_synth(self) -> None:
-        """Synth stage: speak queued sentences in order, one at a time."""
+        """Fetch stage: synthesise queued sentences' audio, one at a time.
+
+        Deliberately does not pace or send anything -- that is the separate
+        deliver stage below, decoupled from this one by ``_audio_queue``. This is
+        what lets sentence N+1's TTS round-trip run *while* sentence N is still
+        being paced out to listeners, instead of only starting once N has
+        finished playing. See ``AUDIO_PREFETCH_DEPTH``.
+        """
         while True:
             sentence, seg = await self._synth_queue.get()
-            emitted = 0
+            pcm = b""
             try:
-                emitted = await self._synthesize(sentence, seg)
+                pcm, error = await self._synthesize(sentence)
+                if error and not pcm:
+                    seg.note_sentence_done(0)
+                    if seg.report_ready():
+                        logger.info(f"translation[{self.language}]: {seg.summary()}")
+                    continue
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.error(f"translation[{self.language}]: synthesis failed: {e}")
-            finally:
-                # Mark where this chunk's audio ends in the listener's own stream.
-                # A client that has fallen behind uses these to catch up between
-                # sentences instead of cutting itself off mid-word.
-                self.broadcast(json.dumps({"event": "audio_boundary"}))
-                seg.note_sentence_done(emitted)
+                seg.note_sentence_done(0)
                 if seg.report_ready():
                     logger.info(f"translation[{self.language}]: {seg.summary()}")
+                continue
+            await self._audio_queue.put((pcm, seg))
 
-    async def _synthesize(self, text: str, seg: Optional[_SegmentTiming] = None) -> int:
-        """Speak one chunk; returns the bytes fanned out.
+    async def _synthesize(self, text: str) -> "tuple[bytes, Optional[str]]":
+        """Fetch one chunk's audio; returns the resampled PCM.
 
-        Retries once, but only when the failure happened before any audio went
-        out: a provider that dies mid-chunk has already had part of the sentence
-        spoken, and re-running it would repeat that part. A provider that dies at
-        connect used to lose the chunk outright — the listener heard the sentence
-        simply missing from the middle of the talk.
+        Retries once on any failure: unlike the old combined fetch+send version,
+        fetching never sends anything to a listener, so a retry here can never
+        repeat audio someone already heard -- that risk only exists in the
+        deliver stage, which never retries.
         """
         for attempt in range(2):
-            emitted, error = await self._synthesize_once(text, seg)
+            pcm, error = await self._fetch_audio(text)
             if error is None:
-                return emitted
-            if emitted:
+                return pcm, None
+            if pcm:
                 logger.warning(
-                    f"translation[{self.language}]: TTS failed after {emitted} bytes "
+                    f"translation[{self.language}]: TTS failed after {len(pcm)} bytes "
                     f"({error}); chunk truncated"
                 )
-                return emitted
+                return pcm, None
             if attempt == 0:
                 logger.warning(
                     f"translation[{self.language}]: TTS failed before any audio "
@@ -563,29 +586,20 @@ class LangWorker:
                 await asyncio.sleep(0.2)
                 continue
             logger.error(f"translation[{self.language}]: TTS failed, chunk dropped: {error}")
-        return 0
+        return b"", error
 
-    async def _synthesize_once(
-        self, text: str, seg: Optional[_SegmentTiming] = None
-    ) -> "tuple[int, Optional[str]]":
-        """Stream TTS for one chunk, resampled to 16 kHz and paced into 20 ms frames.
+    async def _fetch_audio(self, text: str) -> "tuple[bytes, Optional[str]]":
+        """Run one TTS call and collect the resampled PCM (16 kHz).
 
-        The pacing sleep between sends is load-bearing, not cosmetic: an HTTP TTS
-        provider (Sarvam) hands back a whole sentence's audio in one response, so
-        without it every 20 ms chunk for a 10 s sentence gets pushed onto the
-        listener's queue and out over the socket in a single burst. The listener's
-        own catch-up logic then reads that burst as "10 s ahead of live" and cuts
-        nearly all of it, leaving only whatever chunk was scheduled last -- heard
-        as just the last word or two of every sentence. Sending at the frame's own
-        real-time rate keeps delivery looking like a live stream regardless of how
-        the provider returned the audio.
-
-        Returns ``(bytes_sent, error)``; ``error`` is None on a clean finish.
+        Returns ``(pcm, error)``; ``error`` is None on a clean finish. Collects
+        the whole reply before returning -- fine for the HTTP providers this
+        drain path actually uses today (one response = one full chunk of audio,
+        see ``sarvam_http_broadcast.py``); a genuinely streaming provider would
+        need this stage to hand off frames as they arrive instead.
         """
         if self._tts is None:
-            return 0, "no TTS service"
+            return b"", "no TTS service"
         buffer = bytearray()
-        emitted = 0
         error: Optional[str] = None
         gen = self._tts.run_tts(text)
         try:
@@ -617,16 +631,6 @@ class LangWorker:
                 if in_rate != LISTEN_SAMPLE_RATE:
                     pcm = await self._resampler.resample(pcm, in_rate, LISTEN_SAMPLE_RATE)
                 buffer.extend(pcm)
-                while len(buffer) >= LISTEN_CHUNK_BYTES:
-                    if seg is not None:
-                        seg.note_first_audio()
-                    self._send_audio(bytes(buffer[:LISTEN_CHUNK_BYTES]))
-                    emitted += LISTEN_CHUNK_BYTES
-                    del buffer[:LISTEN_CHUNK_BYTES]
-                    # Real-time pacing, not just real-time-sized chunks (see
-                    # docstring): without this sleep the loop drains as fast as
-                    # the event loop allows.
-                    await asyncio.sleep(LISTEN_FRAME_MS / 1000)
         finally:
             # Release the provider's socket/session even when we abandoned the
             # generator on a stall.
@@ -634,12 +638,63 @@ class LangWorker:
                 await gen.aclose()
             except Exception:
                 pass
+        return bytes(buffer), error
+
+    async def _run_deliver(self) -> None:
+        """Deliver stage: pace fetched audio out to listeners, one sentence at a
+        time, in order. See ``_run_synth`` for why this is a separate stage from
+        synthesis.
+        """
+        while True:
+            pcm, seg = await self._audio_queue.get()
+            emitted = 0
+            try:
+                emitted = await self._deliver_audio(pcm, seg)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"translation[{self.language}]: delivery failed: {e}")
+            finally:
+                # Mark where this chunk's audio ends in the listener's own stream.
+                # A client that has fallen behind uses these to catch up between
+                # sentences instead of cutting itself off mid-word.
+                self.broadcast(json.dumps({"event": "audio_boundary"}))
+                seg.note_sentence_done(emitted)
+                if seg.report_ready():
+                    logger.info(f"translation[{self.language}]: {seg.summary()}")
+
+    async def _deliver_audio(self, pcm: bytes, seg: Optional[_SegmentTiming] = None) -> int:
+        """Send ``pcm`` to listeners in real time, 20 ms at a time.
+
+        The pacing sleep between sends is load-bearing, not cosmetic: an HTTP TTS
+        provider (Sarvam) hands back a whole sentence's audio in one response, so
+        without it every 20 ms chunk for a 10 s sentence gets pushed onto the
+        listener's queue and out over the socket in a single burst. The listener's
+        own catch-up logic then reads that burst as "10 s ahead of live" and cuts
+        nearly all of it, leaving only whatever chunk was scheduled last -- heard
+        as just the last word or two of every sentence. Sending at the frame's own
+        real-time rate keeps delivery looking like a live stream regardless of how
+        the provider returned the audio.
+
+        Returns the number of bytes sent.
+        """
+        emitted = 0
+        buffer = bytearray(pcm)
+        while len(buffer) >= LISTEN_CHUNK_BYTES:
+            if seg is not None:
+                seg.note_first_audio()
+            self._send_audio(bytes(buffer[:LISTEN_CHUNK_BYTES]))
+            emitted += LISTEN_CHUNK_BYTES
+            del buffer[:LISTEN_CHUNK_BYTES]
+            # Real-time pacing, not just real-time-sized chunks (see docstring):
+            # without this sleep the loop drains as fast as the event loop allows.
+            await asyncio.sleep(LISTEN_FRAME_MS / 1000)
         if buffer:
             if seg is not None:
                 seg.note_first_audio()
             self._send_audio(bytes(buffer))
             emitted += len(buffer)
-        return emitted, error
+        return emitted
 
     def _send_audio(self, pcm: bytes) -> None:
         self.broadcast(
@@ -669,7 +724,7 @@ class LangWorker:
             listener.enqueue(message)
 
     async def stop(self) -> None:
-        for task in (self._consumer_task, self._synth_task):
+        for task in (self._consumer_task, self._synth_task, self._deliver_task):
             if task is not None:
                 task.cancel()
                 try:
@@ -678,6 +733,7 @@ class LangWorker:
                     pass
         self._consumer_task = None
         self._synth_task = None
+        self._deliver_task = None
         if self._tts is not None:
             # Mirror the pipeline shutdown we bypassed at start: stop() closes the
             # Sarvam socket and cancels its receive/keepalive tasks; cleanup() tears
