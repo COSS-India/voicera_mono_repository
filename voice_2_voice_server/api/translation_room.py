@@ -380,6 +380,21 @@ class LangWorker:
                 if "args" in tts_config and isinstance(tts_config["args"], dict):
                     tts_config["args"] = dict(tts_config["args"])
                     tts_config["args"]["speaker"] = voice
+            else:
+                # No per-language voice configured (it's optional). Don't let the
+                # agent's base/primary voice leak through as every listener
+                # language's speaker -- it's picked for the presenter's own
+                # language and provider, and may not even be a valid speaker for
+                # this provider/language (e.g. an AI4Bharat-style display name
+                # like "Kavitha" isn't in Sarvam's roster, which wants
+                # lowercase "kavitha"). Clear it so create_tts_service falls back
+                # to its own provider-correct default instead of failing every
+                # segment on an invalid inherited speaker.
+                tts_config.pop("speaker", None)
+                tts_config.pop("voice_id", None)
+                if "args" in tts_config and isinstance(tts_config["args"], dict):
+                    tts_config["args"] = dict(tts_config["args"])
+                    tts_config["args"].pop("speaker", None)
             # Own an aiohttp session so create_tts_service can hand back an HTTP TTS
             # variant whose run_tts yields audio for our direct drain (the streaming
             # services push audio out-of-band and don't fit). Created here, on the
