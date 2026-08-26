@@ -259,7 +259,19 @@ export default function LiveTranslationPage({ params }: LiveTranslationPageProps
     // drop everything queued past that point (otherwise the new frames would
     // play *on top* of it and the listener hears a doubled voice).
     if (playbackTimeRef.current - now > MAX_LEAD_SECS) {
+      const lead = playbackTimeRef.current - now
       const cutAt = chooseCutTime(now)
+      const droppedSecs = playbackTimeRef.current - cutAt
+      const droppedFrames = Array.from(scheduledSourcesRef.current).filter(
+        (f) => f.startAt >= cutAt - 1e-6,
+      ).length
+      // TEMP DIAGNOSTIC: confirm/measure the catch-up cut believed responsible
+      // for "last sentence never plays" reports. Remove once confirmed.
+      console.warn(
+        `[translate] catch-up cut fired: lead=${lead.toFixed(2)}s now=${now.toFixed(2)} ` +
+          `playbackTimeRef=${playbackTimeRef.current.toFixed(2)} cutAt=${cutAt.toFixed(2)} ` +
+          `dropping ~${droppedSecs.toFixed(2)}s across ${droppedFrames} scheduled frame(s)`,
+      )
       dropQueuedFrom(cutAt)
       playbackTimeRef.current = cutAt
     }
