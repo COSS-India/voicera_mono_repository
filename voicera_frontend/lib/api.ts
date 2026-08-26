@@ -208,26 +208,25 @@ export async function updateAgent(agentId: string, agentData: CreateAgentRequest
 }
 
 /**
- * Delete an agent
+ * Delete an agent by agent_type (display name).
  */
 export async function deleteAgent(
-  agentId: string,
-  options?: { agentType?: string }
+  agentType: string
 ): Promise<{ status: string; message: string }> {
-  const trimmedAgentType = options?.agentType?.trim() || ""
-  const hasAgentType = trimmedAgentType.length > 0
-  const response = hasAgentType
-    ? await fetchApiRoute(`/api/agents?agent_type=${encodeURIComponent(trimmedAgentType)}`, {
-        method: "DELETE",
-      })
-    : await fetchApiRoute(`/api/agents/${encodeURIComponent(agentId)}`, {
-        method: "DELETE",
-      })
-  
+  const trimmedAgentType = agentType.trim()
+  if (!trimmedAgentType) {
+    throw new Error("Agent type is required")
+  }
+
+  const response = await fetchApiRoute(
+    `/api/agents?agent_type=${encodeURIComponent(trimmedAgentType)}`,
+    { method: "DELETE" }
+  )
+
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response, "Failed to delete agent"))
   }
-  
+
   return response.json()
 }
 
@@ -365,10 +364,11 @@ export interface Agent {
   org_id: string
   agent_type: string
   agent_id: string
+  agent_category?: string
   agent_config: AgentConfig
   created_at: string
   updated_at: string
-  telephony_provider: string
+  telephony_provider?: string
   phone_number?: string
   vobiz_app_id?: string
   vobiz_answer_url?: string
@@ -482,6 +482,7 @@ export interface MeetingsPageParams {
   from_number?: string
   to_number?: string
   inbound?: boolean
+  call_type?: string
   call_status?: string
   date_from?: string
   date_to?: string
@@ -513,6 +514,7 @@ function buildMeetingsQueryString(params: MeetingsPageParams): string {
   if (params.from_number) q.set("from_number", params.from_number)
   if (params.to_number) q.set("to_number", params.to_number)
   if (params.inbound !== undefined) q.set("inbound", String(params.inbound))
+  if (params.call_type) q.set("call_type", params.call_type)
   if (params.call_status) q.set("call_status", params.call_status)
   if (params.date_from) q.set("date_from", params.date_from)
   if (params.date_to) q.set("date_to", params.date_to)
@@ -855,6 +857,7 @@ export interface Meeting {
   agent_category?: string
   agent_config?: Record<string, any>
   inbound?: boolean
+  call_type?: string
   from_number?: string
   to_number?: string
   created_at?: string
@@ -1609,9 +1612,9 @@ export async function deleteMember(email: string, orgId: string): Promise<{ stat
 }
 
 /**
- * Transfer organization ownership to another member (owner only)
+ * Promote a member to organization owner (owner only). Caller remains an owner.
  */
-export async function transferOwnership(
+export async function promoteToOwner(
   email: string,
   orgId: string
 ): Promise<{ status: string; message: string }> {
@@ -1625,10 +1628,18 @@ export async function transferOwnership(
 
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.detail || error.error || "Failed to transfer ownership")
+    throw new Error(error.detail || error.error || "Failed to promote member to owner")
   }
 
   return response.json()
+}
+
+/** @deprecated Use promoteToOwner */
+export async function transferOwnership(
+  email: string,
+  orgId: string
+): Promise<{ status: string; message: string }> {
+  return promoteToOwner(email, orgId)
 }
 
 /**

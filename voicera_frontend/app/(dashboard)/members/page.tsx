@@ -21,7 +21,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react"
-import { getOrgId, getOrgMembers, deleteMember, transferOwnership, getCurrentUser, getStoredEmail, Member, User } from "@/lib/api"
+import { getOrgId, getOrgMembers, deleteMember, promoteToOwner, getCurrentUser, getStoredEmail, Member, User } from "@/lib/api"
 import { MemberCard } from "@/components/members/member-card"
 
 /** Generate a UUID v4; uses crypto.randomUUID when available, else a fallback. */
@@ -170,17 +170,17 @@ export default function MembersPage() {
     }
   }
 
-  const handleTransferOwnership = async (member: Member) => {
+  const handlePromoteToOwner = async (member: Member) => {
     const orgId = getOrgId()
     if (!orgId) return
 
     try {
       setTransferringMember(member.email)
-      await transferOwnership(member.email, orgId)
+      await promoteToOwner(member.email, orgId)
       await fetchData()
     } catch (error) {
-      console.error("Error transferring ownership:", error)
-      alert(error instanceof Error ? error.message : "Failed to transfer ownership")
+      console.error("Error promoting to owner:", error)
+      alert(error instanceof Error ? error.message : "Failed to promote member to owner")
     } finally {
       setTransferringMember(null)
     }
@@ -264,7 +264,7 @@ export default function MembersPage() {
                   isDeleting={deletingMember === member.email}
                   isTransferring={transferringMember === member.email}
                   onDelete={openDeleteModal}
-                  onTransferOwnership={handleTransferOwnership}
+                  onTransferOwnership={handlePromoteToOwner}
                 />
               ))}
             </div>

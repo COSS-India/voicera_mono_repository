@@ -64,6 +64,9 @@ async def submit_call_recording(
             "call_duration": call_duration,
             "end_time_utc": end_time_utc,
         }
+
+        if str(call_sid).startswith("browser-"):
+            payload["call_type"] = "web"
         
         if not omit_recording_url:
             payload["recording_url"] = recording_url or f"minio://recordings/{call_sid}.wav"

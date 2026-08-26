@@ -18,12 +18,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardPortal,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card"
-import {
   PhoneCall,
   Monitor,
   Clock,
@@ -33,6 +27,7 @@ import {
   Loader2,
 } from "lucide-react"
 import type { Agent } from "@/lib/api"
+import { isWebSocketAgent } from "@/lib/agent-delivery"
 import { cn } from "@/lib/utils"
 
 interface AgentCardProps {
@@ -64,9 +59,7 @@ export function AgentCard({
   const displayName = getAgentDisplayName(agent)
   const description = getAgentDescription(agent)
   const isAlertAgent = agent.agent_config?.interaction_mode === "non_conversational"
-  const fullPromptText = isAlertAgent
-    ? (agent.agent_config?.greeting_message ?? "").trim()
-    : (agent.agent_config?.system_prompt ?? "").trim()
+  const isWebSocket = isWebSocketAgent(agent)
 
   const isConnected = Boolean(agent?.phone_number)
   // Any agent can place outbound test calls: orgs without their own Vobiz
@@ -119,75 +112,6 @@ export function AgentCard({
         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
       </svg>
     </div>
-  )
-
-  const hoverZone = (
-    <>
-      <div>
-        <div className="flex flex-wrap items-start gap-2">
-          <h3 className="text-[17px] font-medium leading-snug text-slate-900 break-words">
-            {displayName}
-          </h3>
-          {isAlertAgent && (
-            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-              Alert
-            </span>
-          )}
-        </div>
-        <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-slate-500">
-          {description}
-        </p>
-      </div>
-
-      <div className="mt-4">
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium"
-          style={{
-            backgroundColor: isConnected ? "#EAF3DE" : "#FCEBEB",
-            color: isConnected ? "#3B6D11" : "#A32D2D",
-          }}
-          onClick={(e) => {
-            e.stopPropagation()
-            window.location.assign("/numbers")
-          }}
-          title="Manage numbers"
-        >
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ backgroundColor: isConnected ? "#3B6D11" : "#A32D2D" }}
-          />
-          {isConnected ? agent.phone_number : "Not linked"}
-        </button>
-        {callCount > 0 && (
-          <span className="ml-2 inline-flex h-8 items-center rounded-full bg-slate-100 px-2.5 text-[13px] font-medium text-slate-700">
-            {callCount.toLocaleString()} Calls
-          </span>
-        )}
-      </div>
-
-      <div className="my-4 border-t-[0.5px] border-slate-200" />
-    </>
-  )
-
-  const hoverZoneBody = fullPromptText ? (
-    <HoverCard openDelay={200} closeDelay={100}>
-      <HoverCardTrigger asChild>
-        <div className="mt-4 space-y-4 outline-none">{hoverZone}</div>
-      </HoverCardTrigger>
-      <HoverCardPortal>
-        <HoverCardContent side="top" className="max-w-md max-h-80 overflow-y-auto p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#5F5E5A]">
-            {isAlertAgent ? "Alert message" : "System prompt"}
-          </p>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
-            {fullPromptText}
-          </p>
-        </HoverCardContent>
-      </HoverCardPortal>
-    </HoverCard>
-  ) : (
-    <div className="mt-4 space-y-4">{hoverZone}</div>
   )
 
   return (
@@ -256,9 +180,67 @@ export function AgentCard({
         </div>
       </div>
 
-      {hoverZoneBody}
+      <div className="mt-4 space-y-4">
+        <div>
+          <div className="flex flex-wrap items-start gap-2">
+            <h3 className="text-[17px] font-medium leading-snug text-slate-900 break-words">
+              {displayName}
+            </h3>
+            {isAlertAgent && (
+              <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                Alert
+              </span>
+            )}
+            {isWebSocket && (
+              <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
+                WebSocket
+              </span>
+            )}
+          </div>
+          <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-slate-500">
+            {description}
+          </p>
+        </div>
 
-      <div className="grid grid-cols-2 gap-2">
+        <div className="mt-4">
+          {!isWebSocket && (
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium"
+              style={{
+                backgroundColor: isConnected ? "#EAF3DE" : "#FCEBEB",
+                color: isConnected ? "#3B6D11" : "#A32D2D",
+              }}
+              onClick={(e) => {
+                e.stopPropagation()
+                window.location.assign("/numbers")
+              }}
+              title="Manage numbers"
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: isConnected ? "#3B6D11" : "#A32D2D" }}
+              />
+              {isConnected ? agent.phone_number : "Not linked"}
+            </button>
+          )}
+          {callCount > 0 && (
+            <span
+              className={cn(
+                "inline-flex h-8 items-center rounded-full bg-slate-100 px-2.5 text-[13px] font-medium text-slate-700",
+                !isWebSocket && "ml-2"
+              )}
+            >
+              {callCount.toLocaleString()} Calls
+            </span>
+          )}
+        </div>
+
+        <div className="my-4 border-t-[0.5px] border-slate-200" />
+      </div>
+
+      <div className={cn("grid gap-2", isWebSocket ? "grid-cols-1" : "grid-cols-2")}>
+        {!isWebSocket && (
         <Button
           onClick={(e) => {
             e.stopPropagation()
@@ -287,6 +269,7 @@ export function AgentCard({
           <PhoneCall className="mr-1.5 h-3.5 w-3.5" />
           Test Call
         </Button>
+        )}
 
         <Button
           onClick={(e) => {
@@ -320,8 +303,10 @@ export function AgentCard({
           <DialogDescription className="pt-2">
             Are you sure you want to delete{" "}
             <span className="font-medium text-slate-700">&quot;{displayName}&quot;</span>?
-            This will remove the agent and unlink any attached phone number. This action cannot be
-            undone.
+            {isWebSocket
+              ? " This will remove the agent."
+              : " This will remove the agent and unlink any attached phone number."}{" "}
+            This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-1 w-full">

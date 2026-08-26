@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { CallTypeBadge } from "@/components/history/call-type-badge"
+import { resolveCallType } from "@/lib/call-type"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { type Meeting, type MeetingDetails } from "@/lib/api"
 import { displayCallPhoneNumber, maskPhoneLastDigits } from "@/lib/mask-phone"
@@ -23,8 +25,6 @@ import {
   Bot,
   User,
   Copy,
-  PhoneIncoming,
-  PhoneOutgoing,
   Loader2,
   Check,
   Hash,
@@ -40,61 +40,11 @@ import { getAuthToken } from "@/lib/api"
 import { useWavesurfer } from "@wavesurfer/react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Separator } from "@radix-ui/react-separator"
-
-/** Chrome built-in Translator / Language Detector (not in all TS libs yet). */
-type ChromeAvailability = "available" | "downloadable" | "downloading" | "unavailable"
-
-type ChromeTranslator = {
-  translate: (input: string) => Promise<string>
-  destroy?: () => void
-}
-
-type ChromeLanguageDetector = {
-  detect: (
-    input: string
-  ) => Promise<Array<{ detectedLanguage: string; confidence: number }>>
-  destroy?: () => void
-}
-
-type ChromeTranslatorCtor = {
-  availability: (options: {
-    sourceLanguage: string
-    targetLanguage: string
-  }) => Promise<ChromeAvailability>
-  create: (options: {
-    sourceLanguage: string
-    targetLanguage: string
-    monitor?: (m: {
-      addEventListener: (
-        type: "downloadprogress",
-        listener: (e: { loaded: number }) => void
-      ) => void
-    }) => void
-  }) => Promise<ChromeTranslator>
-}
-
-type ChromeLanguageDetectorCtor = {
-  availability: () => Promise<ChromeAvailability>
-  create: (options?: {
-    monitor?: (m: {
-      addEventListener: (
-        type: "downloadprogress",
-        listener: (e: { loaded: number }) => void
-      ) => void
-    }) => void
-  }) => Promise<ChromeLanguageDetector>
-}
-
-function getChromeTranslatorAPI(): ChromeTranslatorCtor | null {
-  const api = (globalThis as { Translator?: ChromeTranslatorCtor }).Translator
-  return api ?? null
-}
-
-function getChromeLanguageDetectorAPI(): ChromeLanguageDetectorCtor | null {
-  const api = (globalThis as { LanguageDetector?: ChromeLanguageDetectorCtor })
-    .LanguageDetector
-  return api ?? null
-}
+import {
+  detectTextLanguage,
+  getChromeTranslatorAPI,
+} from "@/lib/chrome-translation"
+import { agentLanguageToBcp47 } from "@/lib/greeting-message"
 
 interface MeetingDetailSheetProps {
   open: boolean
@@ -391,7 +341,6 @@ export function MeetingDetailSheet({
     }
 
     const TranslatorAPI = getChromeTranslatorAPI()
-    const LanguageDetectorAPI = getChromeLanguageDetectorAPI()
     if (!TranslatorAPI) {
       setTranslateError(
         "Translation is not available in this browser."
@@ -410,23 +359,10 @@ export function MeetingDetailSheet({
         .slice(0, 2000)
 
       let sourceLanguage = "auto"
-      if (LanguageDetectorAPI && sample.trim()) {
-        const detectorAvailability = await LanguageDetectorAPI.availability()
-        if (detectorAvailability !== "unavailable") {
-          const detector = await LanguageDetectorAPI.create({
-            monitor(m) {
-              m.addEventListener("downloadprogress", () => {})
-            },
-          })
-          try {
-            const detections = await detector.detect(sample)
-            const top = detections?.[0]
-            if (top?.detectedLanguage && top.detectedLanguage !== "und") {
-              sourceLanguage = top.detectedLanguage
-            }
-          } finally {
-            detector.destroy?.()
-          }
+      if (sample.trim()) {
+        const detected = await detectTextLanguage(sample)
+        if (detected?.language) {
+          sourceLanguage = detected.language
         }
       }
 
@@ -436,17 +372,8 @@ export function MeetingDetailSheet({
           (meeting as { language?: string } | null)?.language ||
             (meetingDetails as { language?: string } | null)?.language ||
             ""
-        ).toLowerCase()
-        const nameToCode: Record<string, string> = {
-          hindi: "hi",
-          marathi: "mr",
-          tamil: "ta",
-          telugu: "te",
-          kannada: "kn",
-          bengali: "bn",
-          english: "en",
-        }
-        sourceLanguage = nameToCode[langName] || "hi"
+        )
+        sourceLanguage = agentLanguageToBcp47(langName) || "hi"
       }
 
       if (sourceLanguage === "en") {
@@ -534,9 +461,18 @@ export function MeetingDetailSheet({
 
       const blob = await response.blob()
       const blobUrl = URL.createObjectURL(blob)
+      const contentType = response.headers.get("content-type") || blob.type
+      let extension = "wav"
+      if (contentType.includes("mpeg") || contentType.includes("mp3")) {
+        extension = "mp3"
+      } else if (contentType.includes("mp4") || contentType.includes("m4a")) {
+        extension = "m4a"
+      } else if (recordingUrl.includes(".mp3")) {
+        extension = "mp3"
+      }
       const link = document.createElement("a")
       link.href = blobUrl
-      link.download = `${meeting?.meeting_id || "recording"}.wav`
+      link.download = `${meeting?.meeting_id || "recording"}.${extension}`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -566,8 +502,14 @@ export function MeetingDetailSheet({
     URL.revokeObjectURL(url)
   }
 
-  const isInbound = meeting?.inbound ?? true
-  const customerNumber = isInbound ? meeting?.from_number : meeting?.to_number
+  const callType = meeting ? resolveCallType(meeting) : "outbound"
+  const isInbound = callType === "inbound"
+  const isWebCall = callType === "web"
+  const customerNumber = isWebCall
+    ? null
+    : isInbound
+      ? meeting?.from_number
+      : meeting?.to_number
 
   const agentName = useMemo(() => {
     return (
@@ -755,22 +697,7 @@ export function MeetingDetailSheet({
             {/* METADATA STRIP - Single row, scannable */}
             <div className="px-5 py-3 bg-white border-b border-slate-200 flex items-center gap-3 flex-wrap">
               <span className="text-xs text-slate-500">{formattedDate}</span>
-              <Badge 
-                variant="outline" 
-                className="bg-slate-100 text-slate-700 border-slate-200"
-              >
-                {meeting.inbound ? (
-                  <>
-                    <PhoneIncoming className="h-3 w-3" />
-                    <span>Inbound</span>
-                  </>
-                ) : (
-                  <>
-                    <PhoneOutgoing className="h-3 w-3" />
-                    <span>Outbound</span>
-                  </>
-                )}
-              </Badge>
+              <CallTypeBadge meeting={meeting} className="bg-transparent border border-slate-200" />
               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">
                 {meeting.call_busy ? "Busy" : (meeting.end_time_utc ? "Completed" : "In Progress")}
               </Badge>

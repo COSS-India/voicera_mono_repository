@@ -10,12 +10,15 @@ VoicEra ships as five containers orchestrated by `docker-compose.yml` at the rep
 
 | Container | Image / build context | Host port | Purpose |
 |-----------|----------------------|-----------|---------|
-| `voicera_mongodb` | `mongo:latest` | `27017` | Persistent store for tenants, agents, call logs |
+| `voicera_postgres` | `ghcr.io/ferretdb/postgres-documentdb:…` | (internal) | PostgreSQL + DocumentDB; backing store for FerretDB |
+| `voicera_ferretdb` | `ghcr.io/ferretdb/ferretdb:2.7.0` | `27017` | Mongo-compatible API (alias `mongodb` on the Compose network) |
 | `voicera_minio` | `minio/minio:latest` | `9000` (API), `9001` (console) | Object storage for recordings, transcripts, uploads |
 | `voicera_backend` | `./voicera_backend` | `8000` | FastAPI orchestrator |
 | `voicera_voice_server` | `./voice_2_voice_server` | `7860` | Pipecat voice pipeline and telephony webhooks |
 | `voicera_frontend` | `./voicera_frontend` | `3000` | Next.js dashboard |
 | `voicera_nginx` | `nginx:alpine` | `8080` | Optional local reverse proxy (dev convenience) |
+
+> **Database note:** The primary app datastore is **FerretDB** (not MongoDB Server). See [MongoDB → FerretDB migration](mongodb-to-ferretdb.md) for architecture, cutover details, backups, and rollback.
 
 Optional AI4Bharat speech containers expose `8001` (STT) and `8002` (TTS) when enabled. See [AI4Bharat STT](../../services/ai4bharat-stt.md) and [AI4Bharat TTS](../../services/ai4bharat-tts.md).
 

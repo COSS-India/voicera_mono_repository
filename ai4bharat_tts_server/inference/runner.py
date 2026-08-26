@@ -46,8 +46,8 @@ class ParlerTTSModelRunner:
             head_dim=head_dim,
             num_layers=num_layers,
             type="dense",
-            max_seq_len=768,
-            max_batch_size=80,
+            max_seq_len=768*3,
+            max_batch_size=24,
         )
         self.cross_attn_vmem = VirtualMemory(
             max_num_pages=1024,
@@ -56,8 +56,8 @@ class ParlerTTSModelRunner:
             head_dim=head_dim,
             num_layers=num_layers,
             type="dense",
-            max_seq_len=128,
-            max_batch_size=80,
+            max_seq_len=128*3,
+            max_batch_size=24,
         )
         self.topk_processor = transformers.TopKLogitsWarper(top_k=50)
         self.num_codebooks = self.model.config["decoder"]["num_codebooks"]

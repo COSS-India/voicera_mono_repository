@@ -5,8 +5,15 @@ import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
 import { getCurrentUser, createAgent, createVobizApplication, createPlivoApplication, deleteVobizApplication, deletePlivoApplication, deleteAgent, unlinkVobizNumber, unlinkPlivoNumber, fetchApiRoute, getIntegrations, getCustomLLMIntegrations, getKnowledgeDocuments, type User, type Agent, type CreateAgentRequest, type Integration, type CustomLLMIntegration, type KnowledgeDocument, type InteractionMode } from "@/lib/api"
+import { isValidAgentName, sanitizeAgentNameInput, slugifyAgentId, validateAgentName } from "@/lib/agent-name"
 import { agentsQueryKey, useAgentsQuery } from "@/lib/queries/agents"
 import { requireJohnaicServerUrl } from "@/lib/johnaic-config"
+import {
+  agentCategoryForProvider,
+  isTelephonyAgent,
+  isWebSocketAgent,
+  WEBSOCKET_PROVIDER,
+} from "@/lib/agent-delivery"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,6 +32,12 @@ import { AgentCard } from "@/components/assistants/agent-card"
 import { CreateNewAgentCard } from "@/components/assistants/create-new-agent-card"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { LanguageSelectionSection } from "@/components/assistants/language-selection-section"
+import { GreetingCommaBanner } from "@/components/assistants/greeting-comma-banner"
+import { GreetingTranslateSuggestion } from "@/components/assistants/greeting-translate-suggestion"
+import {
+  SpokenMessageInput,
+  SpokenMessageTextarea,
+} from "@/components/assistants/spoken-message-field"
 import {
   ChevronRight,
   ChevronLeft,
@@ -212,7 +225,7 @@ const WIZARD_STEP_META: Record<
   agent: { title: "Agent", subtitle: "Name & Prompt", icon: FileText },
   llm: { title: "LLM", subtitle: "Model Config", icon: Settings },
   audio: { title: "Audio", subtitle: "STT & TTS", icon: Volume2 },
-  telephony: { title: "Telephony", subtitle: "Select Provider", icon: Phone },
+  telephony: { title: "Delivery", subtitle: "Telephony or WebSocket", icon: Phone },
   call_mgmt: { title: "Call Management", subtitle: "Timeouts & Silence", icon: Timer },
   review: { title: "Review", subtitle: "Confirm", icon: CheckCircle2 },
 }
@@ -327,7 +340,7 @@ export default function AssistantsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [agentSortOrder, setAgentSortOrder] = useState<
     "newest" | "oldest" | "active-first" | "inactive-first"
-  >("newest")
+  >("active-first")
   const [config, setConfig] = useState<AgentConfig>(defaultConfig)
   const [view, setView] = useState<"list" | "create">("list")
   const [createStep, setCreateStep] = useState(1)
@@ -443,7 +456,10 @@ export default function AssistantsPage() {
 
   const sortedAgents = useMemo(() => {
     const copy = [...filteredAgents]
-    const isAgentActive = (agent: Agent) => Boolean(agent.phone_number?.trim())
+    const isAgentActive = (agent: Agent) => {
+      if (isWebSocketAgent(agent)) return true
+      return Boolean(agent.phone_number?.trim())
+    }
     /** Prefer created_at; fall back to updated_at for legacy rows without created_at. */
     const sortTime = (a: Agent) =>
       new Date(a.created_at || a.updated_at || 0).getTime()
@@ -735,7 +751,7 @@ export default function AssistantsPage() {
 
     try {
       // Step 1: Detach phone number if agent has one
-      if (agent.phone_number) {
+      if (isTelephonyAgent(agent) && agent.phone_number) {
         try {
           // If provider is Vobiz, unlink from Vobiz application first
           if (agent.telephony_provider === "Vobiz") {
@@ -763,7 +779,7 @@ export default function AssistantsPage() {
       }
 
       // Step 2: Delete Vobiz application if it exists
-      if (agent.telephony_provider === "Vobiz" && agent.vobiz_app_id) {
+      if (isTelephonyAgent(agent) && agent.telephony_provider === "Vobiz" && agent.vobiz_app_id) {
         try {
           await deleteVobizApplication(agent.vobiz_app_id)
         } catch (error) {
@@ -772,7 +788,7 @@ export default function AssistantsPage() {
         }
       }
       const telephonyAgent = agent as AgentWithTelephony
-      if (agent.telephony_provider === "Plivo" && telephonyAgent.plivo_app_id) {
+      if (isTelephonyAgent(agent) && agent.telephony_provider === "Plivo" && telephonyAgent.plivo_app_id) {
         try {
           await deletePlivoApplication(telephonyAgent.plivo_app_id)
         } catch (error) {
@@ -781,11 +797,10 @@ export default function AssistantsPage() {
       }
 
       // Step 3: Delete the agent
-      const agentId = agent.id || agent._id || agent.agent_type
-      if (!agentId) {
-        throw new Error("Agent ID is missing")
+      if (!agent.agent_type) {
+        throw new Error("Agent type is missing")
       }
-      await deleteAgent(agentId, { agentType: agent.agent_type })
+      await deleteAgent(agent.agent_type)
 
       await queryClient.invalidateQueries({
         queryKey: agentsQueryKey(user.org_id),
@@ -948,8 +963,14 @@ export default function AssistantsPage() {
     setIsCreatingAgent(true)
 
     try {
-      // Generate agent_id from agent_type: replace spaces with underscores and convert to lowercase
-      const agentId = config.name.replace(/\s+/g, '_').toLowerCase()
+      const trimmedName = config.name.trim()
+      const nameError = validateAgentName(trimmedName)
+      if (nameError) {
+        alert(nameError)
+        return
+      }
+
+      const agentId = slugifyAgentId(trimmedName)
 
       const languageFields = buildLanguageConfigFields(config.selectedLanguages)
 
@@ -1019,7 +1040,6 @@ export default function AssistantsPage() {
       let vobizAnswerUrl: string | undefined
       let plivoAppId: string | undefined
       let plivoAnswerUrl: string | undefined
-      
       if (config.telephonyProvider === "Vobiz") {
         vobizAnswerUrl = `${requireJohnaicServerUrl()}/answer?agent_id=${agentId}`
         console.log(" answer url", vobizAnswerUrl)
@@ -1045,26 +1065,28 @@ export default function AssistantsPage() {
 
       const agentData: CreateAgentRequest = {
         org_id: user.org_id,
-        agent_category: "voicera_telephony",
-        agent_type: config.name,
+        agent_category: agentCategoryForProvider(config.telephonyProvider),
+        agent_type: trimmedName,
         agent_id: agentId,
         agent_config:
           config.interactionMode === "non_conversational"
             ? {
                 interaction_mode: "non_conversational",
-                greeting_message: config.greetingMessage,
+                greeting_message: config.greetingMessage ?? "",
                 ...languageFields,
                 tts_model: ttsModel,
               }
             : {
                 interaction_mode: "conversational",
                 system_prompt: config.systemPrompt,
-                greeting_message: config.greetingMessage,
+                greeting_message: config.greetingMessage ?? "",
                 ignore_user_speech_before_greeting: config.ignoreUserSpeechBeforeGreeting,
                 interruption_min_words: config.interruptionMinWords,
                 user_silence_hangup_seconds: config.userSilenceHangupSeconds,
                 call_timeout_seconds: config.callTimeoutSeconds,
-                hold_messages: config.holdMessages.map((m) => m.trim()).filter(Boolean),
+                hold_messages: config.holdMessages
+                  .map((m) => m.trim())
+                  .filter(Boolean),
                 hold_message_timeout_seconds: config.holdMessageTimeoutSeconds,
                 user_online_detection_enabled: config.userOnlineDetectionEnabled,
                 user_online_detection_message: config.userOnlineDetectionMessage.trim(),
@@ -1134,9 +1156,9 @@ export default function AssistantsPage() {
         return config.interactionMode !== null
       case "agent":
         if (config.interactionMode === "non_conversational") {
-          return (config.name?.length ?? 0) > 0 && (config.greetingMessage?.trim().length ?? 0) > 0
+          return isValidAgentName(config.name) && (config.greetingMessage?.trim().length ?? 0) > 0
         }
-        return (config.name?.length ?? 0) > 0 && config.systemPrompt.length > 0
+        return isValidAgentName(config.name) && config.systemPrompt.length > 0
       case "llm":
         if (config.llmProvider === "kenpath") {
           return !!config.llmProvider
@@ -1378,7 +1400,7 @@ export default function AssistantsPage() {
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto sm:shrink-0">
           <span className="text-xs text-slate-500 shrink-0">Progress</span>
-          <div className="flex-1 sm:w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[5rem]">
+          <div className="flex-1 sm:w-32 h-1 bg-slate-200 rounded-full overflow-hidden min-w-[5rem]">
             <div
               className="h-full bg-slate-900 rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
@@ -1391,9 +1413,9 @@ export default function AssistantsPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Row - Progress Stepper */}
-        <aside className="bg-white border-b border-slate-100 p-3 sm:p-4">
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">Setup Progress</h3>
-          <div className="flex gap-2 overflow-x-auto pb-1 justify-center">
+        <aside className="bg-white border-b border-slate-100 p-2 sm:p-3">
+          <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 text-center">Setup Progress</h3>
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 justify-center">
             {activeWizardSteps.map((step) => {
               const Icon = step.icon
               const isActive = createStep === step.id
@@ -1405,7 +1427,7 @@ export default function AssistantsPage() {
                   key={step.id}
                   onClick={() => isAccessible && setCreateStep(step.id)}
                   disabled={!isAccessible}
-                  className={`shrink-0 min-w-[140px] sm:min-w-[160px] flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-all duration-150 ${
+                  className={`shrink-0 min-w-[128px] sm:min-w-[148px] flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-left transition-all duration-150 ${
                     isActive
                       ? "bg-slate-100"
                       : isAccessible
@@ -1414,7 +1436,7 @@ export default function AssistantsPage() {
                 }`}
               >
                 <div
-                  className={`h-8 w-8 rounded-md flex items-center justify-center transition-all duration-150 shrink-0 ${
+                  className={`h-7 w-7 rounded-md flex items-center justify-center transition-all duration-150 shrink-0 ${
                     isActive
                       ? "bg-slate-900 text-white"
                       : isCompleted
@@ -1422,20 +1444,20 @@ export default function AssistantsPage() {
                       : "bg-slate-100 text-slate-400"
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-3.5 w-3.5" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p
-                    className={`text-sm font-medium leading-tight truncate ${
+                    className={`text-[13px] font-medium leading-tight truncate ${
                       isActive ? "text-slate-900" : isCompleted ? "text-slate-700" : "text-slate-500"
                     }`}
                   >
                     {step.title}
                   </p>
-                  <p className="text-[11px] text-slate-400 truncate">{step.subtitle}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{step.subtitle}</p>
                 </div>
                 {isCompleted && (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
                 )}
               </button>
               )
@@ -1527,12 +1549,12 @@ export default function AssistantsPage() {
                     <label className="text-base font-bold text-slate-900">Agent Name</label>
                     <Input
                       value={config.name}
-                      onChange={(e) => updateConfig("name", e.target.value)}
+                      onChange={(e) => updateConfig("name", sanitizeAgentNameInput(e.target.value))}
                       placeholder="Enter agent name"
                       className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                     />
                     <p className="text-sm text-slate-500">
-                      Give your agent a unique name to identify it.
+                      Use letters, numbers, underscores, or hyphens only. No spaces.
                     </p>
                   </div>
 
@@ -1544,24 +1566,25 @@ export default function AssistantsPage() {
                         : "Agent Welcome Message"}
                     </label>
                     {config.interactionMode === "non_conversational" ? (
-                      <Textarea
-                        value={config.greetingMessage}
-                        onChange={(e) => updateConfig("greetingMessage", e.target.value)}
-                        placeholder="Your payment is due tomorrow. Please pay to avoid late fees."
+                      <SpokenMessageTextarea
+                        value={config.greetingMessage ?? ""}
+                        onChange={(value) => updateConfig("greetingMessage", value)}
+                        placeholder="Your payment is due tomorrow Please pay to avoid late fees"
                         className="min-h-[120px] rounded-lg border-slate-200 bg-white resize-none text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                     ) : (
-                      <Input
-                        value={config.greetingMessage}
-                        onChange={(e) => updateConfig("greetingMessage", e.target.value)}
+                      <SpokenMessageInput
+                        value={config.greetingMessage ?? ""}
+                        onChange={(value) => updateConfig("greetingMessage", value)}
                         placeholder="Hello"
                         className="h-12 rounded-lg border-slate-200 bg-white text-base focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                     )}
+                    <GreetingCommaBanner context="greeting" />
                     <p className="text-sm text-slate-500">
                       {config.interactionMode === "non_conversational"
                         ? "This message will be spoken on the call and the call will end when finished."
-                        : `This will be the initial message from the agent. You can use variables here using {"{variable_name}"}`}
+                        : "This will be the initial message from the agent."}
                     </p>
                     {config.interactionMode !== "non_conversational" && (
                     <div className="flex items-center justify-between gap-4 pt-2">
@@ -2237,42 +2260,41 @@ export default function AssistantsPage() {
               </div>
             )}
 
-            {/* Step 4: Telephony */}
+            {/* Step: Delivery */}
             {currentStepKey === "telephony" && (
               <div className="bg-white rounded-xl border border-slate-200 p-8">
-                <div className="space-y-8">
-                  {/* Telephony Provider Selection */}
-                  <div className="space-y-3">
-                    <label className="text-base font-bold text-slate-900">Select Telephone Provider</label>
-                    <Select 
-                      value={config.telephonyProvider} 
-                      onValueChange={(v) => updateConfig("telephonyProvider", v)}
-                    >
-                      <SelectTrigger className="h-12 rounded-lg border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-slate-400" />
-                          <SelectValue placeholder="Select telephone provider" />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent className="rounded-lg">
-                        <SelectItem value="none" className="py-3">
-                          <span className="font-medium">None</span>
-                        </SelectItem>
-                        <SelectItem value="Vobiz" className="py-3">
-                          <span className="font-medium">Vobiz</span>
-                        </SelectItem>
-                        <SelectItem value="Plivo" className="py-3">
-                          <span className="font-medium">Plivo</span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-sm text-slate-500">
-                      Choose the telephone provider for your agent calls.
-                    </p>
-                  </div>
+                <div className="space-y-3">
+                  <label className="text-base font-bold text-slate-900">Delivery Mode</label>
+                  <Select
+                    value={config.telephonyProvider}
+                    onValueChange={(v) => updateConfig("telephonyProvider", v)}
+                  >
+                    <SelectTrigger className="h-12 rounded-lg border-slate-200 bg-white text-base font-medium hover:bg-slate-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-slate-400" />
+                        <SelectValue placeholder="Select delivery mode" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="rounded-lg">
+                      <SelectItem value="Vobiz" className="py-3">
+                        <span className="font-medium">Vobiz</span>
+                      </SelectItem>
+                      <SelectItem value="Plivo" className="py-3">
+                        <span className="font-medium">Plivo</span>
+                      </SelectItem>
+                      <SelectItem value={WEBSOCKET_PROVIDER} className="py-3">
+                        <span className="font-medium">WebSocket</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-slate-500">
+                    {config.telephonyProvider === WEBSOCKET_PROVIDER
+                      ? "Browser test only — no phone provider or phone number required."
+                      : "Phone calls via the selected telephony provider."}
+                  </p>
                 </div>
 
-                <Button 
+                <Button
                   onClick={handleNextStep}
                   disabled={!canProceed()}
                   className="mt-8 h-11 px-6 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium gap-2 disabled:bg-slate-200 disabled:text-slate-400 transition-all"
@@ -2508,18 +2530,19 @@ export default function AssistantsPage() {
                       Played while waiting for a Kenpath LLM response. Leave empty to disable.
                       Messages rotate on each delay.
                     </p>
+                    <GreetingCommaBanner context="hold" />
 
                     <div className="space-y-3">
                       {config.holdMessages.map((message, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <Input
+                          <SpokenMessageInput
                             value={message}
-                            onChange={(e) => {
+                            onChange={(value) => {
                               const next = [...config.holdMessages]
-                              next[index] = e.target.value
+                              next[index] = value
                               updateConfig("holdMessages", next)
                             }}
-                            placeholder="e.g. Please wait, I am looking up the information"
+                            placeholder="e.g. Please wait I am looking up the information"
                             className="flex-1"
                           />
                           <Button
@@ -2624,6 +2647,14 @@ export default function AssistantsPage() {
                         </span>{" "}
                         {config.greetingMessage || "—"}
                       </p>
+                      <GreetingTranslateSuggestion
+                        greeting={config.greetingMessage ?? ""}
+                        primaryLanguage={primaryLanguage}
+                        onTranslated={(text) =>
+                          updateConfig("greetingMessage", text)
+                        }
+                        className="mb-2"
+                      />
                       {config.interactionMode !== "non_conversational" && (
                         <>
                           <p className="text-sm text-slate-600 mb-1">
@@ -2704,12 +2735,12 @@ export default function AssistantsPage() {
                     </button>
                   </div>
 
-                  {/* Telephony Settings */}
+                  {/* Delivery Settings */}
                   <div className="flex items-start justify-between p-4 border-b border-slate-200 hover:bg-slate-100/50 transition-colors">
                     <div>
-                      <p className="text-sm font-bold text-slate-900 mb-2">Telephony Provider</p>
+                      <p className="text-sm font-bold text-slate-900 mb-2">Delivery Mode</p>
                       <p className="text-sm font-medium text-slate-700">
-                        {config.telephonyProvider ? config.telephonyProvider.charAt(0).toUpperCase() + config.telephonyProvider.slice(1) : "—"}
+                        {config.telephonyProvider || "—"}
                       </p>
                     </div>
                     <button onClick={() => setCreateStep(getStepIdByKey("telephony"))} className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">

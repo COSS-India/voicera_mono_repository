@@ -35,7 +35,7 @@ import {
   Loader2,
   Phone,
 } from "lucide-react"
-import { getOrgId, getIntegrations, createIntegration, deleteIntegration, Integration, getCustomLLMIntegrations, createCustomLLMIntegration, updateCustomLLMIntegration, deleteCustomLLMIntegration, CustomLLMIntegration } from "@/lib/api"
+import { getOrgId, getCurrentUser, getIntegrations, createIntegration, deleteIntegration, Integration, getCustomLLMIntegrations, createCustomLLMIntegration, updateCustomLLMIntegration, deleteCustomLLMIntegration, CustomLLMIntegration } from "@/lib/api"
 
 /** Backend integration model names for Vobiz (stored in MongoDB Integrations collection). */
 const VOBIZ_AUTH_ID_MODEL = "VobizAuthId"
@@ -202,10 +202,23 @@ export default function IntegrationsPage() {
   
   // Loading state
   const [isLoading, setIsLoading] = useState(true)
+  const [canManageIntegrations, setCanManageIntegrations] = useState(false)
 
-  // Fetch integrations on mount
+  // Fetch user role and integrations on mount
   useEffect(() => {
-    fetchIntegrations()
+    const load = async () => {
+      try {
+        const user = await getCurrentUser()
+        const isOwner = user.is_owner === true
+        setCanManageIntegrations(isOwner)
+        await fetchIntegrations()
+      } catch (error) {
+        console.error("Error fetching current user:", error)
+        setCanManageIntegrations(false)
+        await fetchIntegrations()
+      }
+    }
+    void load()
   }, [])
 
   const fetchIntegrations = async () => {
@@ -282,6 +295,7 @@ export default function IntegrationsPage() {
 
   // Open connect modal (clear search so browser autocomplete doesn't fill it with login email)
   const openConnectModal = (provider: Provider) => {
+    if (!canManageIntegrations) return
     setSearchQuery("")
     setSelectedProvider(provider)
     setModalApiKey("")
@@ -290,6 +304,7 @@ export default function IntegrationsPage() {
 
   // Open manage modal for connected provider
   const openManageModal = (provider: Provider) => {
+    if (!canManageIntegrations) return
     setSelectedProvider(provider)
     setModalApiKey(MASKED_KEY_SENTINEL)
     setIsModalOpen(true)
@@ -351,6 +366,7 @@ export default function IntegrationsPage() {
   const isEditing = selectedProvider && connectedProviders[selectedProvider.id]
 
   const openTelephonyModal = (provider: "vobiz" | "plivo") => {
+    if (!canManageIntegrations) return
     setSearchQuery("")
     setTelephonyProviderModal(provider)
     const connected = provider === "vobiz" ? vobizConnected : plivoConnected
@@ -427,6 +443,7 @@ export default function IntegrationsPage() {
   }
 
   const openCustomLLMModal = (integration?: CustomLLMIntegration) => {
+    if (!canManageIntegrations) return
     setSearchQuery("")
     setEditingCustomLLM(integration ?? null)
     setModalCustomLLMName(integration?.name ?? "")
@@ -511,6 +528,13 @@ export default function IntegrationsPage() {
             Connect API providers to enable speech and language capabilities
           </p>
         </div>
+
+        {!isLoading && !canManageIntegrations && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Only organization owners can view or edit API credentials. You can see which
+            integrations are connected.
+          </div>
+        )}
 
         {/* Connected Integrations Section */}
         {isLoading ? (
@@ -636,16 +660,17 @@ export default function IntegrationsPage() {
                         </div>
                       </div>
 
-                      {/* Manage button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openManageModal(provider)}
-                        className="gap-1.5"
-                      >
-                        <Settings2 className="h-3.5 w-3.5" />
-                        Manage
-                      </Button>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openManageModal(provider)}
+                          className="gap-1.5"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                          Manage
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -661,15 +686,17 @@ export default function IntegrationsPage() {
               <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Custom LLM
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openCustomLLMModal()}
-                className="gap-1.5"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add Custom LLM
-              </Button>
+              {canManageIntegrations && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openCustomLLMModal()}
+                  className="gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Custom LLM
+                </Button>
+              )}
             </div>
             <Card>
               <CardContent className="p-0">
@@ -705,15 +732,17 @@ export default function IntegrationsPage() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openCustomLLMModal(integration)}
-                        className="gap-1.5 shrink-0"
-                      >
-                        <Settings2 className="h-3.5 w-3.5" />
-                        Manage
-                      </Button>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openCustomLLMModal(integration)}
+                          className="gap-1.5 shrink-0"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                          Manage
+                        </Button>
+                      )}
                     </div>
                   ))
                 )}
@@ -761,24 +790,26 @@ export default function IntegrationsPage() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openTelephonyModal(isVobiz ? "vobiz" : "plivo")}
-                        className="gap-1.5 shrink-0"
-                      >
-                        {connected ? (
-                          <>
-                            <Settings2 className="h-3.5 w-3.5" />
-                            Manage
-                          </>
-                        ) : (
-                          <>
-                            <Plus className="h-3.5 w-3.5" />
-                            Connect
-                          </>
-                        )}
-                      </Button>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openTelephonyModal(isVobiz ? "vobiz" : "plivo")}
+                          className="gap-1.5 shrink-0"
+                        >
+                          {connected ? (
+                            <>
+                              <Settings2 className="h-3.5 w-3.5" />
+                              Manage
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3.5 w-3.5" />
+                              Connect
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   )
                 })}
@@ -850,8 +881,8 @@ export default function IntegrationsPage() {
               {availableProviders.map((provider) => (
                 <Card
                   key={provider.id}
-                  className="group hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => openConnectModal(provider)}
+                  className={`group transition-shadow ${canManageIntegrations ? "hover:shadow-md cursor-pointer" : ""}`}
+                  onClick={canManageIntegrations ? () => openConnectModal(provider) : undefined}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-2">
@@ -875,19 +906,20 @@ export default function IntegrationsPage() {
                         </div>
                       </div>
 
-                      {/* Connect button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openConnectModal(provider)
-                        }}
-                      >
-                        <Plus className="h-3.5 w-3.5 mr-1" />
-                        Connect
-                      </Button>
+                      {canManageIntegrations && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openConnectModal(provider)
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Connect
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

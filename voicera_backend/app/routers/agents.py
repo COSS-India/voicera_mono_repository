@@ -199,43 +199,13 @@ async def update_agent_config(
     return result
 
 
-@router.delete("/{agent_type}", response_model=Dict[str, Any])
-async def delete_agent(
-    agent_type: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """
-    Delete an agent configuration (protected endpoint).
-    """
-    agent = agent_service.fetch_agent_config_for_org(agent_type, current_user["org_id"])
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent type not found"
-        )
-    
-    if agent.get("org_id") != current_user["org_id"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete this agent"
-        )
-    
-    result = agent_service.delete_agent(agent_type, current_user["org_id"])
-    if result["status"] == "fail":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result["message"]
-        )
-    return result
-
-
 @router.delete("", response_model=Dict[str, Any])
-async def delete_agent_by_query(
+async def delete_agent(
     agent_type: str = Query(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Delete an agent configuration by query param (safe for '/' in agent_type).
+    Delete an agent configuration by query param.
     """
     normalized_agent_type = agent_type.strip()
     if not normalized_agent_type:

@@ -41,6 +41,7 @@
 ## Deployment guides
 
 * [Docker Compose](guides/deployment/docker-compose.md)
+* [MongoDB → FerretDB migration](guides/deployment/mongodb-to-ferretdb.md)
 * [Production deployment](guides/deployment/production.md)
 * [Deployment walkthrough](guides/deployment/deployment-walkthrough.md)
 * [Public voice URLs](guides/deployment/public-voice-urls.md)

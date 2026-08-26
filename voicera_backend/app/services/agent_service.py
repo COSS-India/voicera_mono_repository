@@ -3,6 +3,7 @@ Agent service for handling agent-related database operations.
 """
 import json
 import logging
+import re
 import string
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,19 @@ from app.models.schemas import AgentConfigCreate, AgentConfigUpdate
 logger = logging.getLogger(__name__)
 
 VALID_INTERACTION_MODES = {"conversational", "non_conversational"}
+_AGENT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+_AGENT_NAME_ERROR = (
+    "Agent name may only contain letters, numbers, underscores, and hyphens (no spaces)"
+)
+
+
+def _validate_agent_type_name(agent_type: str) -> Optional[str]:
+    normalized = (agent_type or "").strip()
+    if not normalized:
+        return "Agent name cannot be empty"
+    if not _AGENT_NAME_PATTERN.match(normalized):
+        return _AGENT_NAME_ERROR
+    return None
 
 # Pre-configured agents, seeded once per org from app/config/default_agents.json.
 # Platform .env credential fallback on the voice server is now available to all
@@ -231,9 +245,14 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
         db = get_database()
         agent_table = db["AgentConfig"]
 
+        agent_type = (agent_data.agent_type or "").strip()
+        name_error = _validate_agent_type_name(agent_type)
+        if name_error:
+            return {"status": "fail", "message": name_error}
+
         # Check if agent_type already exists for this organization
         existing_agent = agent_table.find_one({
-            "agent_type": agent_data.agent_type,
+            "agent_type": agent_type,
             "org_id": agent_data.org_id
         })
         if existing_agent:
@@ -256,7 +275,7 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
 
         now_iso = datetime.now().isoformat()
         agent_doc = {
-            "agent_type": agent_data.agent_type,
+            "agent_type": agent_type,
             "agent_id": agent_data.agent_id,
             "agent_config": agent_config,
             "org_id": agent_data.org_id,
@@ -266,6 +285,14 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
 
         if agent_data.agent_category:
             agent_doc["agent_category"] = agent_data.agent_category
+        provider = (agent_data.telephony_provider or "").strip()
+        category = (agent_data.agent_category or "").strip()
+        is_websocket = provider == "WebSocket" or category == "voicera_websocket"
+        if not is_websocket and category == "voicera_telephony" and provider not in ("Vobiz", "Plivo"):
+            return {
+                "status": "fail",
+                "message": "Telephony provider must be Vobiz or Plivo for telephony agents",
+            }
         if agent_data.phone_number:
             agent_doc["phone_number"] = agent_data.phone_number
         if agent_data.app_id:
@@ -288,7 +315,7 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
             agent_doc["plivo_answer_url"] = agent_data.plivo_answer_url
 
         agent_table.insert_one(agent_doc)
-        logger.info(f"Agent created successfully: {agent_data.agent_type}")
+        logger.info(f"Agent created successfully: {agent_type}")
         return {"status": "success", "message": "Agent type created successfully"}
 
     except Exception as e:
@@ -389,8 +416,9 @@ def update_agent_config(agent_type: str, agent_data: AgentConfigUpdate, org_id: 
             return {"status": "fail", "message": "Agent type not found"}
 
         target_agent_type = (agent_data.agent_type or agent_type).strip()
-        if not target_agent_type:
-            return {"status": "fail", "message": "Agent type cannot be empty"}
+        name_error = _validate_agent_type_name(target_agent_type)
+        if name_error:
+            return {"status": "fail", "message": name_error}
 
         if target_agent_type != agent_type:
             duplicate = agent_table.find_one({"agent_type": target_agent_type, "org_id": org_id})

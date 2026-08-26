@@ -4,6 +4,7 @@ Call recording service for handling call recording-related database operations.
 from typing import Optional, Dict, Any
 from app.database import get_database
 from app.models.schemas import CallRecordingCreate
+from app.utils.call_type import is_browser_meeting_id, normalize_call_type
 from app.utils.mongo_utils import prepare_mongo_response
 import logging
 from datetime import datetime
@@ -51,6 +52,18 @@ def save_call_recording(recording_data: CallRecordingCreate) -> Dict[str, Any]:
 
         if recording_data.latency_metrics:
             update_doc["latency_metrics"] = recording_data.latency_metrics
+
+        resolved_call_type = normalize_call_type(recording_data.call_type)
+        if not resolved_call_type and is_browser_meeting_id(recording_data.call_sid):
+            resolved_call_type = "web"
+        if resolved_call_type:
+            update_doc["call_type"] = resolved_call_type
+            if resolved_call_type == "web":
+                update_doc["inbound"] = False
+            elif resolved_call_type == "inbound":
+                update_doc["inbound"] = True
+            elif resolved_call_type == "outbound":
+                update_doc["inbound"] = False
 
         # Update or insert meeting record
         # Use call_sid as meeting_id for lookup

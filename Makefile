@@ -2,26 +2,26 @@
 
 # Build all services
 build-all-services:
-	docker compose build mongodb backend minio frontend voice_server
+	docker compose build backend minio frontend voice_server
 
-# Build all services
+# Start all services (postgres+ferretdb pulled/started with up)
 start-all-services:
-	docker compose up -d mongodb backend minio frontend voice_server
+	docker compose up -d postgres ferretdb backend minio frontend voice_server
 
-# Build all services
+# Stop all services
 stop-all-services:
-	docker compose down mongodb backend minio frontend voice_server
+	docker compose down postgres ferretdb backend minio frontend voice_server
 
 build-backend-services:
-	docker compose build mongodb backend minio
+	docker compose build backend minio
 
 # Start services except voice_server (detached)
 start-backend-services:
-	docker compose up -d mongodb backend minio  
+	docker compose up -d postgres ferretdb backend minio
 
 # Stop services except voice_server
 stop-backend-services:
-	docker compose stop mongodb backend minio  
+	docker compose stop postgres ferretdb backend minio
 
 start-voice-only-services:
 	bash -c "(cd ai4bharat_stt_server && source venv/bin/activate && python server.py) & (cd ai4bharat_tts_server && source venv/bin/activate && python server.py) & (cd voice_2_voice_server && source venv/bin/activate && python main.py) & wait"
@@ -47,6 +47,12 @@ stop-dev:
 	$(MAKE) stop-backend-services
 	$(MAKE) stop-all-ports
 
+# MongoDB → FerretDB migration helpers
+dump-mongo:
+	./scripts/migrate_mongo_to_ferretdb.sh dump
 
-#podman compose up -d mongodb backend minio
-#podman compose stop mongodb backend minio
+migrate-to-ferretdb:
+	./scripts/migrate_mongo_to_ferretdb.sh cutover
+
+#podman compose up -d postgres ferretdb backend minio
+#podman compose stop postgres ferretdb backend minio

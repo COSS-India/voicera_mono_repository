@@ -41,6 +41,9 @@ services:
     env_file: ../../voicera_backend/.env
     environment:
       - MONGODB_HOST=mongodb
+      # This compose file runs real MongoDB (not FerretDB); mongo:7 requires
+      # authSource=admin for the root user regardless of what's in .env.
+      - MONGODB_AUTH_SOURCE=admin
     depends_on:
       mongodb: { condition: service_healthy }
       minio:   { condition: service_healthy }

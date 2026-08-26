@@ -82,7 +82,7 @@ async def transfer_ownership(
     transfer_data: TransferOwnership,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Transfer organization ownership to another member (owner only)."""
+    """Promote a member to organization owner (owner only). Caller remains an owner."""
     if current_user.get("org_id") != transfer_data.org_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

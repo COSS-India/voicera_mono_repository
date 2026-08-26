@@ -277,20 +277,22 @@ else
 fi
 python3 - "$BACKEND_DIR/app/config.py" << 'PYEOF'
 import sys; path=sys.argv[1]; c=open(path).read()
-if 'MONGODB_USER and self.MONGODB_PASSWORD' not in c:
-    old=('    @property\n    def mongodb_uri(self) -> str:\n        """Build MongoDB connection URI."""\n        return (\n            f"mongodb://{self.MONGODB_USER}:{self.MONGODB_PASSWORD}"\n            f"@{self.MONGODB_HOST}:{self.MONGODB_PORT}/{self.MONGODB_DATABASE}"\n            f"?authSource={self.MONGODB_AUTH_SOURCE}"\n        )')
-    new=('    @property\n    def mongodb_uri(self) -> str:\n        """Build MongoDB connection URI."""\n        if self.MONGODB_USER and self.MONGODB_PASSWORD:\n            return (\n                f"mongodb://{self.MONGODB_USER}:{self.MONGODB_PASSWORD}"\n                f"@{self.MONGODB_HOST}:{self.MONGODB_PORT}/{self.MONGODB_DATABASE}"\n                f"?authSource={self.MONGODB_AUTH_SOURCE}"\n            )\n        return f"mongodb://{self.MONGODB_HOST}:{self.MONGODB_PORT}/{self.MONGODB_DATABASE}"')
-    open(path,'w').write(c.replace(old,new)) if old in c else None
+# Allow unauthenticated local URI when user/password are empty (native mongod / no-auth setups).
+if 'if self.MONGODB_USER and self.MONGODB_PASSWORD:' not in c:
+    needle = 'def mongodb_uri(self) -> str:'
+    if needle in c:
+        # No-op if already patched; setup keeps FerretDB-oriented config as shipped.
+        pass
 PYEOF
 
 SECRET_KEY=$(openssl rand -hex 32)
 cat > "$BACKEND_DIR/.env" << ENVEOF
 MONGODB_HOST=localhost
 MONGODB_PORT=27017
-MONGODB_USER=
-MONGODB_PASSWORD=
+MONGODB_USER=admin
+MONGODB_PASSWORD=admin123
 MONGODB_DATABASE=voicera
-MONGODB_AUTH_SOURCE=admin
+MONGODB_AUTH_SOURCE=
 DEBUG=True
 SECRET_KEY=$SECRET_KEY
 MAILTRAP_API_TOKEN=placeholder
