@@ -67,6 +67,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { fetchApiRoute, getOrgId, getAgents, getVobizNumbers, getPlivoNumbers, linkVobizNumber, linkPlivoNumber, unlinkVobizNumber, unlinkPlivoNumber, type Agent } from "@/lib/api"
+import { isTelephonyAgent } from "@/lib/agent-delivery"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 
@@ -755,6 +756,7 @@ export default function NumbersPage() {
                         <CommandGroup>
                           {agents
                             .filter((agent) => {
+                              if (!isTelephonyAgent(agent)) return false
                               // Only show agents with telephony_provider matching the phone number's provider
                               if (!selectedPhoneNumber) return false
                               const agentProvider = (agent as AgentWithTelephony).telephony_provider

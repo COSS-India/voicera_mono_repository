@@ -68,6 +68,10 @@ from utils.language_switching import (
     setup_language_switching,
 )
 from utils.call_recording_utils import submit_call_recording
+from utils.plivo_recording import (
+    start_plivo_call_recording,
+    wait_and_download_plivo_recording,
+)
 from utils.vobiz_recording import start_vobiz_call_recording, wait_and_download_vobiz_recording
 from utils.metrics import CallMetricsObserver
 
@@ -501,7 +505,9 @@ async def bot(
     patch_immediate_first_chunk(transport)
     
     use_vobiz_native_recording = normalized_provider == "vobiz"
-    audiobuffer = None if use_vobiz_native_recording else AudioBufferProcessor()
+    use_plivo_native_recording = normalized_provider == "plivo"
+    use_native_recording = use_vobiz_native_recording or use_plivo_native_recording
+    audiobuffer = None if use_native_recording else AudioBufferProcessor()
 
     # Accumulate audio chunks and transcript lines in memory (deferred storage)
     call_data = {
@@ -510,6 +516,7 @@ async def bot(
         "audio_num_channels": None,
         "transcript_lines": [],
         "vobiz_recording_id": None,
+        "plivo_recording_id": None,
     }
 
     if audiobuffer is not None:
@@ -523,9 +530,8 @@ async def bot(
             logger.debug(f"Accumulated audio chunk: {len(audio)} bytes (total: {total_bytes} bytes)")
 
     on_client_connected_hook = None
+    org_id = agent_config.get("org_id")
     if use_vobiz_native_recording:
-        org_id = agent_config.get("org_id")
-
         async def start_vobiz_recording():
             if not org_id:
                 logger.warning(f"No org_id for Vobiz recording on call {call_sid}")
@@ -536,6 +542,17 @@ async def bot(
             call_data["vobiz_recording_id"] = recording_id
 
         on_client_connected_hook = start_vobiz_recording
+    elif use_plivo_native_recording:
+        async def start_plivo_recording():
+            if not org_id:
+                logger.warning(f"No org_id for Plivo recording on call {call_sid}")
+                return
+            recording_id = await start_plivo_call_recording(
+                call_sid, org_id, session_timeout
+            )
+            call_data["plivo_recording_id"] = recording_id
+
+        on_client_connected_hook = start_plivo_recording
     
     # Create transcript processor
     transcript = TranscriptProcessor()
@@ -572,7 +589,6 @@ async def bot(
         recording_url = None
         if use_vobiz_native_recording:
             recording_id = call_data.get("vobiz_recording_id")
-            org_id = agent_config.get("org_id")
             if recording_id and org_id:
                 try:
                     audio_bytes = await wait_and_download_vobiz_recording(
@@ -587,6 +603,24 @@ async def bot(
                     logger.error(f"Failed to ingest Vobiz recording for {call_sid}: {e}")
             else:
                 logger.warning(f"No Vobiz recording_id to fetch for {call_sid}")
+        elif use_plivo_native_recording:
+            recording_id = call_data.get("plivo_recording_id")
+            if org_id:
+                try:
+                    audio_bytes = await wait_and_download_plivo_recording(
+                        recording_id,
+                        org_id,
+                        call_uuid=call_sid,
+                    )
+                    if audio_bytes:
+                        await storage.save_recording_bytes(call_sid, audio_bytes, "mp3")
+                        recording_url = f"minio://recordings/{call_sid}.mp3"
+                    else:
+                        logger.warning(f"Plivo recording download failed for {call_sid}")
+                except Exception as e:
+                    logger.error(f"Failed to ingest Plivo recording for {call_sid}: {e}")
+            else:
+                logger.warning(f"No org_id for Plivo recording fetch on {call_sid}")
         elif call_data["audio_chunks"] and call_data["audio_sample_rate"] and call_data["audio_num_channels"]:
             try:
                 await storage.save_recording_from_chunks(
@@ -621,6 +655,6 @@ async def bot(
             call_start_time=call_start_time,
             latency_metrics=latency_metrics,
             recording_url=recording_url,
-            omit_recording_url=use_vobiz_native_recording and not recording_url,
+            omit_recording_url=use_native_recording and not recording_url,
         )
     return call_sid

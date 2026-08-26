@@ -99,14 +99,16 @@ def create_custom_llm_integration(
         return {"status": "fail", "message": f"Error creating custom LLM integration: {exc}"}
 
 
-def get_custom_llm_integration(org_id: str, custom_llm_id: str) -> Optional[Dict[str, Any]]:
+def get_custom_llm_integration(
+    org_id: str, custom_llm_id: str, *, mask_key: bool = False
+) -> Optional[Dict[str, Any]]:
     try:
         db = get_database()
         table = db[_COLLECTION]
         doc = table.find_one({"_id": _parse_object_id(custom_llm_id), "org_id": org_id})
         if not doc:
             return None
-        return _doc_to_response(doc)
+        return _doc_to_response(doc, mask_key=mask_key)
     except ValueError:
         return None
     except Exception as exc:
@@ -133,12 +135,14 @@ def get_custom_llm_integration_for_bot(
         return None
 
 
-def get_custom_llm_integrations_by_org(org_id: str) -> List[Dict[str, Any]]:
+def get_custom_llm_integrations_by_org(
+    org_id: str, *, mask_key: bool = False
+) -> List[Dict[str, Any]]:
     try:
         db = get_database()
         table = db[_COLLECTION]
         docs = list(table.find({"org_id": org_id}).sort("created_at", 1))
-        return [_doc_to_response(doc) for doc in docs]
+        return [_doc_to_response(doc, mask_key=mask_key) for doc in docs]
     except Exception as exc:
         logger.error("Error listing custom LLM integrations: %s", exc)
         return []

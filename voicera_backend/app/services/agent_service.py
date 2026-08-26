@@ -161,6 +161,14 @@ def create_agent(agent_data: AgentConfigCreate) -> Dict[str, Any]:
         
         if agent_data.agent_category:
             agent_doc["agent_category"] = agent_data.agent_category
+        provider = (agent_data.telephony_provider or "").strip()
+        category = (agent_data.agent_category or "").strip()
+        is_websocket = provider == "WebSocket" or category == "voicera_websocket"
+        if not is_websocket and category == "voicera_telephony" and provider not in ("Vobiz", "Plivo"):
+            return {
+                "status": "fail",
+                "message": "Telephony provider must be Vobiz or Plivo for telephony agents",
+            }
         if agent_data.phone_number:
             agent_doc["phone_number"] = agent_data.phone_number
         if agent_data.app_id:

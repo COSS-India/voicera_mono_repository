@@ -7,10 +7,25 @@ from app.models.schemas import (
     SuccessResponse, ErrorResponse
 )
 from app.services import integration_service
+from app.services.member_service import is_org_owner
 from app.auth import get_current_user, verify_api_key
 from typing import Dict, Any, List
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+
+def _require_org_owner(current_user: Dict[str, Any]) -> str:
+    org_id = current_user["org_id"]
+    if not is_org_owner(current_user["email"], org_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only organization owners can manage integration credentials",
+        )
+    return org_id
+
+
+def _mask_keys_for_user(current_user: Dict[str, Any]) -> bool:
+    return not is_org_owner(current_user["email"], current_user["org_id"])
 
 
 # ============================================================================
@@ -28,11 +43,13 @@ async def get_integration_for_bot(
     Requires X-API-Key header for authentication.
     Used by bot.py to retrieve API keys for LLM providers.
     """
-    integration = integration_service.get_integration(request.org_id, request.model)
+    integration = integration_service.get_integration_response(
+        request.org_id, request.model, mask_key=False
+    )
     if not integration:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Integration not found for model: {request.model}"
+            detail=f"Integration not found for model: {request.model}",
         )
     return integration
 
@@ -47,7 +64,7 @@ async def create_integration(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Create or update an integration (protected endpoint).
+    Create or update an integration (protected endpoint, owners only).
     
     Stores the API key encrypted in the database.
     If an integration for the same org_id and model already exists, it will be updated.
@@ -57,6 +74,8 @@ async def create_integration(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to create integrations for this organization"
         )
+
+    _require_org_owner(current_user)
     
     result = integration_service.create_integration(integration_data)
     if result["status"] == "fail":
@@ -75,10 +94,11 @@ async def get_integration(
     """
     Get integration by model for the current user's organization (protected endpoint).
     
-    Returns the decrypted API key.
+    Owners receive the full API key; members receive a masked value.
     """
     org_id = current_user["org_id"]
-    integration = integration_service.get_integration(org_id, model)
+    mask_key = _mask_keys_for_user(current_user)
+    integration = integration_service.get_integration_response(org_id, model, mask_key=mask_key)
     
     if not integration:
         raise HTTPException(
@@ -96,10 +116,11 @@ async def get_all_integrations(
     """
     Get all integrations for the current user's organization (protected endpoint).
     
-    Returns all integrations with decrypted API keys.
+    Owners receive decrypted API keys; members receive masked values.
     """
     org_id = current_user["org_id"]
-    integrations = integration_service.get_integrations_by_org(org_id)
+    mask_key = _mask_keys_for_user(current_user)
+    integrations = integration_service.get_integrations_by_org(org_id, mask_key=mask_key)
     return integrations
 
 
@@ -109,9 +130,9 @@ async def delete_integration(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Delete an integration by model (protected endpoint).
+    Delete an integration by model (protected endpoint, owners only).
     """
-    org_id = current_user["org_id"]
+    org_id = _require_org_owner(current_user)
     
     # Check if integration exists
     integration = integration_service.get_integration(org_id, model)

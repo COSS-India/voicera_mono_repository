@@ -49,6 +49,7 @@ import {
   type Agent,
   type Batch,
 } from "@/lib/api"
+import { isTelephonyAgent } from "@/lib/agent-delivery"
 import { AlertCircle, Loader2, Trash2, UploadCloud } from "lucide-react"
 
 const templateCsv = "contact_number,customer_name\n+911234567890,Test User"
@@ -214,6 +215,7 @@ const toIsoWithLocalOffset = (value: string): string | null => {
 
 export default function BatchesPage() {
   const [agents, setAgents] = useState<Agent[]>([])
+  const telephonyAgents = useMemo(() => agents.filter(isTelephonyAgent), [agents])
   const [batches, setBatches] = useState<Batch[]>([])
   const [userOrgId, setUserOrgId] = useState("")
   const [isLoadingAgents, setIsLoadingAgents] = useState(true)
@@ -268,8 +270,9 @@ export default function BatchesPage() {
 
         const agentsData = await getAgents(user.org_id)
         setAgents(agentsData)
-        if (agentsData.length > 0) {
-          setNewBatchAgentType(agentsData[0].agent_type)
+        const callableAgents = agentsData.filter(isTelephonyAgent)
+        if (callableAgents.length > 0) {
+          setNewBatchAgentType(callableAgents[0].agent_type)
         }
       } catch (error) {
         console.error("Failed to load batches page data:", error)
@@ -328,7 +331,7 @@ export default function BatchesPage() {
   const resetNewBatchState = useCallback(
     (agentTypeOverride?: string) => {
       setNewBatchName("")
-      setNewBatchAgentType(agentTypeOverride || agents[0]?.agent_type || "")
+      setNewBatchAgentType(agentTypeOverride || telephonyAgents[0]?.agent_type || "")
       setNewBatchConcurrency(DEFAULT_CONCURRENCY)
       setNewBatchScheduledAtLocal("")
       setNewBatchFile(null)
@@ -338,7 +341,7 @@ export default function BatchesPage() {
       setIsDragActive(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
     },
-    [agents]
+    [telephonyAgents]
   )
 
   const handleNewBatchDialogChange = (open: boolean) => {
@@ -450,8 +453,12 @@ export default function BatchesPage() {
       alert("Please select an agent before running this batch.")
       return
     }
-    const targetAgent = agents.find((agent) => agent.agent_type === agentType)
-    if (!targetAgent?.phone_number) {
+    const targetAgent = telephonyAgents.find((agent) => agent.agent_type === agentType)
+    if (!targetAgent) {
+      alert("Please select a telephony agent. WebSocket agents cannot run batch calls.")
+      return
+    }
+    if (!targetAgent.phone_number) {
       alert("Please attach a number to the selected agent before running batch calls.")
       return
     }
@@ -495,8 +502,12 @@ export default function BatchesPage() {
       alert("Please select an agent before scheduling this batch.")
       return
     }
-    const targetAgent = agents.find((agent) => agent.agent_type === agentType)
-    if (!targetAgent?.phone_number) {
+    const targetAgent = telephonyAgents.find((agent) => agent.agent_type === agentType)
+    if (!targetAgent) {
+      alert("Please select a telephony agent. WebSocket agents cannot run batch calls.")
+      return
+    }
+    if (!targetAgent.phone_number) {
       alert("Please attach a number to the selected agent before scheduling batch calls.")
       return
     }
@@ -555,7 +566,7 @@ export default function BatchesPage() {
 
   const openBatchControls = (batch: Batch) => {
     setSelectedBatch(batch)
-    setSelectedBatchAgentType(batch.agent_type || agents[0]?.agent_type || "")
+    setSelectedBatchAgentType(batch.agent_type || telephonyAgents[0]?.agent_type || "")
     setSelectedBatchConcurrency(String(batch.concurrency || 5))
     setSelectedBatchScheduledAtLocal(toScheduleInputValue(batch.scheduled_at_utc))
     setIsBatchControlsOpen(true)
@@ -636,10 +647,10 @@ export default function BatchesPage() {
             <Button
               type="button"
               onClick={() => {
-                resetNewBatchState(agents[0]?.agent_type || "")
+                resetNewBatchState(telephonyAgents[0]?.agent_type || "")
                 setIsNewBatchDialogOpen(true)
               }}
-              disabled={isLoadingAgents || agents.length === 0}
+              disabled={isLoadingAgents || telephonyAgents.length === 0}
             >
               New Batch
             </Button>
@@ -799,7 +810,7 @@ export default function BatchesPage() {
                       <SelectValue placeholder="Select an agent" />
                     </SelectTrigger>
                     <SelectContent>
-                      {agents.map((agent) => (
+                      {telephonyAgents.map((agent) => (
                         <SelectItem
                           key={`${agent.agent_type}:${agent.agent_id}`}
                           value={agent.agent_type}
@@ -967,12 +978,12 @@ export default function BatchesPage() {
                         <SelectValue placeholder="Select an agent" />
                       </SelectTrigger>
                       <SelectContent>
-                        {agents.length === 0 ? (
+                        {telephonyAgents.length === 0 ? (
                           <SelectItem value="no-agent" disabled>
-                            {isLoadingAgents ? "Loading..." : "No agents found"}
+                            {isLoadingAgents ? "Loading..." : "No telephony agents found"}
                           </SelectItem>
                         ) : (
-                          agents.map((agent) => (
+                          telephonyAgents.map((agent) => (
                             <SelectItem
                               key={`${agent.agent_type}:${agent.agent_id}`}
                               value={agent.agent_type}
@@ -1170,7 +1181,7 @@ export default function BatchesPage() {
                       <SelectValue placeholder="Select an agent" />
                     </SelectTrigger>
                     <SelectContent>
-                      {agents.map((agent) => (
+                      {telephonyAgents.map((agent) => (
                         <SelectItem
                           key={`${agent.agent_type}:${agent.agent_id}`}
                           value={agent.agent_type}

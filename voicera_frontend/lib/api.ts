@@ -364,10 +364,11 @@ export interface Agent {
   org_id: string
   agent_type: string
   agent_id: string
+  agent_category?: string
   agent_config: AgentConfig
   created_at: string
   updated_at: string
-  telephony_provider: string
+  telephony_provider?: string
   phone_number?: string
   vobiz_app_id?: string
   vobiz_answer_url?: string
@@ -1611,9 +1612,9 @@ export async function deleteMember(email: string, orgId: string): Promise<{ stat
 }
 
 /**
- * Transfer organization ownership to another member (owner only)
+ * Promote a member to organization owner (owner only). Caller remains an owner.
  */
-export async function transferOwnership(
+export async function promoteToOwner(
   email: string,
   orgId: string
 ): Promise<{ status: string; message: string }> {
@@ -1627,10 +1628,18 @@ export async function transferOwnership(
 
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.detail || error.error || "Failed to transfer ownership")
+    throw new Error(error.detail || error.error || "Failed to promote member to owner")
   }
 
   return response.json()
+}
+
+/** @deprecated Use promoteToOwner */
+export async function transferOwnership(
+  email: string,
+  orgId: string
+): Promise<{ status: string; message: string }> {
+  return promoteToOwner(email, orgId)
 }
 
 /**

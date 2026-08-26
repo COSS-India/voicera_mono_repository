@@ -1,3 +1,6 @@
+import type { Meeting } from "@/lib/api"
+import { resolveCallType } from "@/lib/call-type"
+
 /** Whether this from/to field should be masked for the given call direction. */
 export function shouldMaskCallPhone(
   inbound: boolean,
@@ -44,4 +47,15 @@ export function maskPhoneLastDigits(
     chars[digitIndicesFromEnd[k]!] = "*"
   }
   return chars.join("")
+}
+
+/** Mask from/to for CSV/PDF export — same rules as the history table. */
+export function exportMeetingPhoneNumber(
+  meeting: Pick<Meeting, "call_type" | "inbound" | "meeting_id" | "from_number" | "to_number">,
+  field: "from" | "to"
+): string {
+  const callType = resolveCallType(meeting)
+  const phone = field === "from" ? meeting.from_number : meeting.to_number
+  const isInbound = callType === "inbound"
+  return displayCallPhoneNumber(phone, isInbound, field)
 }
