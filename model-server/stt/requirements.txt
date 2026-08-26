@@ -1,14 +1,12 @@
+# Mirrors the packages setup.sh installed for the tmux deployment, which is the
+# combination known to work. torch/torchaudio are installed separately in the
+# Dockerfile from the CUDA 13 index and are deliberately absent here.
 fastapi
-pydantic
-torch
-numpy
 uvicorn
-transformers
-torchaudio 
-onnx 
-onnxruntime 
-onnxruntime-gpu
-pyarr
-dotenv
-
-loguru>=0.7.3
+pydantic
+numpy
+python-dotenv
+python-multipart
+onnxruntime-gpu>=1.24
+ml_dtypes>=0.5
+protobuf

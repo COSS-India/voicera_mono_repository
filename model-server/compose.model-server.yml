@@ -79,8 +79,10 @@ services:
     profiles: ["indic-conformer"]
     build:
       context: ./stt
-      args:
-        NEMO_REF: ${NEMO_REF:-nemo-v2}
+      additional_contexts:
+        # The AI4Bharat NeMo fork as a local checkout, same as prod does it.
+        # Default assumes ~/ai4bharat_nemo beside the repo; override in .env.
+        nemo: ${NEMO_CONTEXT_PATH:-../../ai4bharat_nemo}
     image: voicera/model-stt:indic-conformer
     container_name: voicera_model_stt
     restart: unless-stopped
