@@ -1051,7 +1051,12 @@ export async function getIntegrations(): Promise<Integration[]> {
  */
 export async function getSelfHostedProviders(): Promise<string[]> {
   try {
-    const response = await fetch(`${requireJohnaicServerUrl()}/providers/available`)
+    // ngrok's free tier answers browser requests with an HTML interstitial
+    // instead of the JSON body; this header opts out of it. Harmless on hosts
+    // that are not ngrok, which ignore the unknown header.
+    const response = await fetch(`${requireJohnaicServerUrl()}/providers/available`, {
+      headers: { "ngrok-skip-browser-warning": "true" },
+    })
     if (!response.ok) return []
     const data = await response.json()
     return Array.isArray(data.available) ? data.available : []
