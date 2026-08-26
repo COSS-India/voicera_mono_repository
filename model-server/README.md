@@ -76,8 +76,30 @@ the KV page allocator never handing one page to two calls.
 
 ## Current state
 
-Working, but **never run on a GPU**. The images have not been built. Until that
-happens this is a tested design, not a proven deployment.
+Verified on ace-h200 (26 Aug), running beside the prod and translate stacks:
+
+| | |
+|---|---|
+| Both models on GPU 1 | via the shared MPS daemon, ~12.3 GB |
+| TTS time-to-first-audio | 1.5 s cold, **~250 ms warm** |
+| Realtime factor | 0.69x |
+| Round trip | TTS speaks a sentence, STT transcribes it back word for word |
+| Effect on prod | none — `voicera-prod` stayed `running(11)` throughout |
+
+Not yet tested: a real call through `voice_2_voice_server`. That needs a second
+voice server pointed at the gateway via `MODEL_SERVER_URL`, plus an agent
+configured for `indic-conformer-stt` and `indic-parler-tts`.
+
+### Gotchas that cost us time
+
+- **`ai4bharat/indic-parler-tts` is a gated HuggingFace repo.** The Parler
+  checkpoint comes from elsewhere, but the tokenizer and T5 encoder do not.
+  Either supply a token with access, or read a cache that already has them
+  (what `HF_CACHE_VOLUME` + `HF_HUB_OFFLINE` do here).
+- **Weights are not in the repo.** `stt/models/IndicConformer.nemo` and
+  `tts/checkpoints/` are gitignored. Fetch or copy them before building.
+- **Build one image at a time on a tight disk.** Building both in parallel
+  doubles peak usage at the export stage, which is where it fails.
 
 The model containers publish nothing on the host, so this stack can run beside
 others without competing for ports. To reach a model directly for debugging, use
