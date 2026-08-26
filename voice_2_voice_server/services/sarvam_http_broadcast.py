@@ -18,6 +18,8 @@ pipecat's enum map has no Assamese entry.
 """
 
 import base64
+import io
+import wave
 from typing import AsyncGenerator
 
 from loguru import logger
@@ -77,14 +79,29 @@ class SarvamHttpBroadcastTTSService(SarvamHttpTTSService):
                 yield ErrorFrame(error="No audio data received")
                 return
 
-            audio_data = base64.b64decode(audios[0])
-            # Sarvam returns WAV; strip the 44-byte header so listeners get raw PCM.
-            if audio_data.startswith(b"RIFF"):
-                audio_data = audio_data[44:]
+            raw = base64.b64decode(audios[0])
+            # Sarvam returns WAV. Parse it properly instead of assuming a fixed
+            # 44-byte header and trusting the requested sample_rate: the model
+            # does not always honour the requested rate (observed: bulbul:v3
+            # returning audio at a higher native rate regardless of a 16kHz
+            # request), and a non-canonical WAV can carry extra chunks before
+            # `data`. Getting either wrong plays audio at the wrong pitch/speed
+            # and throws off every downstream duration/pacing calculation --
+            # this is what was making segments take ~1.5x longer than their
+            # text should and overrun the per-listener buffer.
+            try:
+                with wave.open(io.BytesIO(raw), "rb") as wav_file:
+                    actual_rate = wav_file.getframerate()
+                    audio_data = wav_file.readframes(wav_file.getnframes())
+            except wave.Error:
+                # Not a well-formed WAV (e.g. raw PCM already) -- fall back to
+                # what we asked for rather than drop the segment outright.
+                actual_rate = self.sample_rate
+                audio_data = raw[44:] if raw.startswith(b"RIFF") else raw
 
             yield TTSAudioRawFrame(
                 audio=audio_data,
-                sample_rate=self.sample_rate,
+                sample_rate=actual_rate,
                 num_channels=1,
             )
         except Exception as e:
