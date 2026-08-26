@@ -570,6 +570,16 @@ class LangWorker:
     ) -> "tuple[int, Optional[str]]":
         """Stream TTS for one chunk, resampled to 16 kHz and paced into 20 ms frames.
 
+        The pacing sleep between sends is load-bearing, not cosmetic: an HTTP TTS
+        provider (Sarvam) hands back a whole sentence's audio in one response, so
+        without it every 20 ms chunk for a 10 s sentence gets pushed onto the
+        listener's queue and out over the socket in a single burst. The listener's
+        own catch-up logic then reads that burst as "10 s ahead of live" and cuts
+        nearly all of it, leaving only whatever chunk was scheduled last -- heard
+        as just the last word or two of every sentence. Sending at the frame's own
+        real-time rate keeps delivery looking like a live stream regardless of how
+        the provider returned the audio.
+
         Returns ``(bytes_sent, error)``; ``error`` is None on a clean finish.
         """
         if self._tts is None:
@@ -613,6 +623,10 @@ class LangWorker:
                     self._send_audio(bytes(buffer[:LISTEN_CHUNK_BYTES]))
                     emitted += LISTEN_CHUNK_BYTES
                     del buffer[:LISTEN_CHUNK_BYTES]
+                    # Real-time pacing, not just real-time-sized chunks (see
+                    # docstring): without this sleep the loop drains as fast as
+                    # the event loop allows.
+                    await asyncio.sleep(LISTEN_FRAME_MS / 1000)
         finally:
             # Release the provider's socket/session even when we abandoned the
             # generator on a stall.
