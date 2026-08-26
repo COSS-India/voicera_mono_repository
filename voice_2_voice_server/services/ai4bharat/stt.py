@@ -125,16 +125,15 @@ class IndicConformerRESTSTTService(STTService):
 
         super().__init__(sample_rate=sample_rate, **kwargs)
 
-        server_url = os.getenv("INDIC_STT_SERVER_URL")
+        server_url = os.getenv("MODEL_SERVER_URL") or os.getenv("INDIC_STT_SERVER_URL")
         if not server_url:
-            raise ValueError("INDIC_STT_SERVER_URL environment variable not set")
+            raise ValueError("MODEL_SERVER_URL environment variable not set")
 
         base = server_url.rstrip("/")
         self._language_id = language_id
         self._bhili_endpoint = language_id == "bhb"
-        self._transcribe_url = (
-            f"{base}/transcribe/bhili" if self._bhili_endpoint else f"{base}/transcribe"
-        )
+        # bhb no longer picks a URL -- the server routes on the language field.
+        self._transcribe_url = f"{base}/v1/audio/transcriptions"
         self._sample_rate = sample_rate
         self._input_sample_rate = input_sample_rate or sample_rate
         self._audio_channels = audio_channels
@@ -193,10 +192,15 @@ class IndicConformerRESTSTTService(STTService):
             return ""
 
         try:
-            audio_b64 = base64.b64encode(audio_buffer).decode("utf-8")
+            form = aiohttp.FormData()
+            form.add_field(
+                "file", audio_buffer, filename="audio.pcm",
+                content_type="application/octet-stream",
+            )
+            form.add_field("language", self._language_id)
             async with self._session.post(
                 self._transcribe_url,
-                json={"audio_b64": audio_b64, "language_id": self._language_id},
+                data=form,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status == 200:

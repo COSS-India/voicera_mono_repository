@@ -1,0 +1,21 @@
+# Applies to the whole model-server tree.
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RET", "ARG"]
+
+[lint.flake8-bugbear]
+# FastAPI *requires* these in argument defaults -- it is the framework's idiom,
+# not the mutable-default bug B008 is looking for.
+extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Query", "fastapi.Depends", "fastapi.Body"]
+
+[lint.per-file-ignores]
+# Stubs exist to satisfy a signature and ignore the arguments. That is the point.
+"tests/stubs/**/*.py" = ["ARG001", "ARG002", "ARG004", "F401"]
+
+# The inference engine implements several interchangeable KV-cache backends
+# (VirtualMemoryPaged / SDPA / Dense / Compare). They share a signature, so each
+# necessarily ignores arguments the others use -- that is interface conformance,
+# not dead parameters.
+"tts/inference/**/*.py" = ["ARG001", "ARG002"]

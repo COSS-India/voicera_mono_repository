@@ -7,7 +7,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/PRANABraight/voicera_mono_repository/dev/setup.sh -o /tmp/setup.sh && bash /tmp/setup.sh
 #
 # Optional env vars:
-#   HF_TOKEN=xxx           (required for TTS — gated model)
+#   HF_TOKEN=xxx           (TTS only: the tokenizers and T5 encoder come from
+#                           HuggingFace at startup. The Parler checkpoint and the
+#                           STT model are fetched from elsewhere and need no token.)
 #   VOBIZ_AUTH_ID=xxx      (telephony)
 #   VOBIZ_AUTH_TOKEN=xxx   (telephony)
 #   ENABLE_STT=yes|no      (default: yes)
@@ -18,8 +20,8 @@
 # =============================================================================
 set -e
 
-NGROK_TOKEN="38n07ZPka4Ra3hBJBnu5w45AMGr_2frPwYhkYHXDsuEE9WF6Q"
-HF_TOKEN="${HF_TOKEN:-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}"
+NGROK_TOKEN="${NGROK_TOKEN:-}"
+HF_TOKEN="${HF_TOKEN:-}"
 ENABLE_STT="${ENABLE_STT:-yes}"
 ENABLE_TTS="${ENABLE_TTS:-yes}"
 ENABLE_LLM="${ENABLE_LLM:-none}"
@@ -64,6 +66,9 @@ read -r -p "  Enable STT? [yes/no, default: yes]: " _stt
 read -r -p "  Enable TTS? [yes/no, default: yes]: " _tts
 [ "$_tts" = "y" ] && _tts="yes"; [ "$_tts" = "n" ] && _tts="no"
 [ -n "$_tts" ] && ENABLE_TTS="$_tts"
+# The TTS server downloads its tokenizers and T5 encoder from HuggingFace on
+# first start. Nothing else here needs a token.
+[ "$ENABLE_TTS" = "yes" ] && [ -z "$HF_TOKEN" ] && ask "HuggingFace token (for TTS)" HF_TOKEN
 
 echo "  LLM: none | openai | grok | vllm"
 read -r -p "  LLM provider [default: none]: " _llm
@@ -167,7 +172,11 @@ sudo ln -sf "$PY312" /usr/local/bin/python3.12 2>/dev/null || true
 ok "Python 3.12: $PY312"
 
 # ngrok + cloudflared
-ngrok config add-authtoken "$NGROK_TOKEN" 2>/dev/null || true
+if [ -n "$NGROK_TOKEN" ]; then
+  ngrok config add-authtoken "$NGROK_TOKEN" 2>/dev/null || true
+else
+  echo "  ngrok: no NGROK_TOKEN set, skipping auth (tunnels will be anonymous)"
+fi
 if ! command -v ngrok &>/dev/null; then
   curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
   echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
@@ -202,23 +211,9 @@ ok "MongoDB running"
 
 # STT
 if [ "$ENABLE_STT" = "yes" ]; then
-  STT_DIR="$REPO_DIR/ai4bharat_stt_server"
-  [ -d "$STT_DIR/venv" ] || "$PY312" -m venv "$STT_DIR/venv"
-  if [ ! -d "$HOME/ai4bharat_nemo" ]; then
-    git clone --branch nemo-v2 --depth 1 https://github.com/AI4Bharat/NeMo.git "$HOME/ai4bharat_nemo"
-  fi
-  NEMO_EXP="$HOME/ai4bharat_nemo/nemo/utils/exp_manager.py"
-  grep -q "NeptuneLogger" "$NEMO_EXP" && \
-    sed -i 's/from pytorch_lightning.loggers import MLFlowLogger, NeptuneLogger, TensorBoardLogger, WandbLogger/from pytorch_lightning.loggers import MLFlowLogger, TensorBoardLogger, WandbLogger/' "$NEMO_EXP" && \
-    sed -i 's/^    if create_neptune_logger:/    if False and create_neptune_logger:/' "$NEMO_EXP" || true
-  grep -q "nemo_asr.models.ASRModel.restore_from" "$STT_DIR/server.py" && \
-    sed -i 's/nemo_asr.models.ASRModel.restore_from(/EncDecHybridRNNTCTCBPEModel.restore_from(/' "$STT_DIR/server.py" || true
-  if ! "$STT_DIR/venv/bin/python3" -c "import nemo" 2>/dev/null; then
-    "$STT_DIR/venv/bin/pip" install -q -e "$HOME/ai4bharat_nemo[asr]" 2>&1 | tail -2
-    "$STT_DIR/venv/bin/pip" install -q fastapi uvicorn pydantic torchaudio python-dotenv "onnxruntime-gpu>=1.24" "ml_dtypes>=0.5" --upgrade protobuf ml_dtypes 2>&1 | tail -2
-  else
-    ok "STT packages already installed"
-  fi
+  STT_DIR="$REPO_DIR/model-server/stt"
+  # NeMo, the fork patches and the Python env are built into stt/Dockerfile.
+  # Only the weights are fetched here; they reach the container via the bind mount.
   if [ ! -f "$STT_DIR/models/IndicConformer.nemo" ]; then
     mkdir -p "$STT_DIR/models"
     wget -q --show-progress "https://objectstore.e2enetworks.net/indicconformer/models/indicconformer_stt_multi_hybrid_rnnt_600m.nemo" -O "$STT_DIR/models/IndicConformer.nemo"
@@ -234,18 +229,14 @@ fi
 
 # TTS
 if [ "$ENABLE_TTS" = "yes" ]; then
-  TTS_DIR="$REPO_DIR/ai4bharat_tts_server"
-  [ -d "$TTS_DIR/venv" ] || "$PY312" -m venv "$TTS_DIR/venv"
-  if ! "$TTS_DIR/venv/bin/python3" -c "import flashinfer" 2>/dev/null; then
-    "$TTS_DIR/venv/bin/pip" install -q "flashinfer-python==0.6.7" "flashinfer-cubin==0.6.7" 2>&1 | tail -2
-    "$TTS_DIR/venv/bin/pip" install -q transformers sentencepiece protobuf scipy "websockets>=12.0" python-dotenv 2>&1 | tail -2
-  else
-    ok "TTS packages already installed"
-  fi
+  TTS_DIR="$REPO_DIR/model-server/tts"
+  # torch/flashinfer are built into tts/Dockerfile.
   if [ ! -f "$TTS_DIR/checkpoints/model_step_ref.pt" ]; then
-    "$TTS_DIR/venv/bin/pip" install -q gdown 2>&1 | tail -1
+    DL_VENV="$HOME/.voicera_downloader"
+    [ -d "$DL_VENV" ] || "$PY312" -m venv "$DL_VENV"
+    "$DL_VENV/bin/pip" install -q gdown 2>&1 | tail -1
     mkdir -p "$TTS_DIR/checkpoints"
-    "$TTS_DIR/venv/bin/python3" -m gdown --folder https://drive.google.com/drive/folders/1qrh56MWXboiBO38gaWEcWhFl0NzlDiaT -O "$TTS_DIR/checkpoints/" 2>&1 | tail -3
+    "$DL_VENV/bin/python3" -m gdown --folder https://drive.google.com/drive/folders/1qrh56MWXboiBO38gaWEcWhFl0NzlDiaT -O "$TTS_DIR/checkpoints/" 2>&1 | tail -3
     [ -d "$TTS_DIR/checkpoints/checkpoints" ] && mv "$TTS_DIR/checkpoints/checkpoints/"* "$TTS_DIR/checkpoints/" && rmdir "$TTS_DIR/checkpoints/checkpoints" 2>/dev/null || true
   fi
   cat > "$TTS_DIR/.env" << ENVEOF
@@ -255,6 +246,30 @@ PORT=8002
 HF_TOKEN=$HF_TOKEN
 ENVEOF
   ok "TTS ready"
+fi
+
+# Build the model images. STT/TTS/LLM run in containers now, not tmux venvs.
+MS_DIR="$REPO_DIR/model-server"
+[ -f "$MS_DIR/.env" ] || cp "$MS_DIR/.env.example" "$MS_DIR/.env"
+# The answers above choose the model for each slot. They are written into
+# model-server/.env, which is the single place both compose (which containers
+# to start) and the gateway (which slots exist) read from. If these disagree,
+# the gateway reports a slot as deployed that was never started.
+STT_SEL=""; TTS_SEL=""; LLM_SEL=""
+[ "$ENABLE_STT" = "yes" ]  && STT_SEL="indic-conformer"
+[ "$ENABLE_TTS" = "yes" ]  && TTS_SEL="indic-parler"
+[ "$ENABLE_LLM" = "vllm" ] && LLM_SEL="qwen3-8b"
+sed -i "s|^STT_MODEL=.*|STT_MODEL=$STT_SEL|; \
+        s|^TTS_MODEL=.*|TTS_MODEL=$TTS_SEL|; \
+        s|^LLM_MODEL=.*|LLM_MODEL=$LLM_SEL|" "$MS_DIR/.env"
+
+MODEL_PROFILES=$(echo "$STT_SEL,$TTS_SEL,$LLM_SEL" | sed "s/,,*/,/g; s/^,//; s/,$//")
+if [ -n "$MODEL_PROFILES" ]; then
+  log "Building model images (first build takes 20-40 min)"
+  # No COMPOSE_PROFILES here: it comes from .env, same as everything else.
+  docker compose -f "$MS_DIR/compose.model-server.yml" \
+    --project-directory "$MS_DIR" build
+  ok "Model images built: $MODEL_PROFILES"
 fi
 
 # V2V
@@ -323,8 +338,8 @@ cat > "$HOME/start_voicera.sh" << STARTEOF
 #!/bin/bash
 REPO_DIR="$REPO_DIR"
 BACKEND_DIR="$BACKEND_DIR"
-STT_DIR="$REPO_DIR/ai4bharat_stt_server"
-TTS_DIR="$REPO_DIR/ai4bharat_tts_server"
+STT_DIR="$REPO_DIR/model-server/stt"
+TTS_DIR="$REPO_DIR/model-server/tts"
 V2V_DIR="$REPO_DIR/voice_2_voice_server"
 HF_TOKEN="$HF_TOKEN"
 ls /dev/nvidia0 2>/dev/null || { sudo modprobe nvidia; sudo modprobe nvidia-uvm; }
@@ -334,19 +349,11 @@ tmux new-session -d -s voicera -n backend
 tmux send-keys -t voicera:backend "cd \$BACKEND_DIR && source venv/bin/activate && python3 run.py" Enter
 STARTEOF
 
-[ "$ENABLE_STT" = "yes" ] && cat >> "$HOME/start_voicera.sh" << STARTEOF
-tmux new-window -t voicera -n stt
-tmux send-keys -t voicera:stt 'cd $STT_DIR && source venv/bin/activate && python3 server.py' Enter
-STARTEOF
-
-[ "$ENABLE_TTS" = "yes" ] && cat >> "$HOME/start_voicera.sh" << STARTEOF
-tmux new-window -t voicera -n tts
-tmux send-keys -t voicera:tts 'cd $TTS_DIR && HUGGING_FACE_HUB_TOKEN=$HF_TOKEN source venv/bin/activate && python3 server.py --port 8002' Enter
-STARTEOF
-
-[ "$ENABLE_LLM" = "vllm" ] && cat >> "$HOME/start_voicera.sh" << STARTEOF
-tmux new-window -t voicera -n vllm
-tmux send-keys -t voicera:vllm 'source $REPO_DIR/llm_server/venv/bin/activate && vllm serve Qwen/Qwen3-8B --port 8003 --host 0.0.0.0 --enable-auto-tool-choice --tool-call-parser hermes' Enter
+# Models start as containers. Same ports as the tmux windows they replace,
+# so nothing downstream can tell the difference.
+[ -n "$MODEL_PROFILES" ] && cat >> "$HOME/start_voicera.sh" << STARTEOF
+docker compose -f $REPO_DIR/model-server/compose.model-server.yml \
+  --project-directory $REPO_DIR/model-server up -d
 STARTEOF
 
 cat >> "$HOME/start_voicera.sh" << 'STARTEOF'
@@ -389,8 +396,7 @@ MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 BHASHINI_API_KEY=PLACEHOLDER
 BHASHINI_SOCKET_URL=PLACEHOLDER
-AI4BHARAT_STT_URL=http://$PRIVATE_IP:8001
-AI4BHARAT_TTS_URL=ws://$PRIVATE_IP:8002
+MODEL_SERVER_URL=http://$PRIVATE_IP:8100
 OPENAI_API_KEY=$OPENAI_API_KEY
 XAI_API_KEY=$XAI_API_KEY
 ENVEOF

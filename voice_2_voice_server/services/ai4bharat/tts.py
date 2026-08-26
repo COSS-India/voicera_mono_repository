@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import uuid
 from typing import AsyncGenerator
 
 import aiohttp
@@ -57,10 +58,10 @@ class IndicParlerRESTTTSService(TTSService):
         **kwargs,
     ):
         super().__init__(sample_rate=sample_rate, **kwargs)
-        server_url = os.getenv("INDIC_TTS_SERVER_URL")
+        server_url = os.getenv("MODEL_SERVER_URL") or os.getenv("INDIC_TTS_SERVER_URL")
         if not server_url:
-            raise ValueError("INDIC_TTS_SERVER_URL environment variable not set")
-        self._ws_url = _ws_url(server_url)
+            raise ValueError("MODEL_SERVER_URL environment variable not set")
+        self._ws_url = _ws_url(server_url) + "/v1/audio/speech"
         self._speaker = speaker
         self._description = description
         self._language_id = language_id
@@ -118,8 +119,13 @@ class IndicParlerRESTTTSService(TTSService):
                 await ws.send_str(
                     json.dumps(
                         {
-                            "prompt": text,
-                            "description": self._description_for_server(),
+                            "type": "speech.create",
+                            "id": uuid.uuid4().hex[:8],
+                            "input": text,
+                            "voice": {
+                                "preset": self._speaker,
+                                "description": self._description,
+                            },
                             "language": self._language_id,
                         }
                     )
@@ -142,9 +148,9 @@ class IndicParlerRESTTTSService(TTSService):
                                 str(data.get("message", "TTS error"))
                             )
                             return
-                        if kind == "meta":
+                        if kind in ("meta", "speech.meta"):
                             out_rate = int(data.get("sample_rate", out_rate))
-                        elif kind == "done":
+                        elif kind in ("done", "speech.done"):
                             completed = True
                             break
                     elif msg.type == aiohttp.WSMsgType.BINARY:
@@ -189,4 +195,4 @@ class IndicParlerRESTTTSService(TTSService):
             yield ErrorFrame(f"TTS error: {e}")
         finally:
             if should_close and session:
-                await session.close()
+                await session.close()

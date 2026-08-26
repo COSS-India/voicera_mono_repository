@@ -1,0 +1,153 @@
+# VoicEra model-server
+#
+# `ports:` appears exactly ONCE in this file, on the gateway. The model
+# containers listen inside their own network namespace and are reachable only by
+# service name -- nothing binds to the host, so this stack sits beside the prod
+# and translate stacks without competing for ports.
+
+name: voicera-model-server
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ["${GPU_DEVICE_IDS:-1}"]
+            capabilities: [gpu]
+
+# GPU 1 runs in Exclusive Process mode behind an MPS daemon shared with the prod
+# workers. A container cannot claim the device directly -- it has to attach as an
+# MPS client: the host IPC namespace for the daemon's shared memory, raised
+# memlock/stack limits, and the pipe + log directories bind-mounted in. This
+# mirrors what deploy/compose/docker-compose.prod.yml already does successfully.
+x-mps: &mps
+  ipc: host
+  ulimits:
+    memlock: -1
+    stack: 67108864
+
+x-mps-env: &mps-env
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+  CUDA_MPS_PIPE_DIRECTORY: /tmp/nvidia-mps
+  CUDA_MPS_LOG_DIRECTORY: /tmp/nvidia-mps-log
+
+x-mps-pipe: &mps-pipe "/tmp/nvidia-mps-gpu1:/tmp/nvidia-mps"
+x-mps-log: &mps-log "/tmp/nvidia-mps-log-gpu1:/tmp/nvidia-mps-log"
+
+services:
+
+  # The single published entry point. Routes on modality, streams both HTTP and
+  # WebSocket without buffering, and holds no model-specific knowledge.
+  #
+  # No depends_on: with profiles, a slot may legitimately not be running. The
+  # gateway answers 503 naming the missing upstream instead of failing to start.
+  # No GPU or MPS either -- it is pure async I/O.
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    image: voicera/model-gateway:latest
+    container_name: voicera_model_gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8100}:8000"
+    environment:
+      # Optional overrides only. Unset means "use the compose service name",
+      # and a slot counts as deployed when its *_MODEL is named -- the same
+      # variable COMPOSE_PROFILES is built from, so the two cannot disagree.
+      STT_UPSTREAM: ${STT_UPSTREAM:-}
+      TTS_UPSTREAM: ${TTS_UPSTREAM:-}
+      LLM_UPSTREAM: ${LLM_UPSTREAM:-}
+      STT_MODEL: ${STT_MODEL:-}
+      TTS_MODEL: ${TTS_MODEL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+    volumes:
+      # Editing the catalogue takes effect on restart, no rebuild.
+      - ./models.yaml:/app/app/models.yaml:ro
+    networks: [model_net]
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/v1/models',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---- STT --------------------------------------------------------------
+  stt:
+    profiles: ["indic-conformer"]
+    build:
+      context: ./stt
+      args:
+        NEMO_REF: ${NEMO_REF:-nemo-v2}
+    image: voicera/model-stt:indic-conformer
+    container_name: voicera_model_stt
+    restart: unless-stopped
+    environment:
+      <<: *mps-env
+      PORT: 8001
+      INDIC_NEMO_PATH: ${INDIC_NEMO_PATH:-/app/models/IndicConformer.nemo}
+      BHILI_ENABLE: ${BHILI_ENABLE:-no}
+      BHILI_NEMO_PATH: ${BHILI_NEMO_PATH:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      # Source and weights both live here; setup.sh downloads
+      # IndicConformer.nemo into ./stt/models. Bind-mounting also means editing
+      # server.py does not need a rebuild.
+      - ./stt:/app
+      - *mps-pipe
+      - *mps-log
+    networks: [model_net]
+    <<: [*gpu, *mps]
+
+  # ---- TTS --------------------------------------------------------------
+  tts:
+    profiles: ["indic-parler"]
+    build:
+      context: ./tts
+    image: voicera/model-tts:indic-parler
+    container_name: voicera_model_tts
+    restart: unless-stopped
+    environment:
+      <<: *mps-env
+      CHECKPOINT_PATH_DEFAULT: /app/checkpoints
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ./tts:/app
+      - *mps-pipe
+      - *mps-log
+    networks: [model_net]
+    <<: [*gpu, *mps]
+
+  # ---- LLM (placeholder) ------------------------------------------------
+  # vLLM already speaks OpenAI spec, so this slot needs no adapter -- only a
+  # profile and a model name. Left out of COMPOSE_PROFILES by default.
+  llm:
+    profiles: ["qwen3-8b"]
+    build:
+      context: ./llm
+    image: voicera/model-llm:qwen3-8b
+    container_name: voicera_model_llm
+    restart: unless-stopped
+    environment:
+      <<: *mps-env
+      MODEL_ID: ${LLM_MODEL_ID:-Qwen/Qwen3-8B}
+      PORT: 8003
+      QUANTIZATION: ${VLLM_QUANTIZATION:-fp8}
+      MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-8192}
+      MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-20}
+      # Never the 0.9 default: several processes share this GPU through MPS,
+      # and MPS does not partition memory.
+      GPU_MEMORY_UTILIZATION: ${VLLM_GPU_MEMORY_UTILIZATION:-0.10}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ./models:/root/.cache/huggingface
+      - *mps-pipe
+      - *mps-log
+    networks: [model_net]
+    <<: [*gpu, *mps]
+
+networks:
+  model_net:
+    driver: bridge

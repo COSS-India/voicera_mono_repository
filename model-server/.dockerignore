@@ -1,0 +1,8 @@
+# Only the gateway builds from this directory as context.
+stt/
+tts/
+llm/
+tests/
+models/
+*.md
+.env

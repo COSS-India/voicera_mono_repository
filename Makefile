@@ -24,7 +24,7 @@ stop-backend-services:
 	docker compose stop postgres ferretdb backend minio
 
 start-voice-only-services:
-	bash -c "(cd ai4bharat_stt_server && source venv/bin/activate && python server.py) & (cd ai4bharat_tts_server && source venv/bin/activate && python server.py) & (cd voice_2_voice_server && source venv/bin/activate && python main.py) & wait"
+	bash -c "(cd model-server/stt && source venv/bin/activate && python server.py) & (cd model-server/tts && source venv/bin/activate && python server.py) & (cd voice_2_voice_server && source venv/bin/activate && python main.py) & wait"
 
 stop-all-ports:
 	-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
