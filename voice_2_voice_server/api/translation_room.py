@@ -35,6 +35,7 @@ from fastapi import WebSocket
 
 from pipecat.frames.frames import (
     AudioRawFrame,
+    CancelFrame,
     EndFrame,
     ErrorFrame,
     Frame,
@@ -158,9 +159,13 @@ class TranscriptCollector(FrameProcessor):
                 self._buffer.append(text)
         elif isinstance(frame, UserStoppedSpeakingFrame):
             await self._flush()
-        elif isinstance(frame, EndFrame):
-            # Don't drop a trailing fragment that never got a VAD stop signal
-            # (e.g. the presenter's broadcast ends mid-utterance).
+        elif isinstance(frame, (EndFrame, CancelFrame)):
+            # Don't drop a trailing fragment that never got a VAD stop signal.
+            # EndFrame covers a clean stop; CancelFrame is what actually flows
+            # here on presenter disconnect (PipelineTask.cancel() cancels, it
+            # doesn't end, the pipeline) -- without this branch the last
+            # buffered-but-unflushed fragment silently vanishes whenever the
+            # presenter drops mid-utterance instead of pausing cleanly.
             await self._flush()
         await self.push_frame(frame, direction)
 
