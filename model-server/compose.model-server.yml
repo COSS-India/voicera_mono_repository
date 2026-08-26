@@ -118,13 +118,15 @@ services:
       # encoder cannot be fetched without an authorised token. Instead we read a
       # cache another stack on this box already populated. Offline mode stops
       # HuggingFace making the gated check that would 401.
-      HF_HUB_OFFLINE: "1"
-      TRANSFORMERS_OFFLINE: "1"
+      # Offline is opt-in. Default 0 downloads with HF_TOKEN; set to 1 when
+      # pointing at a cache that already holds the gated files.
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-0}
+      TRANSFORMERS_OFFLINE: ${HF_HUB_OFFLINE:-0}
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
     volumes:
       - ./tts:/app
       # Read-only: this cache belongs to another stack and must not be written.
-      - hf_cache:/root/.cache/huggingface:ro
+      - hf_cache:/root/.cache/huggingface
       - *mps-pipe
       - *mps-log
     networks: [model_net]
@@ -159,12 +161,11 @@ services:
     <<: [*gpu, *mps]
 
 volumes:
-  # An existing volume, not one this stack creates. Override HF_CACHE_VOLUME to
-  # point elsewhere; or create your own and let the container download into it,
-  # which then needs HF_TOKEN plus access to the gated repo.
+  # Compose creates this and the container downloads into it, which needs
+  # HF_TOKEN with access to the gated ai4bharat/indic-parler-tts repo.
+  # To reuse a cache that already has those files, add the override:
+  #   docker compose -f compose.model-server.yml -f compose.shared-hf-cache.yml ...
   hf_cache:
-    external: true
-    name: ${HF_CACHE_VOLUME:-voicera-prod_hf_cache}
 
 networks:
   model_net:

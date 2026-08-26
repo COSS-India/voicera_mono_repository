@@ -212,8 +212,17 @@ ok "MongoDB running"
 # STT
 if [ "$ENABLE_STT" = "yes" ]; then
   STT_DIR="$REPO_DIR/model-server/stt"
-  # NeMo, the fork patches and the Python env are built into stt/Dockerfile.
-  # Only the weights are fetched here; they reach the container via the bind mount.
+  # The STT image installs the AI4Bharat NeMo fork from a local checkout rather
+  # than cloning inside the build -- same as prod. Fetch it here; the compose
+  # file passes it in via NEMO_CONTEXT_PATH.
+  NEMO_DIR="${NEMO_CONTEXT_PATH:-$HOME/ai4bharat_nemo}"
+  if [ ! -d "$NEMO_DIR" ]; then
+    git clone --branch nemo-v2 --depth 1 https://github.com/AI4Bharat/NeMo.git "$NEMO_DIR"
+    ok "NeMo fork cloned to $NEMO_DIR"
+  else
+    ok "NeMo fork already present at $NEMO_DIR"
+  fi
+  # Weights are fetched here too; they reach the container via the bind mount.
   if [ ! -f "$STT_DIR/models/IndicConformer.nemo" ]; then
     mkdir -p "$STT_DIR/models"
     wget -q --show-progress "https://objectstore.e2enetworks.net/indicconformer/models/indicconformer_stt_multi_hybrid_rnnt_600m.nemo" -O "$STT_DIR/models/IndicConformer.nemo"
@@ -264,6 +273,18 @@ sed -i "s|^STT_MODEL=.*|STT_MODEL=$STT_SEL|; \
         s|^LLM_MODEL=.*|LLM_MODEL=$LLM_SEL|" "$MS_DIR/.env"
 
 MODEL_PROFILES=$(echo "$STT_SEL,$TTS_SEL,$LLM_SEL" | sed "s/,,*/,/g; s/^,//; s/,$//")
+
+# The Parler tokenizer lives in a gated HuggingFace repo, so the TTS container
+# needs a token to download it on first start.
+sed -i "s|^HF_TOKEN=.*|HF_TOKEN=$HF_TOKEN|" "$MS_DIR/.env"
+if [ -n "$NEMO_DIR" ]; then
+  sed -i "s|^NEMO_CONTEXT_PATH=.*|NEMO_CONTEXT_PATH=$NEMO_DIR|" "$MS_DIR/.env"
+fi
+if [ "$ENABLE_TTS" = "yes" ] && [ -z "$HF_TOKEN" ]; then
+  echo "  WARNING: TTS is enabled but no HF_TOKEN was given. ai4bharat/indic-parler-tts"
+  echo "           is gated -- the container will fail to start. Either supply a token,"
+  echo "           or reuse an existing cache with compose.shared-hf-cache.yml."
+fi
 if [ -n "$MODEL_PROFILES" ]; then
   log "Building model images (first build takes 20-40 min)"
   # No COMPOSE_PROFILES here: it comes from .env, same as everything else.
@@ -369,7 +390,8 @@ tmux send-keys -t voicera:cloudflare 'cloudflared tunnel --url http://localhost:
 echo "  Waiting for services to start (up to 3 min)..."
 for i in $(seq 1 18); do
   sleep 10
-  STT_OK=$(curl -s http://localhost:8001/health 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print('yes' if d.get('main_loaded') else 'no')" 2>/dev/null)
+  # Models sit behind the gateway now; they publish no host ports of their own.
+  STT_OK=$(curl -s http://localhost:8100/health 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print('yes' if d.get('status')=='healthy' else 'no')" 2>/dev/null)
   V2V_OK=$(curl -s http://localhost:7860/health 2>/dev/null | python3 -c "import sys,json;print('yes' if json.load(sys.stdin).get('status')=='healthy' else 'no')" 2>/dev/null)
   API_OK=$(curl -s http://localhost:8000/health 2>/dev/null | python3 -c "import sys,json;print('yes' if json.load(sys.stdin).get('status')=='healthy' else 'no')" 2>/dev/null)
   [ "$STT_OK" = "yes" ] && [ "$V2V_OK" = "yes" ] && [ "$API_OK" = "yes" ] && break
@@ -446,9 +468,9 @@ NGROK_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null | python3 -c '
 [ -n "$NGROK_URL" ] && echo -e "[0m  V2V    (ngrok):  $NGROK_URL[0m"
 [ -n "$CF_URL"   ] && echo -e "[0m  App    (CF):     $CF_URL[0m"
 echo ""
-curl -s http://localhost:8001/health 2>/dev/null | python3 -c 'import sys,json;d=json.load(sys.stdin);s=d.get("status","?");m=d.get("main_loaded","?");print("  STT  : "+str(s)+" | model="+str(m))' 2>/dev/null || echo "  STT  : loading..."
+curl -s http://localhost:8100/health 2>/dev/null | python3 -c 'import sys,json;d=json.load(sys.stdin);u=d.get("upstreams",{});print("  MODELS: "+str(d.get("status","?"))+" | "+", ".join(f"{k}={(v.get("model") or "-")}" for k,v in u.items()))' 2>/dev/null || echo "  MODELS: loading..."
 curl -s http://localhost:7860/health 2>/dev/null | python3 -c 'import sys,json;d=json.load(sys.stdin);print("  V2V  : "+str(d.get("status","?")))' 2>/dev/null || echo "  V2V  : loading..."
 curl -s http://localhost:8000/health 2>/dev/null | python3 -c 'import sys,json;d=json.load(sys.stdin);print("  API  : "+str(d.get("status","ok")))' 2>/dev/null || echo "  API  : loading..."
-ss -tlnp | grep 8002 | grep -q LISTEN && echo "  TTS  : listening :8002" || echo "  TTS  : loading..."
+ss -tlnp | grep 8100 | grep -q LISTEN && echo "  GATEWAY: listening :8100" || echo "  GATEWAY: loading..."
 echo ""
 echo "  Attach:  tmux attach -t voicera"

@@ -1,0 +1,23 @@
+# Overlay: read the HuggingFace cache from another stack on the same host.
+#
+# ai4bharat/indic-parler-tts is gated, so the tokenizer and T5 encoder need
+# either a token or a cache that already holds them. On a box where another
+# stack has already downloaded them, this reuses that cache -- no token, no
+# download, no extra disk.
+#
+#   docker compose -f compose.model-server.yml -f compose.shared-hf-cache.yml up -d
+#
+# Read-only: the cache belongs to the other stack and must not be written.
+
+services:
+  tts:
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - hf_cache:/root/.cache/huggingface:ro
+
+volumes:
+  hf_cache:
+    external: true
+    name: ${HF_CACHE_VOLUME:-voicera-prod_hf_cache}
