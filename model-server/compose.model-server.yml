@@ -114,9 +114,17 @@ services:
     environment:
       <<: *mps-env
       CHECKPOINT_PATH_DEFAULT: /app/checkpoints
+      # ai4bharat/indic-parler-tts is a gated repo, so the tokenizer and T5
+      # encoder cannot be fetched without an authorised token. Instead we read a
+      # cache another stack on this box already populated. Offline mode stops
+      # HuggingFace making the gated check that would 401.
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
     volumes:
       - ./tts:/app
+      # Read-only: this cache belongs to another stack and must not be written.
+      - hf_cache:/root/.cache/huggingface:ro
       - *mps-pipe
       - *mps-log
     networks: [model_net]
@@ -149,6 +157,14 @@ services:
       - *mps-log
     networks: [model_net]
     <<: [*gpu, *mps]
+
+volumes:
+  # An existing volume, not one this stack creates. Override HF_CACHE_VOLUME to
+  # point elsewhere; or create your own and let the container download into it,
+  # which then needs HF_TOKEN plus access to the gated repo.
+  hf_cache:
+    external: true
+    name: ${HF_CACHE_VOLUME:-voicera-prod_hf_cache}
 
 networks:
   model_net:
