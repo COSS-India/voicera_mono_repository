@@ -40,6 +40,7 @@ from pipecat.frames.frames import (
     Frame,
     StartFrame,
     TranscriptionFrame,
+    UserStoppedSpeakingFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -119,21 +120,48 @@ TTS_STALL_TIMEOUT_SECS = float(os.getenv("TRANSLATION_TTS_STALL_SECS", "20"))
 # ---------------------------------------------------------------------------
 
 class TranscriptCollector(FrameProcessor):
-    """Capture final STT transcripts from the presenter and hand them upstream."""
+    """Capture final STT transcripts from the presenter and hand them upstream.
+
+    Some STT providers (Sarvam) decide segment boundaries server-side, so each
+    "final" TranscriptionFrame is already a complete thought and translating it
+    immediately is correct. Others (AI4Bharat's REST wrapper) segment on a short
+    internal silence timer and hand back one TranscriptionFrame per fragment, not
+    per sentence -- translating each fragment in isolation produces broken,
+    context-free translations (a translator handed half a clause cannot reorder
+    it). Buffering fragments and flushing only on the pipeline's own
+    UserStoppedSpeakingFrame (real VAD, already wired to the transport)
+    re-assembles the full utterance before it is translated; for a provider that
+    already emits one final per utterance this is a one-fragment no-op.
+    """
 
     def __init__(self, on_final):
         super().__init__()
         self._on_final = on_final
+        self._buffer: list[str] = []
+
+    async def _flush(self) -> None:
+        if not self._buffer:
+            return
+        full_text = " ".join(self._buffer).strip()
+        self._buffer.clear()
+        if full_text:
+            try:
+                await self._on_final(full_text)
+            except Exception as e:  # never let a handler error kill the pipeline
+                logger.warning(f"translation: source-text handler failed: {e}")
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, TranscriptionFrame):
             text = (getattr(frame, "text", "") or "").strip()
             if text:
-                try:
-                    await self._on_final(text)
-                except Exception as e:  # never let a handler error kill the pipeline
-                    logger.warning(f"translation: source-text handler failed: {e}")
+                self._buffer.append(text)
+        elif isinstance(frame, UserStoppedSpeakingFrame):
+            await self._flush()
+        elif isinstance(frame, EndFrame):
+            # Don't drop a trailing fragment that never got a VAD stop signal
+            # (e.g. the presenter's broadcast ends mid-utterance).
+            await self._flush()
         await self.push_frame(frame, direction)
 
 
