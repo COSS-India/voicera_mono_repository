@@ -25,6 +25,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import time
 
 import aiohttp
@@ -119,6 +120,12 @@ MAX_SENTENCE_BACKLOG = 8
 # hide TTS round-trip time behind playback time, not buffer the whole talk --
 # MAX_SENTENCE_BACKLOG upstream is still what absorbs a slow patch.
 AUDIO_PREFETCH_DEPTH = 2
+# When another sentence is already queued up behind the one currently being
+# delivered, this language is behind the presenter's own pace -- speed delivery
+# up by this factor (mirrors the listener client's own SOFT_DRAIN_RATE) so
+# backlog can shrink *during* a continuous talk instead of only in the gaps
+# between sentences. 5% is inaudible on speech.
+SERVER_CATCHUP_RATE = 1.05
 # A stalled TTS provider must not mute a language for the rest of the broadcast.
 # This is an *inactivity* limit (time since the last audio frame), not a
 # total-duration limit, so a legitimately long sentence is never cut short. The
@@ -130,6 +137,15 @@ TTS_STALL_TIMEOUT_SECS = float(os.getenv("TRANSLATION_TTS_STALL_SECS", "20"))
 # Frame processors
 # ---------------------------------------------------------------------------
 
+# A fragment ending here (optionally inside a closing quote/bracket) reads as a
+# grammatically complete sentence -- Latin terminators plus the Devanagari danda
+# and double danda (Sarvam's Hindi transcripts reliably include these: compare
+# "...है।" -- a finished clause -- against "...चाहिए और" -- visibly still
+# talking). Used to flush a source segment the moment it looks done, instead of
+# always waiting out a full VAD silence gap after it.
+_SOURCE_SENTENCE_END = re.compile(r"[.!?।॥][\"'\u201d\u2019)\]]*$")
+
+
 class TranscriptCollector(FrameProcessor):
     """Capture final STT transcripts from the presenter and hand them upstream.
 
@@ -139,10 +155,21 @@ class TranscriptCollector(FrameProcessor):
     internal silence timer and hand back one TranscriptionFrame per fragment, not
     per sentence -- translating each fragment in isolation produces broken,
     context-free translations (a translator handed half a clause cannot reorder
-    it). Buffering fragments and flushing only on the pipeline's own
+    it). Buffering fragments and flushing on the pipeline's own
     UserStoppedSpeakingFrame (real VAD, already wired to the transport)
     re-assembles the full utterance before it is translated; for a provider that
     already emits one final per utterance this is a one-fragment no-op.
+
+    Waiting for a VAD stop on every fragment is however a needless latency tax
+    when a fragment already reads as a complete sentence (the common case for
+    Sarvam): the presenter has to fall silent for the full VAD_STOP_SECS gap
+    before anything downstream even starts, and a naturally short pause between
+    two back-to-back sentences buffers them together instead of speaking the
+    first one immediately. So a fragment ending in sentence-final punctuation
+    flushes right away; only a fragment that still looks mid-thought falls back
+    to waiting for a real VAD stop (or pipeline end/cancel) -- this is what
+    still protects AI4Bharat-style fragments, which end mid-clause, from being
+    translated in isolation.
     """
 
     def __init__(self, on_final):
@@ -167,6 +194,8 @@ class TranscriptCollector(FrameProcessor):
             text = (getattr(frame, "text", "") or "").strip()
             if text:
                 self._buffer.append(text)
+                if _SOURCE_SENTENCE_END.search(text):
+                    await self._flush()
         elif isinstance(frame, UserStoppedSpeakingFrame):
             await self._flush()
         elif isinstance(frame, (EndFrame, CancelFrame)):
@@ -680,6 +709,7 @@ class LangWorker:
         """
         emitted = 0
         buffer = bytearray(pcm)
+        frame_secs = LISTEN_FRAME_MS / 1000
         while len(buffer) >= LISTEN_CHUNK_BYTES:
             if seg is not None:
                 seg.note_first_audio()
@@ -687,8 +717,12 @@ class LangWorker:
             emitted += LISTEN_CHUNK_BYTES
             del buffer[:LISTEN_CHUNK_BYTES]
             # Real-time pacing, not just real-time-sized chunks (see docstring):
-            # without this sleep the loop drains as fast as the event loop allows.
-            await asyncio.sleep(LISTEN_FRAME_MS / 1000)
+            # without this sleep the loop drains as fast as the event loop
+            # allows. Checked every frame, not once per call, so a backlog that
+            # builds or clears mid-sentence is picked up immediately.
+            behind = not self._synth_queue.empty() or not self._audio_queue.empty()
+            interval = frame_secs / SERVER_CATCHUP_RATE if behind else frame_secs
+            await asyncio.sleep(interval)
         if buffer:
             if seg is not None:
                 seg.note_first_audio()

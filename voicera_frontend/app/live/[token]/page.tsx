@@ -29,9 +29,20 @@ const JITTER_BUFFER_SECS = 0.15
 //    close, else at the end of the 20 ms frame that is sounding right now, and we
 //    never stop a buffer that is already playing — stopping mid-buffer is exactly
 //    the mid-word "chop" this used to produce.
+//
+// MAX_LEAD_SECS used to be 6, which sounded generous but was well inside normal
+// operating range: a real broadcast (server logs, per-segment tts_ttfa) has
+// shown backlog legitimately reaching ~22 s during a continuous multi-sentence
+// stretch, before draining back down on the next pause. At 6 s that was read as
+// "badly desynced" on every such stretch and skipped forward — discarding
+// correctly-delivered audio, including, in one case, the presenter's entire
+// final sentence. Set well above the observed worst case so a real backlog has
+// room to drain (via SOFT_DRAIN_RATE, and the server's own catch-up speedup)
+// before anything gets cut; this is now a backstop for genuine desync — a
+// dropped connection, a stuck worker — not routine backlog.
 const SOFT_LEAD_SECS = 2.5
 const SOFT_DRAIN_RATE = 1.05
-const MAX_LEAD_SECS = 6
+const MAX_LEAD_SECS = 25
 // How long a skip will wait for the next sentence end before cutting at the
 // current frame instead. Beyond this the wait costs more than the cleaner cut.
 const BOUNDARY_CUT_WAIT_SECS = 1.5
