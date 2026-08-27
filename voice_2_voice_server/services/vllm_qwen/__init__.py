@@ -1,4 +1,4 @@
-"""Local vLLM (Qwen3) OpenAI-compatible LLM helpers for Pipecat voice pipelines."""
+"""Local vLLM (Qwen3.5) OpenAI-compatible LLM helpers for Pipecat voice pipelines."""
 
 from .llm import (
     DEFAULT_VOICE_SYSTEM_PROMPT,
@@ -9,7 +9,6 @@ from .llm import (
     VllmQwenVoiceLLMService,
     create_voice_llm,
     ensure_no_think_suffix,
-    llm,
 )
 
 __all__ = [
@@ -21,5 +20,4 @@ __all__ = [
     "VllmQwenVoiceLLMService",
     "create_voice_llm",
     "ensure_no_think_suffix",
-    "llm",
 ]

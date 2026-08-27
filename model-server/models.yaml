@@ -4,10 +4,12 @@
 # /models, so the frontend stops shipping its own hardcoded lists.
 #
 # status:
-#   ready    - the container exists; add its id to .env to deploy it
+#   ready    - the folder <kind>/<id>/ exists with a Dockerfile in it; set
+#              <KIND>_MODEL=<id> in .env to deploy it
 #   planned  - chosen, not built yet
 #
-# Adding a model = one entry here, one folder, one compose profile.
+# Adding a model = one entry here plus one folder. A test enforces that every
+# `ready` id has a folder, so the two cannot drift apart.
 
 stt:
   - id: indic-conformer
@@ -65,12 +67,15 @@ tts:
     notes: Diffusion-style, so not vLLM-servable; needs its own runtime.
 
 llm:
-  - id: qwen3-8b
-    name: Qwen3-8B
+  - id: qwen3.5-4b
+    name: Qwen3.5-4B
     status: ready
     runtime: vllm
-    quantization: fp8
-    notes: Placeholder slot, disabled by default.
+    quantization: none       # bf16; ~8 GB of weights, which this box can spare
+    context: 8192            # capped for telephony; the model natively does 262144
+    thinking: default-on     # voice server sends enable_thinking=false per request
+    languages: [201 languages and dialects]
+    notes: Not yet run on hardware -- flags are unverified against a live model.
 
   - id: gemma
     name: Gemma

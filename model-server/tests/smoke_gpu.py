@@ -80,37 +80,36 @@ async def main():
     fmt = None
     t0 = time.perf_counter()
     ttfb = None
-    async with httpx.AsyncClient(timeout=120) as c:
-        async with c.stream(
-            "POST",
-            f"{GATEWAY}/v1/audio/speech",
-            json={
-                "input": SENTENCE,
-                "voice": "Divya",
-                "instructions": "A clear, natural voice with good audio quality.",
-                "language": "hi",
-                "response_format": "pcm_f32le",
-            },
-        ) as r:
-            if r.status_code != 200:
-                body = (await r.aread())[:200]
-                print(f"  TTS error: HTTP {r.status_code} {body!r}")
-            else:
-                rate = int(r.headers.get("X-Sample-Rate", 0)) or None
-                fmt = r.headers.get("X-Audio-Format")
-                # Chunked HTTP can split a float across reads. Carry the tail
-                # forward or every later sample is garbage.
-                remainder = b""
-                async for chunk in r.aiter_raw():
-                    if not chunk:
-                        continue
-                    if ttfb is None:
-                        ttfb = time.perf_counter() - t0
-                    buf = remainder + chunk
-                    usable = len(buf) - (len(buf) % 4)
-                    remainder = buf[usable:]
-                    if usable:
-                        pcm.frombytes(buf[:usable])
+    async with httpx.AsyncClient(timeout=120) as c, c.stream(
+        "POST",
+        f"{GATEWAY}/v1/audio/speech",
+        json={
+            "input": SENTENCE,
+            "voice": "Divya",
+            "instructions": "A clear, natural voice with good audio quality.",
+            "language": "hi",
+            "response_format": "pcm_f32le",
+        },
+    ) as r:
+        if r.status_code != 200:
+            body = (await r.aread())[:200]
+            print(f"  TTS error: HTTP {r.status_code} {body!r}")
+        else:
+            rate = int(r.headers.get("X-Sample-Rate", 0)) or None
+            fmt = r.headers.get("X-Audio-Format")
+            # Chunked HTTP can split a float across reads. Carry the tail
+            # forward or every later sample is garbage.
+            remainder = b""
+            async for chunk in r.aiter_raw():
+                if not chunk:
+                    continue
+                if ttfb is None:
+                    ttfb = time.perf_counter() - t0
+                buf = remainder + chunk
+                usable = len(buf) - (len(buf) % 4)
+                remainder = buf[usable:]
+                if usable:
+                    pcm.frombytes(buf[:usable])
     total = time.perf_counter() - t0
     dur = len(pcm) / rate if rate else 0
     print(f"  sample rate      : {rate} Hz  (from the response header, not assumed)")
@@ -147,17 +146,16 @@ async def main():
 
     print("\n=== 4. hanging up mid-sentence frees the slot ===")
     # Barge-in. The server should evict the request rather than keep generating.
-    async with httpx.AsyncClient(timeout=60) as c:
-        async with c.stream(
-            "POST",
-            f"{GATEWAY}/v1/audio/speech",
-            json={"input": SENTENCE * 4, "voice": "Divya", "language": "hi"},
-        ) as r:
-            n = 0
-            async for chunk in r.aiter_raw():
-                n += len(chunk)
-                if n > 4096:
-                    break
+    async with httpx.AsyncClient(timeout=60) as c, c.stream(
+        "POST",
+        f"{GATEWAY}/v1/audio/speech",
+        json={"input": SENTENCE * 4, "voice": "Divya", "language": "hi"},
+    ) as r:
+        n = 0
+        async for chunk in r.aiter_raw():
+            n += len(chunk)
+            if n > 4096:
+                break
     await asyncio.sleep(1.0)
     async with httpx.AsyncClient(timeout=30) as c:
         h = (await c.get(f"{GATEWAY}/health")).json()

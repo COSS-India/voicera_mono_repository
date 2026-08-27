@@ -7,7 +7,8 @@ LLM_DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-4-5-20250929",
     "Grok": "grok-3-beta",
     "grok": "grok-3-beta",
-    "qwen": "Qwen/Qwen3-8B",
+    # Must match vLLM's --served-model-name, pinned in llm/<model>/Dockerfile.
+    "qwen": "qwen3.5-4b",
     "custom_llm": None,
 }
 

@@ -10,6 +10,9 @@ pytest tests/ -v
 ruff check .
 ```
 
+`test_model_switching` shells out to `docker compose config`, which interpolates
+without needing a running daemon; it skips if the `docker` CLI is absent.
+
 These guard the things the revamp could silently break:
 
 | Test | Guards |
@@ -19,7 +22,10 @@ These guard the things the revamp could silently break:
 | `test_pcm_chunk_boundaries` | a chunk ending mid-float does not desynchronise the audio |
 | `test_gateway_streaming` | the gateway streams rather than buffers, and a client disconnect evicts upstream (barge-in) |
 | `test_page_table` | the KV page allocator never hands one page to two calls |
-| `test_catalogue` | every model marked `ready` has a Compose profile that can start it |
+| `test_catalogue` | catalogue and folders agree in both directions, and profiles stay slot names |
+| `test_model_switching` | naming a different model really builds a different folder, and the slot's service name and port do not move |
+| `test_llm_wiring` | the LLM's model id means the same string in the Dockerfile, the catalogue, the voice server and the provider mapping |
+| `test_setup_selection` | setup.sh offers a menu per slot instead of assuming a model, and runs the chosen model's `fetch.sh` |
 
 Two scripts are not part of the suite because they need real models on a GPU:
 

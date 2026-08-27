@@ -14,7 +14,13 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
 CHUNKS, CHUNK_DELAY = 5, 0.20          # a 1.0s response, first byte immediately
-STATE = {"cancelled": 0, "completed": 0}
+
+# Tagged by request, not counted. Two tests abort a speech stream, and the
+# upstream's cleanup runs whenever the event loop gets to it -- with a shared
+# counter one test's late cancellation lands inside another's measurement and
+# the barge-in test fails for no reason. A flaky barge-in test is worse than
+# none, because the first real failure gets waved through as "that one again".
+STATE: dict[str, set[str]] = {"cancelled": set(), "completed": set()}
 
 upstream = FastAPI()
 
@@ -35,10 +41,12 @@ async def _stt():
 
 
 @upstream.post("/v1/audio/speech")
-async def _speech():
+async def _speech(req: dict):
     """Stands in for the Parler server. The generator's finally block is exactly
-    where the real one calls runner.evict(), so counting cancellations here tests
-    the path barge-in depends on."""
+    where the real one calls runner.evict(), so what happens here is the path
+    barge-in depends on. The request's `input` doubles as its tag."""
+    tag = req.get("input", "untagged")
+
     async def gen():
         completed = False
         try:
@@ -46,10 +54,10 @@ async def _speech():
                 yield b"\x00\x00\x80\x3f" * 40      # 40 float32 samples
                 await asyncio.sleep(0.05)
             completed = True
-            STATE["completed"] += 1
+            STATE["completed"].add(tag)
         finally:
             if not completed:
-                STATE["cancelled"] += 1            # the eviction path barge-in relies on
+                STATE["cancelled"].add(tag)        # the eviction path barge-in relies on
 
     return StreamingResponse(gen(), media_type="audio/pcm",
                              headers={"X-Sample-Rate": "44100",
@@ -116,7 +124,7 @@ async def test_speech_streams_and_reports_the_sample_rate(gateway_url):
     async with (
         httpx.AsyncClient(timeout=30) as c,
         c.stream("POST", f"http://{gateway_url}/v1/audio/speech",
-                 json={"input": "hello"}) as r,
+                 json={"input": "headers-test"}) as r,
     ):
         assert r.status_code == 200
         assert r.headers["x-sample-rate"] == "44100"
@@ -131,11 +139,11 @@ async def test_speech_streams_and_reports_the_sample_rate(gateway_url):
 
 @pytest.mark.asyncio
 async def test_client_disconnect_evicts_upstream(gateway_url):
-    before = dict(STATE)
+    tag = "disconnect-test"
     async with (
         httpx.AsyncClient(timeout=30) as c,
         c.stream("POST", f"http://{gateway_url}/v1/audio/speech",
-                 json={"input": "hello"}) as r,
+                 json={"input": tag}) as r,
     ):
         frames = 0
         async for _ in r.aiter_raw():
@@ -144,7 +152,7 @@ async def test_client_disconnect_evicts_upstream(gateway_url):
                 break                              # barge-in: stop reading and hang up
     for _ in range(60):
         await asyncio.sleep(0.05)
-        if STATE["cancelled"] > before["cancelled"]:
+        if tag in STATE["cancelled"]:
             break
-    assert STATE["cancelled"] == before["cancelled"] + 1, "upstream never saw the disconnect"
-    assert STATE["completed"] == before["completed"], "upstream wrongly ran to completion"
+    assert tag in STATE["cancelled"], "upstream never saw the disconnect"
+    assert tag not in STATE["completed"], "upstream wrongly ran to completion"

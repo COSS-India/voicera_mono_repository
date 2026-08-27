@@ -12,9 +12,11 @@
 #                           STT model are fetched from elsewhere and need no token.)
 #   VOBIZ_AUTH_ID=xxx      (telephony)
 #   VOBIZ_AUTH_TOKEN=xxx   (telephony)
-#   ENABLE_STT=yes|no      (default: yes)
-#   ENABLE_TTS=yes|no      (default: yes)
-#   ENABLE_LLM=none|openai|grok|vllm  (default: none)
+#   STT_MODEL=<id>         a folder under model-server/stt/  (empty = no STT)
+#   TTS_MODEL=<id>         a folder under model-server/tts/  (empty = no TTS)
+#   LLM_MODEL=<id>         a folder under model-server/llm/  (empty = no local LLM)
+#                          Set any of these to skip its menu and run unattended.
+#   ENABLE_LLM=none|openai|grok|vllm  (default: none; vllm = host it ourselves)
 #   OPENAI_API_KEY=xxx
 #   XAI_API_KEY=xxx
 # =============================================================================
@@ -22,9 +24,10 @@ set -e
 
 NGROK_TOKEN="${NGROK_TOKEN:-}"
 HF_TOKEN="${HF_TOKEN:-}"
-ENABLE_STT="${ENABLE_STT:-yes}"
-ENABLE_TTS="${ENABLE_TTS:-yes}"
 ENABLE_LLM="${ENABLE_LLM:-none}"
+STT_SEL="${STT_MODEL-__ask__}"
+TTS_SEL="${TTS_MODEL-__ask__}"
+LLM_SEL="${LLM_MODEL-__ask__}"
 VOBIZ_AUTH_ID="${VOBIZ_AUTH_ID:-PLACEHOLDER}"
 VOBIZ_AUTH_TOKEN="${VOBIZ_AUTH_TOKEN:-PLACEHOLDER}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
@@ -34,6 +37,50 @@ log()  { echo -e "\n\033[1;32m[VoicEra]\033[0m $1"; }
 ok()   { echo -e "\033[1;34m  ✓\033[0m $1"; }
 err()  { echo -e "\033[1;31m[ERROR]\033[0m $1"; exit 1; }
 ask()  { read -r -p "  $1: " "$2"; }
+
+REPO_DIR="$HOME/voicera_mono_repository"
+
+# Which models can fill a slot? The folders under model-server/<slot>/ are the
+# answer -- one folder per model is the whole contract, and a test enforces that
+# the folders and models.yaml agree, so listing them here needs no YAML parser
+# and cannot drift from what Compose will actually build.
+list_slot_models() {
+  [ -d "$REPO_DIR/model-server/$1" ] || return 0
+  find "$REPO_DIR/model-server/$1" -mindepth 1 -maxdepth 1 -type d \
+       -not -name '_*' -not -name '.*' -printf '%f\n' 2>/dev/null | sort
+}
+
+# Present the folders as a menu and set $3 to the chosen id ("" for none).
+pick_model() {
+  local slot="$1" label="$2" var="$3"
+  local options=() choice i=1
+  while IFS= read -r m; do [ -n "$m" ] && options+=("$m"); done < <(list_slot_models "$slot")
+
+  if [ ${#options[@]} -eq 0 ]; then
+    echo -e "  \033[2m$label: no models available in model-server/$slot/\033[0m"
+    eval "$var=''"
+    return
+  fi
+
+  echo ""
+  echo -e "  \033[1;37m$label\033[0m"
+  for m in "${options[@]}"; do
+    echo "    $i) $m"
+    i=$((i + 1))
+  done
+  echo "    0) none"
+  read -r -p "  Choose [1]: " choice
+  choice="${choice:-1}"
+
+  if [ "$choice" = "0" ]; then
+    eval "$var=''"
+  elif [ "$choice" -ge 1 ] 2>/dev/null && [ "$choice" -le ${#options[@]} ] 2>/dev/null; then
+    eval "$var=\"${options[$((choice - 1))]}\""
+  else
+    echo "  Pick a number from the list."
+    pick_model "$slot" "$label" "$var"
+  fi
+}
 
 show_banner() {
   local C1="\033[1;36m" C2="\033[0;36m" C3="\033[1;34m"
@@ -59,35 +106,52 @@ show_banner
 
 echo -e "\033[1;37m  Configure Services\033[0m"
 echo -e "\033[2m  ─────────────────────────────────────────────────────\033[0m"
-read -r -p "  Enable STT? [yes/no, default: yes]: " _stt
-[ "$_stt" = "y" ] && _stt="yes"; [ "$_stt" = "n" ] && _stt="no"
-[ -n "$_stt" ] && ENABLE_STT="$_stt"
+# The menus come from the folders in the checkout, so a model added to
+# model-server/<slot>/ shows up here on its own. Cloning has to happen before we
+# can offer the choice -- there is no list to offer otherwise.
+if [ ! -d "$REPO_DIR/.git" ]; then
+  command -v git >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq git; }
+  echo -e "  \033[2mFetching the repository to see which models are available...\033[0m"
+  git clone -q -b dev https://github.com/COSS-India/voicera_mono_repository.git "$REPO_DIR"
+fi
 
-read -r -p "  Enable TTS? [yes/no, default: yes]: " _tts
-[ "$_tts" = "y" ] && _tts="yes"; [ "$_tts" = "n" ] && _tts="no"
-[ -n "$_tts" ] && ENABLE_TTS="$_tts"
+[ "$STT_SEL" = "__ask__" ] && pick_model stt "Speech to text" STT_SEL
+[ "$TTS_SEL" = "__ask__" ] && pick_model tts "Text to speech" TTS_SEL
+
 # The TTS server downloads its tokenizers and T5 encoder from HuggingFace on
 # first start. Nothing else here needs a token.
-[ "$ENABLE_TTS" = "yes" ] && [ -z "$HF_TOKEN" ] && ask "HuggingFace token (for TTS)" HF_TOKEN
+[ -n "$TTS_SEL" ] && [ -z "$HF_TOKEN" ] && ask "HuggingFace token (for TTS)" HF_TOKEN
 
+echo ""
 echo "  LLM: none | openai | grok | vllm"
 read -r -p "  LLM provider [default: none]: " _llm
 [ -n "$_llm" ] && ENABLE_LLM="$_llm"
 [ "$ENABLE_LLM" = "openai" ] && [ -z "$OPENAI_API_KEY" ] && ask "  OpenAI API key" OPENAI_API_KEY
 [ "$ENABLE_LLM" = "grok"   ] && [ -z "$XAI_API_KEY"   ] && ask "  xAI API key" XAI_API_KEY
+# openai and grok are somebody else's servers; only vllm is a model we host.
+if [ "$ENABLE_LLM" = "vllm" ]; then
+  [ "$LLM_SEL" = "__ask__" ] && pick_model llm "Language model" LLM_SEL
+else
+  LLM_SEL=""
+fi
+[ "$STT_SEL" = "__ask__" ] && STT_SEL=""
+[ "$TTS_SEL" = "__ask__" ] && TTS_SEL=""
+
+# Derived from the choices so the rest of the script reads the way it did.
+ENABLE_STT=$([ -n "$STT_SEL" ] && echo yes || echo no)
+ENABLE_TTS=$([ -n "$TTS_SEL" ] && echo yes || echo no)
 
 echo ""
 [ -z "${VOBIZ_AUTH_ID/PLACEHOLDER/}" ] && read -r -p "  Vobiz Auth ID [enter to skip]: " _vid && [ -n "$_vid" ] && VOBIZ_AUTH_ID="$_vid"
 [ -z "${VOBIZ_AUTH_TOKEN/PLACEHOLDER/}" ] && read -r -p "  Vobiz Auth Token [enter to skip]: " _vtk && [ -n "$_vtk" ] && VOBIZ_AUTH_TOKEN="$_vtk"
 
 echo ""
-echo -e "  STT: ${ENABLE_STT}  |  TTS: ${ENABLE_TTS}  |  LLM: ${ENABLE_LLM}"
+echo -e "  STT: ${STT_SEL:-none}  |  TTS: ${TTS_SEL:-none}  |  LLM: ${LLM_SEL:-${ENABLE_LLM}}"
 read -r -p "  Proceed? [Y/n]: " _ok
 [ "$_ok" = "n" ] && exit 0
 
 PRIVATE_IP=$(hostname -I | awk '{print $1}')
 INTERNAL_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || echo "voicera-key-change-me")
-REPO_DIR="$HOME/voicera_mono_repository"
 
 # ── Phase 1: Instance Setup ──────────────────────────────────────────────────
 log "Phase 1/3: Instance Setup"
@@ -192,9 +256,7 @@ ok "ngrok + cloudflared ready"
 log "Phase 2/3: Application Deploy"
 
 # Clone repo
-if [ ! -d "$REPO_DIR/.git" ]; then
-  git clone -b dev https://github.com/COSS-India/voicera_mono_repository.git "$REPO_DIR"
-fi
+# Already cloned above -- the model menus needed it.
 
 # MongoDB 7.0
 if ! command -v mongod &>/dev/null; then
@@ -211,10 +273,13 @@ ok "MongoDB running"
 
 # STT
 if [ "$ENABLE_STT" = "yes" ]; then
-  STT_DIR="$REPO_DIR/model-server/stt"
-  # The STT image installs the AI4Bharat NeMo fork from a local checkout rather
-  # than cloning inside the build -- same as prod. Fetch it here; the compose
-  # file passes it in via NEMO_CONTEXT_PATH.
+  STT_DIR="$REPO_DIR/model-server/stt/$STT_SEL"
+  # The AI4Bharat NeMo fork is a *build context*, not weights, so it cannot live
+  # in fetch.sh -- Compose needs the path before the image is built. This is the
+  # one piece of model-specific knowledge left in setup.sh; a model that does not
+  # reference the `nemo` context simply never triggers it.
+  NEMO_DIR=""
+  if [ "$STT_SEL" = "indic-conformer" ]; then
   NEMO_DIR="${NEMO_CONTEXT_PATH:-$HOME/ai4bharat_nemo}"
   if [ ! -d "$NEMO_DIR" ]; then
     git clone --branch nemo-v2 --depth 1 https://github.com/AI4Bharat/NeMo.git "$NEMO_DIR"
@@ -222,11 +287,10 @@ if [ "$ENABLE_STT" = "yes" ]; then
   else
     ok "NeMo fork already present at $NEMO_DIR"
   fi
-  # Weights are fetched here too; they reach the container via the bind mount.
-  if [ ! -f "$STT_DIR/models/IndicConformer.nemo" ]; then
-    mkdir -p "$STT_DIR/models"
-    wget -q --show-progress "https://objectstore.e2enetworks.net/indicconformer/models/indicconformer_stt_multi_hybrid_rnnt_600m.nemo" -O "$STT_DIR/models/IndicConformer.nemo"
   fi
+  # Weights come from the model's own fetch.sh, so setup.sh needs no knowledge
+  # of what this particular model downloads or from where.
+  [ -f "$STT_DIR/fetch.sh" ] && bash "$STT_DIR/fetch.sh"
   cat > "$STT_DIR/.env" << ENVEOF
 PORT=8001
 BHILI_ENABLE=no
@@ -238,16 +302,9 @@ fi
 
 # TTS
 if [ "$ENABLE_TTS" = "yes" ]; then
-  TTS_DIR="$REPO_DIR/model-server/tts"
-  # torch/flashinfer are built into tts/Dockerfile.
-  if [ ! -f "$TTS_DIR/checkpoints/model_step_ref.pt" ]; then
-    DL_VENV="$HOME/.voicera_downloader"
-    [ -d "$DL_VENV" ] || "$PY312" -m venv "$DL_VENV"
-    "$DL_VENV/bin/pip" install -q gdown 2>&1 | tail -1
-    mkdir -p "$TTS_DIR/checkpoints"
-    "$DL_VENV/bin/python3" -m gdown --folder https://drive.google.com/drive/folders/1qrh56MWXboiBO38gaWEcWhFl0NzlDiaT -O "$TTS_DIR/checkpoints/" 2>&1 | tail -3
-    [ -d "$TTS_DIR/checkpoints/checkpoints" ] && mv "$TTS_DIR/checkpoints/checkpoints/"* "$TTS_DIR/checkpoints/" && rmdir "$TTS_DIR/checkpoints/checkpoints" 2>/dev/null || true
-  fi
+  TTS_DIR="$REPO_DIR/model-server/tts/$TTS_SEL"
+  # torch/flashinfer are built into the model's Dockerfile.
+  PY312="$PY312" bash -c '[ -f "$0/fetch.sh" ] && bash "$0/fetch.sh"' "$TTS_DIR" || true
   cat > "$TTS_DIR/.env" << ENVEOF
 CHECKPOINT_PATH_DEFAULT=$TTS_DIR/checkpoints
 BHILI_ENABLE=no
@@ -264,15 +321,18 @@ MS_DIR="$REPO_DIR/model-server"
 # model-server/.env, which is the single place both compose (which containers
 # to start) and the gateway (which slots exist) read from. If these disagree,
 # the gateway reports a slot as deployed that was never started.
-STT_SEL=""; TTS_SEL=""; LLM_SEL=""
-[ "$ENABLE_STT" = "yes" ]  && STT_SEL="indic-conformer"
-[ "$ENABLE_TTS" = "yes" ]  && TTS_SEL="indic-parler"
-[ "$ENABLE_LLM" = "vllm" ] && LLM_SEL="qwen3-8b"
+# Profiles are slot names; the *_MODEL values pick which model fills each slot.
+# Writing both from the same answers is what stops them drifting apart.
+MODEL_PROFILES=""
+[ -n "$STT_SEL" ] && MODEL_PROFILES="$MODEL_PROFILES,stt"
+[ -n "$TTS_SEL" ] && MODEL_PROFILES="$MODEL_PROFILES,tts"
+[ -n "$LLM_SEL" ] && MODEL_PROFILES="$MODEL_PROFILES,llm"
+MODEL_PROFILES="${MODEL_PROFILES#,}"
+
 sed -i "s|^STT_MODEL=.*|STT_MODEL=$STT_SEL|; \
         s|^TTS_MODEL=.*|TTS_MODEL=$TTS_SEL|; \
-        s|^LLM_MODEL=.*|LLM_MODEL=$LLM_SEL|" "$MS_DIR/.env"
-
-MODEL_PROFILES=$(echo "$STT_SEL,$TTS_SEL,$LLM_SEL" | sed "s/,,*/,/g; s/^,//; s/,$//")
+        s|^LLM_MODEL=.*|LLM_MODEL=$LLM_SEL|; \
+        s|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=$MODEL_PROFILES|" "$MS_DIR/.env"
 
 # The Parler tokenizer lives in a gated HuggingFace repo, so the TTS container
 # needs a token to download it on first start.
@@ -290,7 +350,7 @@ if [ -n "$MODEL_PROFILES" ]; then
   # No COMPOSE_PROFILES here: it comes from .env, same as everything else.
   docker compose -f "$MS_DIR/compose.model-server.yml" \
     --project-directory "$MS_DIR" build
-  ok "Model images built: $MODEL_PROFILES"
+  ok "Model images built for slots: $MODEL_PROFILES"
 fi
 
 # V2V
@@ -359,8 +419,8 @@ cat > "$HOME/start_voicera.sh" << STARTEOF
 #!/bin/bash
 REPO_DIR="$REPO_DIR"
 BACKEND_DIR="$BACKEND_DIR"
-STT_DIR="$REPO_DIR/model-server/stt"
-TTS_DIR="$REPO_DIR/model-server/tts"
+STT_DIR="$REPO_DIR/model-server/stt/$STT_SEL"
+TTS_DIR="$REPO_DIR/model-server/tts/$TTS_SEL"
 V2V_DIR="$REPO_DIR/voice_2_voice_server"
 HF_TOKEN="$HF_TOKEN"
 ls /dev/nvidia0 2>/dev/null || { sudo modprobe nvidia; sudo modprobe nvidia-uvm; }

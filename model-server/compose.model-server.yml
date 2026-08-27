@@ -1,9 +1,20 @@
 # VoicEra model-server
 #
-# `ports:` appears exactly ONCE in this file, on the gateway. The model
-# containers listen inside their own network namespace and are reachable only by
-# service name -- nothing binds to the host, so this stack sits beside the prod
-# and translate stacks without competing for ports.
+# Three slots -- stt, tts, llm -- each of which can host many models. A slot is
+# one Compose service whose build context is the folder you named:
+#
+#     stt/indic-conformer/     STT_MODEL=indic-conformer
+#     stt/canary/              STT_MODEL=canary
+#     llm/qwen3.5-4b/          LLM_MODEL=qwen3.5-4b
+#
+# Switching model is one line in .env plus `up -d --build <slot>`. The service
+# name and port never change, so the gateway needs no knowledge of which model
+# is loaded. Adding a model is a folder; it touches nothing in this file.
+#
+# `ports:` appears exactly ONCE, on the gateway. The model containers listen
+# inside their own network namespace and are reachable only by service name --
+# nothing binds to the host, so this stack sits beside the prod and translate
+# stacks without competing for ports.
 
 name: voicera-model-server
 
@@ -37,8 +48,8 @@ x-mps-log: &mps-log "/tmp/nvidia-mps-log-gpu1:/tmp/nvidia-mps-log"
 
 services:
 
-  # The single published entry point. Routes on modality, streams both HTTP and
-  # WebSocket without buffering, and holds no model-specific knowledge.
+  # The single published entry point. Routes on modality, streams without
+  # buffering, and holds no model-specific knowledge.
   #
   # No depends_on: with profiles, a slot may legitimately not be running. The
   # gateway answers 503 naming the missing upstream instead of failing to start.
@@ -53,9 +64,9 @@ services:
     ports:
       - "${GATEWAY_PORT:-8100}:8000"
     environment:
-      # Optional overrides only. Unset means "use the compose service name",
+      # Optional overrides only. Unset means "use the Compose service name",
       # and a slot counts as deployed when its *_MODEL is named -- the same
-      # variable COMPOSE_PROFILES is built from, so the two cannot disagree.
+      # variable that picks the folder, so the two cannot disagree.
       STT_UPSTREAM: ${STT_UPSTREAM:-}
       TTS_UPSTREAM: ${TTS_UPSTREAM:-}
       LLM_UPSTREAM: ${LLM_UPSTREAM:-}
@@ -74,16 +85,23 @@ services:
       retries: 3
       start_period: 10s
 
-  # ---- STT --------------------------------------------------------------
+  # ---- STT slot ---------------------------------------------------------
+  # Profile is the slot name, not the model name: it answers "is this slot on",
+  # while STT_MODEL answers "which model fills it". One job each.
   stt:
-    profiles: ["indic-conformer"]
+    profiles: ["stt"]
     build:
-      context: ./stt
+      context: ./stt/${STT_MODEL:-indic-conformer}
       additional_contexts:
-        # The AI4Bharat NeMo fork as a local checkout, same as prod does it.
-        # Default assumes ~/ai4bharat_nemo beside the repo; override in .env.
+        # A named context is only fetched when a Dockerfile references it, so
+        # models that do not need the AI4Bharat NeMo fork ignore this.
+        #
+        # Relative paths here resolve against this file's directory, NOT the
+        # build context above -- so this stays ../../ even though the context
+        # moved a level deeper. Default assumes ~/ai4bharat_nemo beside the
+        # repo; override with NEMO_CONTEXT_PATH in .env.
         nemo: ${NEMO_CONTEXT_PATH:-../../ai4bharat_nemo}
-    image: voicera/model-stt:indic-conformer
+    image: voicera/model-stt:${STT_MODEL:-indic-conformer}
     container_name: voicera_model_stt
     restart: unless-stopped
     environment:
@@ -94,74 +112,70 @@ services:
       BHILI_NEMO_PATH: ${BHILI_NEMO_PATH:-}
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
     volumes:
-      # Source and weights both live here; setup.sh downloads
-      # IndicConformer.nemo into ./stt/models. Bind-mounting also means editing
-      # server.py does not need a rebuild.
-      - ./stt:/app
+      # Source and weights both live in the model folder; setup.sh downloads
+      # IndicConformer.nemo into it. Bind-mounting also means editing server.py
+      # does not need a rebuild.
+      - ./stt/${STT_MODEL:-indic-conformer}:/app
       - *mps-pipe
       - *mps-log
     networks: [model_net]
     <<: [*gpu, *mps]
 
-  # ---- TTS --------------------------------------------------------------
+  # ---- TTS slot ---------------------------------------------------------
   tts:
-    profiles: ["indic-parler"]
+    profiles: ["tts"]
     build:
-      context: ./tts
-    image: voicera/model-tts:indic-parler
+      context: ./tts/${TTS_MODEL:-indic-parler}
+    image: voicera/model-tts:${TTS_MODEL:-indic-parler}
     container_name: voicera_model_tts
     restart: unless-stopped
     environment:
       <<: *mps-env
+      PORT: 8002
       CHECKPOINT_PATH_DEFAULT: /app/checkpoints
       # ai4bharat/indic-parler-tts is a gated repo, so the tokenizer and T5
-      # encoder cannot be fetched without an authorised token. Instead we read a
-      # cache another stack on this box already populated. Offline mode stops
-      # HuggingFace making the gated check that would 401.
-      # Offline is opt-in. Default 0 downloads with HF_TOKEN; set to 1 when
-      # pointing at a cache that already holds the gated files.
+      # encoder cannot be fetched without an authorised token. Offline mode
+      # stops HuggingFace making the gated check that would 401 -- set it when
+      # pointing at a cache that already holds those files.
       HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-0}
       TRANSFORMERS_OFFLINE: ${HF_HUB_OFFLINE:-0}
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
     volumes:
-      - ./tts:/app
-      # Read-only: this cache belongs to another stack and must not be written.
+      - ./tts/${TTS_MODEL:-indic-parler}:/app
       - hf_cache:/root/.cache/huggingface
       - *mps-pipe
       - *mps-log
     networks: [model_net]
     <<: [*gpu, *mps]
 
-  # ---- LLM (placeholder) ------------------------------------------------
-  # vLLM already speaks OpenAI spec, so this slot needs no adapter -- only a
-  # profile and a model name. Left out of COMPOSE_PROFILES by default.
+  # ---- LLM slot ---------------------------------------------------------
+  # vLLM speaks OpenAI spec natively, so these folders hold no code at all --
+  # a Dockerfile naming the model and its flags is the whole implementation.
   llm:
-    profiles: ["qwen3-8b"]
+    profiles: ["llm"]
     build:
-      context: ./llm
-    image: voicera/model-llm:qwen3-8b
+      context: ./llm/${LLM_MODEL:-qwen3.5-4b}
+    image: voicera/model-llm:${LLM_MODEL:-qwen3.5-4b}
     container_name: voicera_model_llm
     restart: unless-stopped
     environment:
       <<: *mps-env
-      MODEL_ID: ${LLM_MODEL_ID:-Qwen/Qwen3-8B}
       PORT: 8003
-      QUANTIZATION: ${VLLM_QUANTIZATION:-fp8}
-      MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-8192}
-      MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-20}
-      # Never the 0.9 default: several processes share this GPU through MPS,
+      # Never vLLM's 0.9 default: several processes share this GPU through MPS,
       # and MPS does not partition memory.
       GPU_MEMORY_UTILIZATION: ${VLLM_GPU_MEMORY_UTILIZATION:-0.10}
+      MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-8192}
+      MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-20}
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
     volumes:
-      - ./models:/root/.cache/huggingface
+      - hf_cache:/root/.cache/huggingface
       - *mps-pipe
       - *mps-log
     networks: [model_net]
     <<: [*gpu, *mps]
 
 volumes:
-  # Compose creates this and the container downloads into it, which needs
+  # Compose creates this and the containers download into it, which needs
   # HF_TOKEN with access to the gated ai4bharat/indic-parler-tts repo.
   # To reuse a cache that already has those files, add the override:
   #   docker compose -f compose.model-server.yml -f compose.shared-hf-cache.yml ...

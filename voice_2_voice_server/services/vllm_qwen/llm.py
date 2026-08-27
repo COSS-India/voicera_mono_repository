@@ -1,6 +1,6 @@
 """Local vLLM (OpenAI-compatible) LLM setup for Pipecat telephony/voice agents.
 
-Uses Qwen3 with /no_think in the system prompt to avoid silent chain-of-thought
+Uses Qwen3.5 with /no_think in the system prompt to avoid silent chain-of-thought
 (100–300 tokens) that causes dead air on phone calls.
 """
 
@@ -18,16 +18,30 @@ from pipecat.adapters.services.open_ai_adapter import OpenAILLMInvocationParams
 from pipecat.services.openai.base_llm import BaseOpenAILLMService
 from pipecat.services.openai.llm import OpenAILLMService
 
-# OpenAI-compatible base URL. Must include /v1 — the AsyncOpenAI client appends
-# /chat/completions under this. Local vLLM often uses another port (e.g. 8003);
-# set VLLM_BASE_URL in the environment to override without code changes.
-VLLM_BASE_URL = "http://100.64.1.16:8003/v1"
+# Where the LLM lives. Same rule as ai4bharat/stt.py and tts.py: the
+# model-server gateway, on the one port the whole stack publishes. The gateway
+# service name and port do not change when the model behind it changes, which
+# is the point -- swapping Qwen for Gemma is a model-server .env edit and
+# nothing here moves.
+#
+# The AsyncOpenAI client appends /chat/completions under this, so the /v1 has
+# to be present; MODEL_SERVER_URL points at the gateway root, so add it.
+def _resolve_base_url() -> str:
+    base = (os.getenv("MODEL_SERVER_URL") or os.getenv("VLLM_BASE_URL") or "").rstrip("/")
+    if not base:
+        return ""
+    return base if base.endswith("/v1") else f"{base}/v1"
+
+
+VLLM_BASE_URL = _resolve_base_url()
 
 # vLLM does not validate keys; a placeholder satisfies the OpenAI client.
 VLLM_API_KEY = "EMPTY"
 
-# Must match the served model id on vLLM (e.g. Qwen/Qwen3-8B).
-VLLM_MODEL = "Qwen/Qwen3-8B"
+# Must match vLLM's --served-model-name, which llm/<model>/Dockerfile pins to
+# the catalogue id. vLLM rejects a request whose "model" field is anything else,
+# so this is not cosmetic.
+VLLM_MODEL = os.getenv("VLLM_MODEL") or os.getenv("LLM_MODEL") or "qwen3.5-4b"
 
 _NO_THINK_SUFFIX = "/no_think"
 
@@ -195,16 +209,24 @@ def create_voice_llm(
     - ``retry_timeout_secs``: HTTP timeout; local GPUs can spike past the default 5s.
     - ``retry_on_timeout``: set True if you want one automatic retry on timeout.
     """
+    resolved_url = (base_url or VLLM_BASE_URL or "").rstrip("/")
+    if resolved_url and not resolved_url.endswith("/v1"):
+        # However it arrived -- argument, env var, or the default above --
+        # the OpenAI client needs the /v1 prefix to be part of the base URL.
+        resolved_url += "/v1"
+    if not resolved_url:
+        # Without this the OpenAI client silently defaults to api.openai.com and
+        # the call fails on an auth error that says nothing about the real cause.
+        raise ValueError("MODEL_SERVER_URL environment variable not set")
+
     return VllmQwenVoiceLLMService(
         model=model,
         api_key=api_key,
-        base_url=base_url or os.environ.get("VLLM_BASE_URL", VLLM_BASE_URL),
+        base_url=resolved_url,
         params=params or VOICE_LLM_PARAMS,
         **kwargs,
     )
-
-
-llm = create_voice_llm()
+
 
 __all__ = [
     "DEFAULT_VOICE_SYSTEM_PROMPT",
@@ -215,5 +237,4 @@ __all__ = [
     "VllmQwenVoiceLLMService",
     "create_voice_llm",
     "ensure_no_think_suffix",
-    "llm",
 ]

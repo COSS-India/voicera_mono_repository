@@ -42,15 +42,49 @@ def test_missing_catalogue_is_not_fatal(tmp_path):
 
 
 @pytest.mark.parametrize("kind", catalogue.KINDS)
-def test_every_deployable_model_has_a_compose_profile(kind):
-    """A model marked ready must be startable, or `ready` is a lie."""
+def test_every_deployable_model_has_a_folder(kind):
+    """A model marked ready must be startable, or `ready` is a lie.
+
+    Compose builds <kind>/<id>/, so that folder and a Dockerfile in it are the
+    whole requirement -- there is no per-model wiring left to forget.
+    """
+    root = CATALOGUE.parent
+    raw = yaml.safe_load(CATALOGUE.read_text(encoding="utf-8"))
+    for entry in raw.get(kind) or []:
+        if entry["status"] != "ready":
+            continue
+        folder = root / kind / entry["id"]
+        assert folder.is_dir(), \
+            f"{entry['id']} is marked ready but {kind}/{entry['id']}/ is missing"
+        assert (folder / "Dockerfile").is_file(), \
+            f"{kind}/{entry['id']}/ has no Dockerfile, so Compose cannot build it"
+
+
+@pytest.mark.parametrize("kind", catalogue.KINDS)
+def test_every_model_folder_is_in_the_catalogue(kind):
+    """The other direction: a folder nobody catalogued is invisible at /models."""
+    root = CATALOGUE.parent / kind
+    if not root.is_dir():
+        return
+    raw = yaml.safe_load(CATALOGUE.read_text(encoding="utf-8"))
+    known = {e["id"] for e in raw.get(kind) or []}
+    folders = (p for p in root.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
+    for folder in sorted(folders):
+        assert folder.name in known, \
+            f"{kind}/{folder.name}/ exists but is not listed in models.yaml"
+
+
+def test_slot_profiles_are_slot_names_not_model_names():
+    """Profiles answer 'is this slot on'; <KIND>_MODEL answers 'which model'.
+
+    If a profile were ever named after a model again, switching models would
+    silently start nothing.
+    """
     compose = yaml.safe_load(
         (CATALOGUE.parent / "compose.model-server.yml").read_text(encoding="utf-8")
     )
-    profiles = {p for svc in compose["services"].values() for p in svc.get("profiles", [])}
-    raw = yaml.safe_load(CATALOGUE.read_text(encoding="utf-8"))
-    for entry in raw.get(kind) or []:
-        if entry["status"] == "ready":
-            assert entry["id"] in profiles, (
-                f"{entry['id']} is marked ready but has no compose profile"
+    for name, svc in compose["services"].items():
+        for profile in svc.get("profiles", []):
+            assert profile == name, (
+                f"service {name} has profile {profile!r}; profiles must be the slot name"
             )

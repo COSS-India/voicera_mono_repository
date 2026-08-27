@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-PAGING = Path(__file__).resolve().parent.parent / "tts" / "inference" / "paging.py"
+PAGING = Path(__file__).resolve().parent.parent / "tts" / "indic-parler" / "inference" / "paging.py"
 
 
 def _load_page_table():

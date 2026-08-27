@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, ValidationError
 
-SERVER = Path(__file__).resolve().parent.parent / "tts" / "server.py"
+SERVER = Path(__file__).resolve().parent.parent / "tts" / "indic-parler" / "server.py"
 
 
 def _load_speech_request():

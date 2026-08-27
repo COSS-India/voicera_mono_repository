@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-SERVER = Path(__file__).resolve().parent.parent / "stt" / "server.py"
+SERVER = Path(__file__).resolve().parent.parent / "stt" / "indic-conformer" / "server.py"
 
 
 def _load_decoders():
