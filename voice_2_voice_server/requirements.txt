@@ -9,6 +9,7 @@ pipecat-ai[silero,websocket,google,cartesia,openai,deepgram,sarvam,elevenlabs,an
 
 # ML/Audio Processing
 numpy>=1.26.4,<2.0.0
+pydub>=0.25.1,<0.26
 Pillow>=11.1.0,<12
 
 # Protocol/Serialization

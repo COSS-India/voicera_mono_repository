@@ -25,6 +25,8 @@ from typing import AsyncGenerator, Optional
 import numpy as np
 import soxr
 from loguru import logger
+from pydub import AudioSegment
+from pydub.effects import speedup as _pydub_speedup
 from pipecat.frames.frames import (
     ErrorFrame,
     Frame,
@@ -56,15 +58,16 @@ class SarvamHttpBroadcastTTSService(SarvamHttpTTSService):
 
     @staticmethod
     def _resample_for_pace(audio: bytes, rate: int, pace: float) -> bytes:
-        """Approximate a playback-speed change on a model Sarvam gives no
-        server-side pace control for. Resamples the waveform as though
-        converting it to rate/pace, but leaves it labelled at the original
+        """Fallback pace approximation: resample the waveform as though
+        converting it to rate/pace, but leave it labelled at the original
         rate -- the classic 'cassette tape' trick: fewer samples played back
         at the same rate take proportionally less time (pace > 1 => faster,
         shorter, higher-pitched; pace < 1 => slower, longer, lower-pitched).
-        A real pitch-preserving time-stretch would be better, but this is a
-        single cheap resample and matches what most simple 'speed' sliders
-        actually do."""
+        Cheap and always works, but the pitch shift is very audible at
+        anything beyond a subtle adjustment (sounds like a cassette tape sped
+        up -- 'helium' at 1.7x). Used only when the proper time-stretch below
+        can't run (e.g. a clip too short to chunk).
+        """
         if not audio or not rate or pace <= 0:
             return audio
         try:
@@ -74,6 +77,32 @@ class SarvamHttpBroadcastTTSService(SarvamHttpTTSService):
         except Exception as e:
             logger.warning(f"sarvam broadcast tts: local pace adjustment failed, playing at 1.0x: {e}")
             return audio
+
+    @classmethod
+    def _stretch_for_pace(cls, audio: bytes, rate: int, pace: float) -> bytes:
+        """Change playback speed while keeping pitch roughly natural, for a
+        model (bulbul:v3/v3-beta) that gives us no server-side pace control.
+        Speeds up by repeatedly dropping small (~ms-scale) slivers of audio
+        between crossfaded chunks instead of resampling the whole waveform,
+        so pitch stays close to the original -- unlike _resample_for_pace's
+        'helium' effect. pydub's speedup() only supports pace > 1 (this is
+        exactly the direction the dashboard's speed slider is normally used
+        for); pace < 1 falls back to the resample trick, which is less
+        jarring for a pitch *drop* than a pitch raise.
+        """
+        if not audio or not rate or pace <= 0:
+            return audio
+        if pace <= 1.0:
+            return cls._resample_for_pace(audio, rate, pace)
+        try:
+            seg = AudioSegment(data=audio, sample_width=2, frame_rate=rate, channels=1)
+            stretched = _pydub_speedup(seg, playback_speed=pace, chunk_size=150, crossfade=25)
+            return stretched.raw_data
+        except Exception as e:
+            logger.warning(
+                f"sarvam broadcast tts: time-stretch failed ({e}), falling back to resample"
+            )
+            return cls._resample_for_pace(audio, rate, pace)
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         """Synthesise ``text`` in one HTTP call, yielding audio frames."""
@@ -139,7 +168,7 @@ class SarvamHttpBroadcastTTSService(SarvamHttpTTSService):
                 audio_data = raw[44:] if raw.startswith(b"RIFF") else raw
 
             if self._client_side_pace:
-                audio_data = self._resample_for_pace(
+                audio_data = self._stretch_for_pace(
                     audio_data, actual_rate, self._client_side_pace
                 )
 
