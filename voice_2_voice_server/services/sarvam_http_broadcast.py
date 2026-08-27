@@ -20,8 +20,10 @@ pipecat's enum map has no Assamese entry.
 import base64
 import io
 import wave
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
+import numpy as np
+import soxr
 from loguru import logger
 from pipecat.frames.frames import (
     ErrorFrame,
@@ -35,6 +37,43 @@ from pipecat.services.sarvam.tts import SarvamHttpTTSService
 
 class SarvamHttpBroadcastTTSService(SarvamHttpTTSService):
     """Sarvam HTTP TTS that tolerates any bulbul model in the broadcast drain."""
+
+    def __init__(self, *, model: str = "bulbul:v2", params=None, **kwargs):
+        params = params or SarvamHttpTTSService.InputParams()
+        # bulbul:v3/v3-beta accept no pace parameter at all server-side --
+        # pipecat's own __init__ (below, via super()) only stores
+        # pitch/pace/loudness in self._settings for non-v3 models, so a v3
+        # request silently loses whatever pace was asked for: the dashboard
+        # shows the saved value, but the broadcast plays at 1.0x regardless.
+        # Capture the intended pace here, before that happens, so run_tts can
+        # approximate the effect locally by resampling the returned audio.
+        self._client_side_pace: Optional[float] = None
+        if model in ("bulbul:v3-beta", "bulbul:v3"):
+            requested_pace = params.pace
+            if requested_pace is not None and abs(requested_pace - 1.0) > 1e-3:
+                self._client_side_pace = requested_pace
+        super().__init__(model=model, params=params, **kwargs)
+
+    @staticmethod
+    def _resample_for_pace(audio: bytes, rate: int, pace: float) -> bytes:
+        """Approximate a playback-speed change on a model Sarvam gives no
+        server-side pace control for. Resamples the waveform as though
+        converting it to rate/pace, but leaves it labelled at the original
+        rate -- the classic 'cassette tape' trick: fewer samples played back
+        at the same rate take proportionally less time (pace > 1 => faster,
+        shorter, higher-pitched; pace < 1 => slower, longer, lower-pitched).
+        A real pitch-preserving time-stretch would be better, but this is a
+        single cheap resample and matches what most simple 'speed' sliders
+        actually do."""
+        if not audio or not rate or pace <= 0:
+            return audio
+        try:
+            samples = np.frombuffer(audio, dtype=np.int16)
+            resampled = soxr.resample(samples, rate, rate / pace, quality="HQ")
+            return resampled.astype(np.int16).tobytes()
+        except Exception as e:
+            logger.warning(f"sarvam broadcast tts: local pace adjustment failed, playing at 1.0x: {e}")
+            return audio
 
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         """Synthesise ``text`` in one HTTP call, yielding audio frames."""
@@ -98,6 +137,11 @@ class SarvamHttpBroadcastTTSService(SarvamHttpTTSService):
                 # what we asked for rather than drop the segment outright.
                 actual_rate = self.sample_rate
                 audio_data = raw[44:] if raw.startswith(b"RIFF") else raw
+
+            if self._client_side_pace:
+                audio_data = self._resample_for_pace(
+                    audio_data, actual_rate, self._client_side_pace
+                )
 
             yield TTSAudioRawFrame(
                 audio=audio_data,
