@@ -26,6 +26,7 @@ These guard the things the revamp could silently break:
 | `test_model_switching` | naming a different model really builds a different folder, and the slot's service name and port do not move |
 | `test_llm_wiring` | the LLM's model id means the same string in the Dockerfile, the catalogue, the voice server and the provider mapping |
 | `test_setup_selection` | setup.sh offers a menu per slot instead of assuming a model, and runs the chosen model's `fetch.sh` |
+| `test_llm_slot` | an empty slot answers 503 rather than 404 or a hang, is not advertised at `/v1/models`, and does not mark health degraded; a filled one routes and streams token by token |
 
 Two scripts are not part of the suite because they need real models on a GPU:
 

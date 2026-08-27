@@ -2,14 +2,11 @@
 reach the upstream -- that propagation is what makes barge-in free the TTS slot.
 """
 import asyncio
-import contextlib
-import socket
-import threading
 import time
 
 import httpx
 import pytest
-import uvicorn
+from conftest import free_port, serve
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
@@ -64,39 +61,21 @@ async def _speech(req: dict):
                                       "X-Audio-Format": "pcm_f32le"})
 
 
-def _free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def _serve(app, port):
-    cfg = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
-    server = uvicorn.Server(cfg)
-    threading.Thread(target=server.run, daemon=True).start()
-    for _ in range(100):
-        time.sleep(0.05)
-        with contextlib.suppress(OSError), socket.create_connection(("127.0.0.1", port), 0.1):
-            return server
-    raise RuntimeError(f"server on {port} never came up")
-
-
 @pytest.fixture(scope="module")
 def gateway_url():
-    up_port, gw_port = _free_port(), _free_port()
-    _serve(upstream, up_port)
+    up_port, gw_port = free_port(), free_port()
+    serve(upstream, up_port)
 
-    import os
-    os.environ.update(
-        STT_MODEL="test-stt", TTS_MODEL="test-tts", LLM_MODEL="",
-        STT_UPSTREAM=f"http://127.0.0.1:{up_port}",
-        TTS_UPSTREAM=f"http://127.0.0.1:{up_port}",
+    from app.config import Settings, Upstream
+    from app.main import create_app
+
+    up = f"http://127.0.0.1:{up_port}"
+    settings = Settings(
+        stt=Upstream("stt", up, "test-stt"),
+        tts=Upstream("tts", up, "test-tts"),
+        llm=Upstream("llm", "", ""),
     )
-    import app.config
-    import app.main
-    app.config.settings = app.config.Settings.from_env()
-    app.main.settings = app.config.settings
-    _serve(app.main.app, gw_port)
+    serve(create_app(settings), gw_port)
     return f"127.0.0.1:{gw_port}"
 
 
@@ -156,3 +135,17 @@ async def test_client_disconnect_evicts_upstream(gateway_url):
             break
     assert tag in STATE["cancelled"], "upstream never saw the disconnect"
     assert tag not in STATE["completed"], "upstream wrongly ran to completion"
+
+
+def test_the_container_entrypoint_object_still_exists():
+    """The image runs `uvicorn app.main:app`. Moving settings onto the app
+    instance must not have turned that into a factory nobody calls."""
+    import app.main as gateway
+    from fastapi import FastAPI
+    assert isinstance(gateway.app, FastAPI)
+    # Built from the environment, which is where the container's settings arrive.
+    assert gateway.app.state.settings is not None
+    routes = {r.path for r in gateway.app.routes}
+    for path in ("/health", "/models", "/v1/models", "/v1/audio/transcriptions",
+                 "/v1/audio/speech", "/v1/chat/completions"):
+        assert path in routes, f"{path} is not registered on the entrypoint app"

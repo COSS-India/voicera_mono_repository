@@ -131,3 +131,58 @@ def test_no_hardcoded_upstream_addresses_remain():
     code = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith("#"))
     assert not re.search(r'"https?://\d+\.\d+\.\d+\.\d+', code), \
         "a literal IP address is back in the LLM service"
+
+
+# ---------------------------------------------------------------- thinking mode
+
+# Qwen3.5 has thinking ON by default, and two vLLM bugs make that our problem:
+#
+#   vllm#35574  `enable_thinking: false` did not always disable it (closed Feb
+#               2026, fixed before the 0.27.1 we pin, but the reason the
+#               /no_think belt-and-braces in the system prompt stays).
+#   vllm#38894  with the qwen3 reasoning parser, generated text can arrive in
+#               `delta.reasoning` with `delta.content` empty. Pipecat only
+#               forwards `content` to TTS, so the call would go silent.
+#
+# The voice server handles both. These pin the pieces, because the failure mode
+# is a phone call with dead air -- nothing crashes, nothing logs an error.
+
+@pytest.mark.parametrize("model_id", deployable_llms())
+def test_a_reasoning_parser_is_configured(model_id):
+    env = dockerfile_env(ROOT / "llm" / model_id / "Dockerfile")
+    joined = " ".join(env.values())
+    assert "--reasoning-parser" in joined, (
+        f"llm/{model_id}/Dockerfile sets no --reasoning-parser; think blocks would "
+        "reach the caller as spoken text"
+    )
+
+
+@needs_v2v
+def test_thinking_is_turned_off_for_voice():
+    """A hidden chain of thought is 100-300 tokens of silence before the bot
+    speaks, which on a phone call reads as the line having dropped."""
+    src = (V2V / "services" / "vllm_qwen" / "llm.py").read_text(encoding="utf-8")
+    assert re.search(r'"enable_thinking":\s*False', src), \
+        "the voice server no longer sends enable_thinking=False"
+
+
+@needs_v2v
+def test_reasoning_is_recovered_into_content_when_thinking_is_off():
+    """vllm#38894: text can land in delta.reasoning with content empty. Pipecat
+    reads only content, so without this mapping the caller hears nothing."""
+    src = (V2V / "services" / "vllm_qwen" / "llm.py").read_text(encoding="utf-8")
+    assert "_normalize_qwen_chunk" in src, "the reasoning->content mapping is gone"
+    assert "reasoning_content" in src, "only one of the two field names is handled"
+    # And it must stay off while thinking is enabled, or the bot speaks its
+    # own chain of thought aloud.
+    assert re.search(r"if self\._enable_thinking or not chunk\.choices", src), \
+        "the guard that stops chain-of-thought reaching TTS has changed shape"
+
+
+@needs_v2v
+def test_vision_tower_is_skipped():
+    """Qwen3.5-4B is registered as a multimodal class and ships a 24-layer vision
+    encoder. Loading it costs memory that should be KV cache for voice turns."""
+    env = dockerfile_env(ROOT / "llm" / "qwen3.5-4b" / "Dockerfile")
+    assert "--language-model-only" in " ".join(env.values()), \
+        "without --language-model-only vLLM loads the vision encoder"

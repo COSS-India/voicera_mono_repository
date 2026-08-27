@@ -137,8 +137,9 @@ unchanged, `voice` + `instructions` recomposing into exactly the prompt the mode
 used to get, a chunk boundary splitting a float without corrupting the audio, the
 gateway streaming rather than buffering, a disconnect actually stopping
 generation, the KV page allocator never handing one page to two calls, naming a
-different model actually building a different folder, and the LLM's model id
-meaning the same string in all four files that have to agree on it.
+different model actually building a different folder, the LLM's model id meaning
+the same string in all four files that have to agree on it, and an undeployed
+slot refusing calls clearly instead of hanging.
 
 ## Current state
 

@@ -16,6 +16,7 @@ prod TTS. If they sound different, the revamp changed something.
 
 import array
 import asyncio
+import json
 import struct
 import sys
 import time
@@ -70,8 +71,9 @@ async def main():
                               if v.get("deployed"))))
 
         m = (await c.get(f"{GATEWAY}/models")).json()
-        live = [k for k, v in m["deployed"].items() if v]
-        results.append(ok("catalogue reports what is deployed", bool(live), str(m["deployed"])))
+        live_models = {k: v for k, v in m["deployed"].items() if v}
+        results.append(ok("catalogue reports what is deployed", bool(live_models),
+                          str(m["deployed"])))
 
     print("\n=== 2. TTS speaks the sentence ===")
     print(f"  asked for: {SENTENCE}")
@@ -144,7 +146,72 @@ async def main():
     else:
         results.append(ok("STT round-trip", False, "no audio to transcribe"))
 
-    print("\n=== 4. hanging up mid-sentence frees the slot ===")
+    print("\n=== 4. the LLM answers, streaming ===")
+    # Skipped rather than failed when the slot is empty: not deploying an LLM is
+    # a valid configuration, and this script must pass on an STT+TTS-only box.
+    llm_id = live_models.get("llm")
+    if not llm_id:
+        print("  no LLM deployed -- skipping (set LLM_MODEL in .env to enable)")
+    else:
+        first_token = None
+        answer = []
+        t0 = time.perf_counter()
+        async with httpx.AsyncClient(timeout=120) as c, c.stream(
+            "POST",
+            f"{GATEWAY}/v1/chat/completions",
+            json={
+                # The id has to be the one the gateway advertises; vLLM 400s on
+                # anything else.
+                "model": llm_id,
+                "messages": [
+                    {"role": "system",
+                     "content": "You are a phone assistant. Reply in one short "
+                                "sentence in Hindi. /no_think"},
+                    {"role": "user", "content": "नमस्ते, आप कौन हैं?"},
+                ],
+                "max_tokens": 60,
+                "stream": True,
+                # Thinking off: a hidden chain of thought is dead air on a call.
+                "chat_template_kwargs": {"enable_thinking": False},
+            },
+        ) as r:
+            if r.status_code != 200:
+                body = (await r.aread())[:300].decode(errors="replace")
+                print(f"  LLM error: HTTP {r.status_code} {body}")
+            else:
+                async for line in r.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line[6:].strip()
+                    if payload in ("[DONE]", ""):
+                        continue
+                    try:
+                        delta = json.loads(payload)["choices"][0]["delta"]
+                    except (ValueError, KeyError, IndexError):
+                        continue
+                    # vLLM can put the answer in `reasoning` instead of
+                    # `content` (vllm#38894); the voice server handles both, so
+                    # this has to as well or the check lies.
+                    piece = (delta.get("content") or delta.get("reasoning")
+                             or delta.get("reasoning_content") or "")
+                    if piece and first_token is None:
+                        first_token = time.perf_counter() - t0
+                    answer.append(piece)
+        reply = "".join(answer).strip()
+        total_llm = time.perf_counter() - t0
+        print(f"  model            : {llm_id}")
+        print(f"  time to first tok: {first_token * 1000:.0f} ms" if first_token
+              else "  no tokens received")
+        print(f"  wall clock       : {total_llm:.2f} s")
+        print(f"  reply            : {reply[:120]}")
+        results.append(ok("LLM streamed a reply", bool(reply), f"{len(reply)} chars"))
+        # Under ~1s the caller does not notice the gap; past ~2s they start talking
+        # over the bot. Not a hard failure, but say so loudly.
+        if first_token and first_token > 1.0:
+            print(f"  NOTE: {first_token * 1000:.0f} ms to first token is slow for "
+                  "telephony. Consider qwen3.5-2b, or a smaller --max-model-len.")
+
+    print("\n=== 5. hanging up mid-sentence frees the slot ===")
     # Barge-in. The server should evict the request rather than keep generating.
     async with httpx.AsyncClient(timeout=60) as c, c.stream(
         "POST",
