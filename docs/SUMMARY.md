@@ -51,11 +51,9 @@
 
 * [Backend](services/backend.md)
 * [Voice server](services/voice-server.md)
-* [LLM server](services/llm-server.md)
+* [Model server](services/model-server.md)
 * [Frontend](services/frontend.md)
 * [Integrations](services/integrations.md)
-* [AI4Bharat STT](services/ai4bharat-stt.md)
-* [AI4Bharat TTS](services/ai4bharat-tts.md)
 
 ## Reference
 

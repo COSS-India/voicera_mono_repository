@@ -1,5 +1,13 @@
 # Brief: What do I need before I start? (B2)
 
+{% hint style="warning" %}
+**Superseded (August 2026).** The AI4Bharat STT and TTS servers described below
+no longer run as separate services on ports 8001 and 8002, and the LLM server no
+longer has its own launcher on 8003. All three are now slots in the model
+server, behind one OpenAI-compatible port. This brief is kept as a record of the
+earlier design; write from [Model server](../../services/model-server.md) instead.
+{% endhint %}
+
 **Review gap:** No checklist of server specs, OS, internet, and accounts (e.g. Vobiz).
 
 **Audience:** Programme manager + district IT + hosting partner.
@@ -65,6 +73,6 @@
 |------|--------|
 | Minimum RAM (voice only, no local AI) | Size with hosting partner / staging load test |
 | Minimum RAM (with local AI4Bharat) | Size with hosting partner / staging load test |
-| GPU VRAM (STT) | **Deferred** — [AI4Bharat STT](../services/ai4bharat-stt.md#gpu-vram) |
-| GPU VRAM (TTS) | **Deferred** — [AI4Bharat TTS](../services/ai4bharat-tts.md#gpu-vram) |
+| GPU VRAM (STT) | **Deferred** — [AI4Bharat STT](../../services/model-server.md#gpu) |
+| GPU VRAM (TTS) | **Deferred** — [AI4Bharat TTS](../../services/model-server.md#gpu) |
 | Recommended concurrent calls per deployment | Load-test on staging |

@@ -59,8 +59,7 @@ cp voicera_frontend/.env.example voicera_frontend/.env.local
 cp voice_2_voice_server/.env.example voice_2_voice_server/.env
 
 # Optional, only if running local AI4Bharat servers
-cp ai4bharat_stt_server/.env.example ai4bharat_stt_server/.env
-cp ai4bharat_tts_server/.env.example ai4bharat_tts_server/.env
+cp model-server/.env.example model-server/.env
 ```
 
 ### Backend (`voicera_backend/.env`)
@@ -171,7 +170,7 @@ docker images | grep voicera
 {% endhint %}
 
 {% hint style="warning" %}
-**Port already in use** — find the process with `lsof -i :8000`, stop it, or change the port mapping in `docker-compose.yml`. `make stop-all-ports` force-frees 3000, 8000, 8001, 8002, 7860, and 27017.
+**Port already in use** — find the process with `lsof -i :8000`, stop it, or change the port mapping in `docker-compose.yml`. `make stop-all-ports` force-frees 3000, 8000, 7860, 8100 and 27017, and stops the model-server stack.
 {% endhint %}
 
 {% hint style="warning" %}

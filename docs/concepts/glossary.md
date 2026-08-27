@@ -15,7 +15,9 @@ Looking for the data model relationships behind these terms? See [agents-campaig
 | Term | Definition |
 | --- | --- |
 | **Agent** | A configured AI voice assistant (LLM/STT/TTS, prompt, language, telephony). **Not** a human employee. See [agents-campaigns-calls.md](agents-campaigns-calls.md). |
-| **AI4Bharat** | Optional self-hosted Indian-language STT and TTS servers shipped with VoicEra. See [../services/ai4bharat-stt.md](../services/ai4bharat-stt.md). |
+| **AI4Bharat** | The research group whose Indic STT and TTS models VoicEra can self-host. Run them through the [model server](../services/model-server.md). |
+| **Model server** | Optional component that hosts STT, TTS and LLM models on your own hardware behind one OpenAI-compatible port (8100). See [Model server](../services/model-server.md). |
+| **Slot** | One of the model server's three model positions — `stt`, `tts`, `llm`. A slot holds one model at a time; which one is a setting, not a code change. |
 | **Answer URL** | Web address the telephony provider calls when a call is answered; points at the public voice server (`/answer?agent_id=...`). |
 | **Assistants** | Dashboard page where operators manage agents. |
 

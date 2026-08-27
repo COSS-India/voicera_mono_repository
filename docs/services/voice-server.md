@@ -190,5 +190,5 @@ python main.py
 
 - [concepts/voice-pipeline.md](../concepts/voice-pipeline.md)
 - [services/integrations.md](integrations.md)
-- [services/ai4bharat-stt.md](ai4bharat-stt.md)
-- [services/ai4bharat-tts.md](ai4bharat-tts.md)
+- [Model server](model-server.md)
+- [Model server](model-server.md)

@@ -107,7 +107,11 @@ class VADProcessor:
 
 
 class IndicConformerRESTSTTService(STTService):
-    """REST client for ai4bharat_stt_server. language_id \"bhb\" uses POST /transcribe/bhili."""
+    """REST client for the model-server STT slot.
+
+    One endpoint for every language: the server routes Bhili (\"bhb\") to its own
+    checkpoint off the request's language field, so callers do not pick a URL.
+    """
 
     def __init__(
         self,

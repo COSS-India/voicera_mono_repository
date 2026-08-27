@@ -1,0 +1,215 @@
+{
+  "_comment": "Voice roster for the AI4Bharat Orpheus Indic checkpoint: 40 speakers across all 22 scheduled Indian languages, 12 speaking styles. Language is selected by SPEAKER NAME (the prompt carries no language code), and every speaker name here is unique, which is what lets an OpenAI client pick a language using only the standard 'voice' field. 'sample' is example text in the native script, used for warmup and for docs.",
+  "prompt_template": "indic",
+  "default_style": "CONV",
+  "styles": [
+    "CONV",
+    "WIKI",
+    "NEWS",
+    "BOOK",
+    "NAMES",
+    "INDIC",
+    "ALEXA",
+    "BB",
+    "UMANG",
+    "DIGI",
+    "SANGRAH",
+    "INDICTTS"
+  ],
+  "languages": [
+    {
+      "code": "hi",
+      "name": "Hindi",
+      "voices": [
+        "Amit"
+      ],
+      "sample": "नमस्ते, आज मौसम बहुत अच्छा है। मैं ठीक हूँ।"
+    },
+    {
+      "code": "mr",
+      "name": "Marathi",
+      "voices": [
+        "Anagha",
+        "Chinmay"
+      ],
+      "sample": "नमस्कार, आज हवामान खूप छान आहे."
+    },
+    {
+      "code": "ta",
+      "name": "Tamil",
+      "voices": [
+        "Anitha",
+        "Arun"
+      ],
+      "sample": "வணக்கம், இன்று வானிலை மிகவும் நன்றாக உள்ளது."
+    },
+    {
+      "code": "te",
+      "name": "Telugu",
+      "voices": [
+        "Sravani",
+        "Vamsi"
+      ],
+      "sample": "నమస్తే, ఈ రోజు వాతావరణం చాలా బాగుంది."
+    },
+    {
+      "code": "kn",
+      "name": "Kannada",
+      "voices": [
+        "Adarsh",
+        "Deepika"
+      ],
+      "sample": "ನಮಸ್ಕಾರ, ಇಂದು ಹವಾಮಾನ ತುಂಬಾ ಚೆನ್ನಾಗಿದೆ."
+    },
+    {
+      "code": "ml",
+      "name": "Malayalam",
+      "voices": [
+        "Kiran",
+        "Lakshmi"
+      ],
+      "sample": "നമസ്കാരം, ഇന്ന് കാലാവസ്ഥ വളരെ നല്ലതാണ്."
+    },
+    {
+      "code": "gu",
+      "name": "Gujarati",
+      "voices": [
+        "Parth",
+        "Dhara"
+      ],
+      "sample": "નમસ્તે, આજે હવામાન ખૂબ સરસ છે."
+    },
+    {
+      "code": "pa",
+      "name": "Punjabi",
+      "voices": [
+        "Kaur",
+        "Manpreet"
+      ],
+      "sample": "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, ਅੱਜ ਮੌਸਮ ਬਹੁਤ ਵਧੀਆ ਹੈ।"
+    },
+    {
+      "code": "bn",
+      "name": "Bengali",
+      "voices": [
+        "Ishita",
+        "Sourav"
+      ],
+      "sample": "নমস্কার, আজ আবহাওয়া খুব ভালো।"
+    },
+    {
+      "code": "as",
+      "name": "Assamese",
+      "voices": [
+        "Ankur",
+        "Prastuti"
+      ],
+      "sample": "নমস্কাৰ, আজি বতৰ বৰ ভাল।"
+    },
+    {
+      "code": "or",
+      "name": "Odia",
+      "voices": [
+        "Akash",
+        "Itishree"
+      ],
+      "sample": "ନମସ୍କାର, ଆଜି ପାଗ ବହୁତ ଭଲ ଅଛି।"
+    },
+    {
+      "code": "ur",
+      "name": "Urdu",
+      "voices": [
+        "Saba",
+        "Zaid"
+      ],
+      "sample": "السلام علیکم، آج موسم بہت اچھا ہے۔"
+    },
+    {
+      "code": "ks",
+      "name": "Kashmiri",
+      "voices": [
+        "Ishfaq",
+        "Zoon"
+      ],
+      "sample": "آداب، از چھُ موسم ٲنٛدِ خٕش۔"
+    },
+    {
+      "code": "sd",
+      "name": "Sindhi",
+      "voices": [
+        "Moomal"
+      ],
+      "sample": "السلام عليڪم، اڄ موسم تمام سٺو آهي."
+    },
+    {
+      "code": "mai",
+      "name": "Maithili",
+      "voices": [
+        "Madhukar",
+        "Vaidehi"
+      ],
+      "sample": "प्रणाम, आइ मौसम बहुत नीक अछि।"
+    },
+    {
+      "code": "doi",
+      "name": "Dogri",
+      "voices": [
+        "Preeti",
+        "Sham"
+      ],
+      "sample": "नमस्कार, अज्ज मौसम बड़ा खरा ऐ।"
+    },
+    {
+      "code": "kok",
+      "name": "Konkani",
+      "voices": [
+        "Anjali",
+        "Sandeep"
+      ],
+      "sample": "नमस्कार, आयज हवामान बरें आसा."
+    },
+    {
+      "code": "brx",
+      "name": "Bodo",
+      "voices": [
+        "Gwrbw",
+        "Sansuma"
+      ],
+      "sample": "खुलुमबाय, दिनै मौसम गोजोन।"
+    },
+    {
+      "code": "mni",
+      "name": "Manipuri",
+      "voices": [
+        "Chaoba"
+      ],
+      "sample": "খুরুমজরি, ঙসি নুংশা ফজৈ।"
+    },
+    {
+      "code": "sat",
+      "name": "Santali",
+      "voices": [
+        "Sibu"
+      ],
+      "sample": "ᱡᱚᱦᱟᱨ ᱾"
+    },
+    {
+      "code": "ne",
+      "name": "Nepali",
+      "voices": [
+        "Srijana",
+        "Sagar"
+      ],
+      "sample": "नमस्ते, आज मौसम धेरै राम्रो छ।"
+    },
+    {
+      "code": "sa",
+      "name": "Sanskrit",
+      "voices": [
+        "Aryaman",
+        "Bharati"
+      ],
+      "sample": "नमस्ते, अद्य वातावरणम् अतीव उत्तमम् अस्ति।"
+    }
+  ]
+}

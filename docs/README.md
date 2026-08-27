@@ -17,7 +17,7 @@ New here? Start with [What is VoicEra](introduction/what-is-voicera.md) for the 
 | Capability | What it does |
 | --- | --- |
 | **Real-time voice agents** | Sub-second STT → LLM → TTS loop powered by [Pipecat](concepts/voice-pipeline.md). |
-| **Indian-language support** | Local STT/TTS via [AI4Bharat](services/ai4bharat-stt.md) servers or hosted providers. |
+| **Indian-language support** | Indic STT/TTS run on your own hardware via the [model server](services/model-server.md), or hosted providers. |
 | **Telephony integration** | Inbound and outbound calls through [Vobiz](concepts/telephony-model.md) over WebSocket. |
 | **Knowledge base (RAG)** | Ground answers in your own PDFs and documents. See [Knowledge base](concepts/knowledge-base-rag.md). |
 | **Web dashboard** | Configure agents, link numbers, run campaigns, review transcripts and recordings. |

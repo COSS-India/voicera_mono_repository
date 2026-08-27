@@ -2,6 +2,13 @@
 line-length = 100
 target-version = "py312"
 
+# Model folders may vendor an upstream project wholesale -- tts/orpheus/src is
+# the AI4Bharat Orpheus server as its authors wrote it. Restyling that to our
+# rules would make every future sync from upstream a merge conflict for no
+# behavioural gain, so it is excluded. Everything we author stays strict,
+# including the server entrypoints we rewrote ourselves.
+exclude = ["*/src/orpheus_server/**"]
+
 [lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RET", "ARG"]
 
@@ -18,4 +25,8 @@ extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Query", "fast
 # (VirtualMemoryPaged / SDPA / Dense / Compare). They share a signature, so each
 # necessarily ignores arguments the others use -- that is interface conformance,
 # not dead parameters.
-"tts/inference/**/*.py" = ["ARG001", "ARG002"]
+#
+# Path note: this became tts/<model>/inference/** when models moved into their
+# own folders. Left as a glob so it keeps matching if another model vendors an
+# engine the same way.
+"tts/*/inference/**/*.py" = ["ARG001", "ARG002"]

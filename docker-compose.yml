@@ -124,6 +124,13 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_SECURE=false
+      # The model-server is a separate Compose project on the host, so it is
+      # reached through the host rather than this network. localhost here would
+      # be this container.
+      - MODEL_SERVER_URL=http://host.docker.internal:8100
+    extra_hosts:
+      # Docker Desktop resolves this already; Linux needs it spelled out.
+      - "host.docker.internal:host-gateway"
     networks:
       - voicera_network
     depends_on:
@@ -138,6 +145,9 @@ services:
       - "8080:8080"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      # nginx.conf proxies to host.docker.internal for every upstream.
+      - "host.docker.internal:host-gateway"
     networks:
       - voicera_network
 

@@ -34,7 +34,7 @@ Usually the AI provider key is missing or invalid, or the agent has the wrong ST
 
 ### Do we need a GPU?
 
-Only if you run the optional local **AI4Bharat** STT and TTS servers. Cloud-only speech providers run fine without a GPU on the voice host. You still need to size CPU and memory for the expected number of concurrent calls. See [AI4Bharat STT](../../services/ai4bharat-stt.md).
+Only if you run the optional **model server**, which hosts STT, TTS and LLM models yourself. Cloud-only speech providers run fine without a GPU on the voice host. You still need to size CPU and memory for the expected number of concurrent calls. See [AI4Bharat STT](../../services/model-server.md).
 
 ### Does the system fall back from cloud speech to local speech automatically?
 

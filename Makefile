@@ -23,14 +23,19 @@ start-backend-services:
 stop-backend-services:
 	docker compose stop postgres ferretdb backend minio
 
+# Models run as containers now, not venvs, and each slot holds a folder per
+# model -- so there is no fixed path to a server.py to launch here.
 start-voice-only-services:
-	bash -c "(cd model-server/stt && source venv/bin/activate && python server.py) & (cd model-server/tts && source venv/bin/activate && python server.py) & (cd voice_2_voice_server && source venv/bin/activate && python main.py) & wait"
+	docker compose -f model-server/compose.model-server.yml \
+	  --project-directory model-server up -d
+	bash -c "(cd voice_2_voice_server && source venv/bin/activate && python main.py) & wait"
 
 stop-all-ports:
 	-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:27017 | xargs kill -9 2>/dev/null || true
-	-lsof -ti:8001 | xargs kill -9 2>/dev/null || true
-	-lsof -ti:8002 | xargs kill -9 2>/dev/null || true
+	-lsof -ti:8100 | xargs kill -9 2>/dev/null || true   # model-server gateway
+	docker compose -f model-server/compose.model-server.yml \
+	  --project-directory model-server down 2>/dev/null || true
 	-lsof -ti:7860 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 

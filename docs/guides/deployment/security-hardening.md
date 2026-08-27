@@ -188,7 +188,7 @@ sudo ufw enable
 sudo ufw status verbose
 ```
 
-Do not open `3000`, `7860`, `8000`, `8001`, `8002`, `9000`, `9001`, or `27017` to the public internet. The reverse proxy on `443` is the only public entry point.
+Do not open `3000`, `7860`, `8000`, `8100`, `9000`, `9001`, or `27017` to the public internet. The reverse proxy on `443` is the only public entry point.
 
 ## 8. Secret storage practices
 

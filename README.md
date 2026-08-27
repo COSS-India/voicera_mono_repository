@@ -6,9 +6,9 @@ A complete voice AI building block with telephony integration, featuring real-ti
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         VoicEra_mono_repository                  │
+│                         VoicEra_mono_repository                 │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
+│                                                                 │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
 │  │   Frontend   │    │   Backend    │    │ Voice Server │       │
 │  │   (Next.js)  │◄──►│  (FastAPI)   │◄──►│  (Pipecat)   │       │
@@ -22,11 +22,15 @@ A complete voice AI building block with telephony integration, featuring real-ti
 │                      └──────────────┘    └──────────────┘       │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────┐       │
-│  │            Optional: Local AI4Bharat Servers         │       │
-│  │  ┌──────────────┐              ┌──────────────┐      │       │
-│  │  │  STT Server  │              │  TTS Server  │      │       │
-│  │  │   :8001      │              │   :8002      │      │       │
-│  │  └──────────────┘              └──────────────┘      │       │
+│  │   Optional: model-server — self-hosted models        │       │
+│  │   One published port; models are reachable only      │       │
+│  │   inside it, so nothing else binds to the host.      │       │
+│  │  ┌────────────────────────────────────────────────┐  │       │
+│  │  │  Gateway  :8100   (OpenAI-compatible)          │  │       │
+│  │  ├────────────────────────────────────────────────┤  │       │
+│  │  │   stt slot   │   tts slot   │   llm slot       │  │       │
+│  │  │  (internal)  │  (internal)  │  (internal)      │  │       │
+│  │  └────────────────────────────────────────────────┘  │       │
 │  └──────────────────────────────────────────────────────┘       │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -42,8 +46,7 @@ A complete voice AI building block with telephony integration, featuring real-ti
 | `ferretdb` | 27017 | Mongo-compatible DB (FerretDB over PostgreSQL) |
 | `postgres` | (internal) | FerretDB backing store (DocumentDB extension) |
 | `minio` | 9000/9001 | Object storage for recordings & transcripts |
-| `ai4bharat_stt_server` | 8001 | Local Indic STT (optional) |
-| `ai4bharat_tts_server` | 8002 | Local Indic TTS (optional) |
+| `model-server` | 8100 | Self-hosted STT / TTS / LLM behind one OpenAI-compatible gateway (optional) |
 
 ---
 
@@ -77,9 +80,8 @@ cp voicera_frontend/.env.example voicera_frontend/.env.local
 # Voice Server
 cp voice_2_voice_server/.env.example voice_2_voice_server/.env
 
-# AI4Bharat servers (optional)
-cp ai4bharat_stt_server/.env.example ai4bharat_stt_server/.env
-cp ai4bharat_tts_server/.env.example ai4bharat_tts_server/.env
+# Self-hosted models (optional)
+cp model-server/.env.example model-server/.env
 ```
 
 See [Environment Configuration](#environment-configuration) below for detailed variable descriptions.
@@ -125,10 +127,10 @@ The Makefile provides convenient commands for managing the services:
 | Command | Description |
 |---------|-------------|
 | `make start-frontend` | Start frontend dev server locally (kills existing :3000 process) |
-| `make start-voice-only-services` | Start AI4Bharat STT/TTS and voice server locally (requires venv) |
+| `make start-voice-only-services` | Bring up the model-server containers and run the voice server locally |
 | `make start-dev` | Start everything for local development |
 | `make stop-dev` | Stop all development services |
-| `make stop-all-ports` | Force kill all service ports (3000, 27017, 8000, 8001, 8002, 7860) |
+| `make stop-all-ports` | Force kill service ports (3000, 27017, 8000, 7860, 8100) and stop the model-server stack |
 
 ---
 
@@ -207,30 +209,39 @@ MINIO_SECURE=false
 BHASHINI_API_KEY=your-bhashini-api-key
 BHASHINI_SOCKET_URL=wss://dhruva-api.bhashini.gov.in
 
-# Local AI4Bharat Servers (optional)
-AI4BHARAT_STT_URL=http://localhost:8001
-AI4BHARAT_TTS_URL=http://localhost:8002
+# Self-hosted models (optional). One URL for all three modalities -- the
+# gateway routes on the endpoint, so this does not change when the model does.
+# From inside a container, use http://host.docker.internal:8100
+MODEL_SERVER_URL=http://localhost:8100
 ```
 
-### AI4Bharat STT Server (`ai4bharat_stt_server/.env`)
+### Self-hosted models (`model-server/.env`)
 
 ```bash
-# HuggingFace Token (if model is gated)
-HF_TOKEN=your-huggingface-token
+# Which slots run, by slot name -- never a model name.
+COMPOSE_PROFILES=stt,tts
 
-# Server port (default: 8001)
-PORT=8001
+# Which model fills each slot: a folder name under model-server/<slot>/.
+# Switching model is editing one of these and rebuilding that one service.
+STT_MODEL=indic-conformer
+TTS_MODEL=indic-parler
+LLM_MODEL=                     # empty = that slot is not deployed
+
+# The only published port. The model containers bind nothing on the host.
+GATEWAY_PORT=8100
+
+# Which GPU, and how much of it vLLM may reserve.
+GPU_DEVICE_IDS=1
+
+# Needed by models that pull from a gated HuggingFace repo -- Indic Parler's
+# tokenizer and T5 encoder are gated, so TTS will not start without either this
+# or a cache that already holds them.
+HF_TOKEN=
 ```
 
-### AI4Bharat TTS Server (`ai4bharat_tts_server/.env`)
-
-```bash
-# HuggingFace Token (if model is gated)
-HF_TOKEN=your-huggingface-token
-
-# Server port (default: 8002)
-PORT=8002
-```
+`model-server/.env.example` is the full list with comments. See
+[model-server/README.md](model-server/README.md) for the slot layout and how to
+add a model.
 
 ---
 
@@ -259,22 +270,23 @@ PORT=8002
    python main.py
    ```
 
-4. **Start AI4Bharat servers (optional, requires GPU):**
-   ```bash
-   # STT Server
-   cd ai4bharat_stt_server
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   python server.py --port 8001
+4. **Start the self-hosted models (optional, requires GPU):**
 
-   # TTS Server (in another terminal)
-   cd ai4bharat_tts_server
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   python server.py
+   These run as containers, not venvs. Pick a model per slot in
+   `model-server/.env`, then:
+
+   ```bash
+   cd model-server
+   docker compose -f compose.model-server.yml --project-directory . up -d --build
+   curl localhost:8100/health
    ```
+
+   First build takes 20–40 minutes and the weights are several GB, so the first
+   start of a slot is slow with little output — watch
+   `docker compose logs -f` rather than assuming it has hung.
+
+   `setup.sh` at the repo root does all of this as part of a full deployment,
+   and asks which model should fill each slot.
 
 ### Using the Combined Dev Command
 
@@ -303,6 +315,19 @@ make stop-dev
 - `POST /outbound/call/` - Initiate outbound call
 - `WS /agent/{agent_id}` - WebSocket for audio streaming
 - Swagger docs: `http://localhost:7860/docs`
+
+### Model Server (`:8100`, optional)
+
+OpenAI-compatible, so existing OpenAI clients work against it unchanged.
+
+- `POST /v1/audio/transcriptions` — speech to text
+- `POST /v1/audio/speech` — text to speech, streaming PCM
+- `POST /v1/chat/completions` — LLM
+- `GET /models` — every model in the catalogue, and which are running
+- `GET /v1/models` — only what can be called right now
+- `GET /health` — gateway and each slot
+
+A slot with no model deployed answers 503 naming the slot, rather than 404.
 
 ### MinIO Console (`:9001`)
 - Web UI for managing object storage

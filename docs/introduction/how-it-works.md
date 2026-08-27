@@ -66,7 +66,7 @@ A natural conversational turn aims for **under 1.5 seconds** end-to-end:
 | TTS first chunk | 150–300 ms | Streaming TTS speaks while generating. |
 | Network out | ~100 ms | |
 
-Local AI4Bharat servers eliminate hosted-API round-trips at the cost of GPU hardware. See [AI4Bharat STT](../services/ai4bharat-stt.md).
+Self-hosting the models eliminates hosted-API round-trips at the cost of GPU hardware. See [Model server](../services/model-server.md).
 
 ## Where state lives
 

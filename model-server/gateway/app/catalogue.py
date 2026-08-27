@@ -1,7 +1,8 @@
 """The model catalogue, read from models.yaml.
 
-One place describes every model the server can host. The gateway serves it so
-the frontend stops shipping its own hardcoded lists.
+One place describes every model the server can host, served at /models. The
+frontend still ships its own stt.json and tts.json; until it reads this instead,
+the two can disagree.
 """
 
 from __future__ import annotations

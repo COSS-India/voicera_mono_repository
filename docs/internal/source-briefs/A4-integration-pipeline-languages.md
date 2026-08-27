@@ -1,5 +1,13 @@
 # Brief: Integration, pipeline, languages, fallback (A4)
 
+{% hint style="warning" %}
+**Superseded (August 2026).** The AI4Bharat STT and TTS servers described below
+no longer run as separate services on ports 8001 and 8002, and the LLM server no
+longer has its own launcher on 8003. All three are now slots in the model
+server, behind one OpenAI-compatible port. This brief is kept as a record of the
+earlier design; write from [Model server](../../services/model-server.md) instead.
+{% endhint %}
+
 **Review gap:** No documentation on which pipeline is used, supported language codes, or fallback between cloud and local AI4Bharat servers.
 
 ---

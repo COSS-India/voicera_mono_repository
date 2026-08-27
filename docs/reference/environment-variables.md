@@ -17,8 +17,7 @@ Every VoicEra service is configured through environment variables, typically loa
 | Backend | `voicera_backend/.env` (template: `voicera_backend/env.example`) |
 | Voice server | `voice_2_voice_server/.env` |
 | Frontend | `voicera_frontend/.env.local` |
-| AI4Bharat STT (optional) | `ai4bharat_stt_server/.env` |
-| AI4Bharat TTS (optional) | `ai4bharat_tts_server/.env` |
+| Model server (optional) | `model-server/.env` |
 
 In Docker Compose deployments the same files are mounted via `env_file:` in `docker-compose.yml`. Service-name aliases (e.g. `mongodb`, `minio`, `backend`) resolve inside the `voicera_network` bridge.
 
@@ -139,8 +138,7 @@ Provider selection is per-agent in MongoDB. Per-org keys are stored in **Dashboa
 | `VLLM_BASE_URL` | voice server | – | conditional | vLLM base URL |
 | `GOOGLE_STT_CREDENTIALS_PATH` | voice server | `credentials/google_stt.json` | conditional | Google STT service-account JSON |
 | `GOOGLE_TTS_CREDENTIALS_PATH` | voice server | `credentials/google_tts.json` | conditional | Google TTS service-account JSON |
-| `AI4BHARAT_STT_URL` | voice server | – | conditional | Local AI4Bharat STT base URL |
-| `AI4BHARAT_TTS_URL` | voice server | – | conditional | Local AI4Bharat TTS base URL |
+| `MODEL_SERVER_URL` | voice server | – | conditional | Model server gateway, e.g. `http://localhost:8100`. One URL for STT, TTS and LLM — the gateway routes on the endpoint. From inside a container use `http://host.docker.internal:8100`. |
 | `KENPATH_JWT_PRIVATE_KEY_PATH` | voice server | – | conditional | RS256 private key for Kenpath Vistaar |
 
 ### Server, audio, logging
@@ -169,26 +167,43 @@ Public frontend env vars must be prefixed `NEXT_PUBLIC_` to be exposed to the br
 
 ---
 
-## AI4Bharat STT (`ai4bharat_stt_server/.env`)
+## Model server (`model-server/.env`)
 
-| Name | Service | Default | Required | Description |
-|------|---------|---------|----------|-------------|
-| `PORT` | ai4bharat-stt | `8001` | no | Listen port |
-| `INDIC_NEMO_PATH` | ai4bharat-stt | – | yes | On-disk path to the main Indic NeMo checkpoint |
-| `BHILI_ENABLE` | ai4bharat-stt | `no` | no | `yes` to load the Bhili checkpoint |
-| `BHILI_NEMO_PATH` | ai4bharat-stt | – | conditional | On-disk path to the Bhili checkpoint |
-| `HF_TOKEN` | ai4bharat-stt | – | no | HuggingFace token for gated checkpoints |
+| Variable | Service | Default | Required | Description |
+|----------|---------|---------|----------|-------------|
+| `COMPOSE_PROFILES` | model-server | – | yes | Which slots run, by slot name: `stt,tts,llm` |
+| `STT_MODEL` | model-server | – | no | Folder under `model-server/stt/`; empty means the slot is not deployed |
+| `TTS_MODEL` | model-server | – | no | Folder under `model-server/tts/` |
+| `LLM_MODEL` | model-server | – | no | Folder under `model-server/llm/` |
+| `GATEWAY_PORT` | model-server | `8100` | no | The only published port |
+| `GPU_DEVICE_IDS` | model-server | `1` | no | Which GPU the model containers claim |
+| `HF_TOKEN` | model-server | – | conditional | Needed for models pulling from a gated HuggingFace repo |
+| `NEMO_CONTEXT_PATH` | model-server | `../../ai4bharat_nemo` | conditional | Local checkout of the AI4Bharat NeMo fork, used as a build context by `indic-conformer` |
+| `VLLM_MAX_MODEL_LEN` | model-server | `8192` | no | Context cap for the LLM slot |
+| `VLLM_MAX_NUM_SEQS` | model-server | `20` | no | Concurrent sequences for the LLM slot |
+| `VLLM_GPU_MEMORY_UTILIZATION` | model-server | `0.10` | no | Fraction of the card's **total** memory vLLM reserves at startup |
+| `VLLM_QUANTIZATION` | model-server | – | no | Empty means bf16 |
 
-For the batch size and timeout constants (`MAX_BATCH_SIZE=16`, `BATCH_TIMEOUT=0.1s`) see `ai4bharat_stt_server/server.py`.
+`model-server/.env.example` is the annotated list. Per-model settings live in
+`model-server/<slot>/<model>/`, not here.
 
-## AI4Bharat TTS (`ai4bharat_tts_server/.env`)
+### Slot variables passed through to containers
 
-| Name | Service | Default | Required | Description |
-|------|---------|---------|----------|-------------|
-| `PORT` | ai4bharat-tts | `8002` | no | Listen port |
-| `AUDIO_SAMPLE_RATE` | ai4bharat-tts | `44100` | no | Output sample rate (Hz); Parler TTS default |
+Compose sets these from `model-server/.env`; they are per-slot, not per-model.
 
-Refer to `ai4bharat_tts_server/.env.example` for the active variable set — checkpoint and batching knobs vary by deployment.
+| Name | Slot | Default | Required | Description |
+|------|------|---------|----------|-------------|
+| `PORT` | all | `8001` / `8002` / `8003` | no | The slot's port **inside** the model-server network. Nothing binds these on the host. |
+| `INDIC_NEMO_PATH` | stt | `/app/models/IndicConformer.nemo` | conditional | Path inside the container to the main Indic checkpoint (`indic-conformer`) |
+| `BHILI_ENABLE` | stt | `no` | no | `yes` to load the Bhili checkpoint as well |
+| `BHILI_NEMO_PATH` | stt | – | conditional | Path inside the container to the Bhili checkpoint |
+| `CHECKPOINT_PATH_DEFAULT` | tts | `/app/checkpoints` | no | Where the TTS model finds its weights |
+| `HF_HUB_OFFLINE` | tts | `0` | no | `1` when reading a cache that already holds gated files, so HuggingFace skips the check that would 401 |
+| `HUGGING_FACE_HUB_TOKEN` | all | – | conditional | Set from `HF_TOKEN`; needed for gated repos |
+
+Batching constants are model code, not configuration: STT uses `MAX_BATCH_SIZE=16`
+and `BATCH_TIMEOUT=0.1s` in `model-server/stt/<model>/server.py`, and the LLM slot
+takes `VLLM_MAX_NUM_SEQS` from `.env`.
 
 ---
 

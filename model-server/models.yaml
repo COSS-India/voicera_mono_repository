@@ -1,7 +1,12 @@
 # Catalogue of models the model-server can host.
 #
-# This is the single place a model is described. The gateway serves it at
-# /models, so the frontend stops shipping its own hardcoded lists.
+# This is the single place a model is described, and the gateway serves it at
+# /models.
+#
+# Not yet consumed by anything else: voicera_frontend still imports its own
+# stt.json and tts.json, so those lists and this one can disagree. Pointing the
+# frontend here is the work that makes this the single source of truth rather
+# than merely the intended one.
 #
 # status:
 #   ready    - the folder <kind>/<id>/ exists with a Dockerfile in it; set
@@ -52,12 +57,18 @@ tts:
     notes: Qwen3-0.6B backbone with MioCodec; vLLM-servable.
 
   - id: orpheus
-    name: Canopy Labs Orpheus TTS
-    status: planned
+    name: AI4Bharat Orpheus Indic TTS
+    status: ready
     runtime: vllm
     sample_rate: 24000
-    voice: {cloning: true}
-    notes: Llama-3.2-3B backbone with SNAC codec.
+    audio_format: pcm            # OpenAI's 16-bit LE mono; Parler serves pcm_f32le
+    streaming: true
+    voice: {presets: from-roster, free_text_description: false, cloning: false}
+    languages: [22 Indian languages]
+    notes: >-
+      Llama-3.2-3B backbone with SNAC codec, served by vLLM. The speaker name
+      picks the language, so `voice` and `language` are not independent.
+      Not yet run on hardware.
 
   - id: omnivoice
     name: k2-fsa OmniVoice 0.6B

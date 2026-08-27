@@ -30,7 +30,7 @@ from services.kenpath_llm.llm import (
     is_bharat_vistaar_language_supported,
     normalize_kenpath_backend,
 )
-from services.ai4bharat.tts import IndicParlerRESTTTSService
+from services.ai4bharat.tts import ModelServerTTSService
 from services.ai4bharat.stt import IndicConformerRESTSTTService
 from services.bhashini.stt import BhashiniSTTService
 from services.bhashini.socketio_stt import BhashiniSocketIOSTTService
@@ -663,14 +663,38 @@ def create_tts_service(
             language_id = (
                 TTS_LANGUAGE_MAP[provider].get(language, language) if language else "hi"
             )
-            return IndicParlerRESTTTSService(
+            return ModelServerTTSService(
                 speaker=speaker,
                 description=description,
                 language_id=language_id,
-                sample_rate=sample_rate
+                sample_rate=sample_rate,
+                # Parler's engine produces float32; asking for its native format
+                # keeps this path byte-identical to what it has always served.
+                audio_format="pcm_f32le",
+            )
+        elif model == "orpheus-tts":
+            # Same service class, different model. `voice` is the speaker name,
+            # which for Orpheus also selects the language, and `instructions` is
+            # the speaking style when it names one. `pcm` is OpenAI's 16-bit
+            # format; Orpheus emits it at 24 kHz and says so in the response
+            # header, which is where the client reads the rate from.
+            speaker = tts_config.get("speaker") or args.get("speaker")
+            description = tts_config.get("description") or args.get("description") or ""
+            language_id = (
+                TTS_LANGUAGE_MAP[provider].get(language, language) if language else "hi"
+            )
+            return ModelServerTTSService(
+                speaker=speaker,
+                description=description,
+                language_id=language_id,
+                sample_rate=sample_rate,
+                audio_format="pcm",
             )
         else:
-            raise ServiceCreationError(f"Unknown ai4bharat TTS model: {model}. Expected 'indic-parler-tts'")
+            raise ServiceCreationError(
+                f"Unknown ai4bharat TTS model: {model}. "
+                f"Expected 'indic-parler-tts' or 'orpheus-tts'"
+            )
     
     elif provider == "Bhashini":
         speaker = tts_config.get("speaker") or args.get("speaker")

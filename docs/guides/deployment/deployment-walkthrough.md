@@ -117,8 +117,8 @@ VoicEra usually sets this automatically when the agent is created from the dashb
 
 Only if agents use `indic-conformer-stt` or `indic-parler-tts`:
 
-- [AI4Bharat STT](../../services/ai4bharat-stt.md) on port `8001`
-- [AI4Bharat TTS](../../services/ai4bharat-tts.md) on port `8002`
+- [Model server](../../services/model-server.md) on port `8100` — one gateway for
+  self-hosted STT, TTS and LLM. The model containers publish no host ports.
 - Development convenience: `make start-voice-only-services`
 - Production: GPU required for acceptable latency
 

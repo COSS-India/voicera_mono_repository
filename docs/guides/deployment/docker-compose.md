@@ -20,7 +20,9 @@ VoicEra ships as five containers orchestrated by `docker-compose.yml` at the rep
 
 > **Database note:** The primary app datastore is **FerretDB** (not MongoDB Server). See [MongoDB → FerretDB migration](mongodb-to-ferretdb.md) for architecture, cutover details, backups, and rollback.
 
-Optional AI4Bharat speech containers expose `8001` (STT) and `8002` (TTS) when enabled. See [AI4Bharat STT](../../services/ai4bharat-stt.md) and [AI4Bharat TTS](../../services/ai4bharat-tts.md).
+The optional model server is a separate Compose project in `model-server/`, with its own
+`compose.model-server.yml`. It publishes one port, `8100`; its model containers are
+reachable only inside that project. See [Model server](../../services/model-server.md).
 
 ## Prerequisites
 

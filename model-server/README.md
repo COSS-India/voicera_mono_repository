@@ -8,7 +8,8 @@ model-server/
 ├── stt/                   speech-to-text slot        :8001 (internal)
 │   └── indic-conformer/
 ├── tts/                   text-to-speech slot        :8002 (internal)
-│   └── indic-parler/
+│   ├── indic-parler/
+│   └── orpheus/
 ├── llm/                   language-model slot        :8003 (internal)
 │   └── qwen3.5-4b/
 ├── models.yaml            catalogue of every model, served at /models
@@ -107,6 +108,14 @@ builds must:
 | answer `GET /health` | 2xx once the model is loaded and can serve |
 | answer its slot's OpenAI route | `/v1/audio/transcriptions`, `/v1/audio/speech`, or `/v1/chat/completions` |
 | stop work when the client hangs up | for TTS this is what makes barge-in free the GPU |
+| say what it is sending | TTS only: `X-Audio-Format` and `X-Sample-Rate` on every response |
+
+That last row is what keeps the slot model-agnostic. Two TTS models here
+disagree on the wire — Indic Parler streams 44.1 kHz float32 under the name
+`pcm_f32le`, Orpheus streams 24 kHz signed 16-bit under OpenAI's own name `pcm` —
+and the client decodes whichever arrives by reading the headers. Nothing is
+mandated about *what* a model sends, only that it says so. A format the client
+cannot decode produces a clear error naming it, never silence or noise.
 
 Optionally, the folder may contain **`fetch.sh`**: `setup.sh` runs it if it is
 there, so a model that needs weights brings its own download step rather than
@@ -138,8 +147,9 @@ used to get, a chunk boundary splitting a float without corrupting the audio, th
 gateway streaming rather than buffering, a disconnect actually stopping
 generation, the KV page allocator never handing one page to two calls, naming a
 different model actually building a different folder, the LLM's model id meaning
-the same string in all four files that have to agree on it, and an undeployed
-slot refusing calls clearly instead of hanging.
+the same string in all four files that have to agree on it, an undeployed slot
+refusing calls clearly instead of hanging, and two TTS models with different
+sample widths both decoding correctly.
 
 ## Current state
 

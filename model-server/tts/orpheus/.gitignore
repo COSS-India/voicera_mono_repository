@@ -1,0 +1,11 @@
+# Model weights and caches are never committed — see the Readme for setup.
+models/
+hf-cache/
+
+.env
+__pycache__/
+*.pyc
+*.wav
+*.mp3
+*.flac
+*.opus

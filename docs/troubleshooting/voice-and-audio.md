@@ -89,12 +89,12 @@ docker-compose exec voice_server cat .env | grep STT
 docker-compose exec voice_server python -c \
   "from deepgram import DeepgramClient; print('OK')"
 
-# Local AI4Bharat STT: is it up?
-docker-compose ps ai4bharat_stt_server
-docker-compose exec voice_server curl http://ai4bharat_stt_server:8001/health
+# Self-hosted STT: is it up?
+cd model-server && docker compose -f compose.model-server.yml --project-directory . ps
+curl http://localhost:8100/health
 ```
 
-API keys for cloud STT live in Dashboard → Integrations per organization, not in `.env`. See [../services/ai4bharat-stt.md](../services/ai4bharat-stt.md) for the local server and [../guides/operator/operations.md](../guides/operator/operations.md) for the Integrations workflow.
+API keys for cloud STT live in Dashboard → Integrations per organization, not in `.env`. See [Model server](../services/model-server.md) for self-hosted models and [../guides/operator/operations.md](../guides/operator/operations.md) for the Integrations workflow.
 
 ### Wrong language detected / transcripts are gibberish
 
@@ -129,13 +129,16 @@ Changing language on an active agent does not retroactively re-transcribe past c
 docker-compose exec voice_server cat .env | grep TTS
 
 # Direct test of the TTS endpoint
-curl -X POST http://localhost:8002/synthesize \
+curl -X POST http://localhost:8100/v1/audio/speech \
   -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","language":"en"}'
+  -d '{"input":"नमस्ते, आप कैसे हैं?","voice":"Divya","language":"hi"}' \
+  --output /tmp/tts.pcm
+# Raw float32 PCM at the rate in the X-Sample-Rate response header, not a WAV.
 
-# Local AI4Bharat TTS
-docker-compose ps ai4bharat_tts_server
-docker-compose logs ai4bharat_tts_server
+# Self-hosted TTS
+cd model-server
+docker compose -f compose.model-server.yml --project-directory . ps
+docker compose -f compose.model-server.yml --project-directory . logs tts
 ```
 
 ### "Invalid voice ID" or "voice not found"
@@ -144,7 +147,7 @@ docker-compose logs ai4bharat_tts_server
 
 **Cause:** The voice ID set on the agent belongs to a different provider, or the voice was removed/renamed by the provider.
 
-**Fix:** In Dashboard → Assistants, re-select the voice from the dropdown rather than typing an ID. The dropdown is filtered to voices valid for the agent's TTS provider and language. See [../services/ai4bharat-tts.md](../services/ai4bharat-tts.md) for the supported voice catalog.
+**Fix:** In Dashboard → Assistants, re-select the voice from the dropdown rather than typing an ID. The dropdown is filtered to voices valid for the agent's TTS provider and language. See [Model server](../services/model-server.md) for the supported voice catalog.
 
 ### Distorted, robotic, or chopped audio
 
@@ -155,7 +158,7 @@ docker-compose logs ai4bharat_tts_server
 **Fix:**
 
 1. Confirm the TTS output sample rate matches what telephony expects (usually 8 kHz µ-law for PSTN, 16 kHz for browser).
-2. Check TTS server resource usage: `docker stats ai4bharat_tts_server`.
+2. Check TTS resource usage: `docker stats voicera_model_tts`.
 3. For local TTS, GPU thermal throttling shows up as audio that degrades after sustained load — see GPU OOM below.
 
 ---
@@ -202,11 +205,11 @@ See [../concepts/voice-pipeline.md](../concepts/voice-pipeline.md) for the per-s
 nvidia-smi
 
 # Restart the offender to release memory
-docker-compose restart ai4bharat_tts_server
-docker-compose restart ai4bharat_stt_server
+cd model-server
+docker compose -f compose.model-server.yml --project-directory . restart tts stt
 ```
 
-Concurrency limits go in the AI4Bharat service `.env` — reduce `MAX_BATCH_SIZE` or `MAX_CONCURRENT_REQUESTS`. For sizing per GPU class, see [../services/ai4bharat-stt.md](../services/ai4bharat-stt.md) and [../services/ai4bharat-tts.md](../services/ai4bharat-tts.md).
+Concurrency limits live with the model, not the gateway: STT batching is `MAX_BATCH_SIZE` and `BATCH_TIMEOUT` in `model-server/stt/<model>/server.py`, and the LLM slot takes `VLLM_MAX_NUM_SEQS` from `model-server/.env`. For sizing, see [Model server](../services/model-server.md#gpu).
 
 {% hint style="info" %}
 Cloud-only STT/TTS deployments do not need a GPU. You only hit OOM if you opted into running AI4Bharat servers locally.
@@ -221,6 +224,5 @@ Cloud-only STT/TTS deployments do not need a GPU. You only hit OOM if you opted 
 - [deployment.md](deployment.md) — Docker, ports, TLS
 - [../concepts/voice-pipeline.md](../concepts/voice-pipeline.md) — pipeline stages and budgets
 - [../services/voice-server.md](../services/voice-server.md) — voice server reference
-- [../services/ai4bharat-stt.md](../services/ai4bharat-stt.md) — local STT server
-- [../services/ai4bharat-tts.md](../services/ai4bharat-tts.md) — local TTS server
+- [Model server](../services/model-server.md) — self-hosted STT, TTS and LLM
 - [../reference/websocket-api.md](../reference/websocket-api.md) — WebSocket protocol

@@ -1,0 +1,198 @@
+# =============================================================================
+# AI4Bharat Orpheus Indic TTS — service configuration
+# =============================================================================
+# Every key below can also be set with an ORPHEUS_* environment variable, which
+# always wins over this file. Variable names are listed next to each key and in
+# .env.example, so a deployment can be tuned without editing or rebuilding
+# anything.
+#
+# Defaults here are set for FULL CAPACITY on a large datacentre GPU (the service
+# is meant to be shared across teams). If you are on a smaller card, or serving
+# LIVE audio rather than batch, read the Configuration section in Readme.md before
+# first boot — the keys that matter are engine.max_num_seqs, model.quantization
+# and engine.gpu_memory_utilization.
+# =============================================================================
+
+model:
+  # ORPHEUS_MODEL_PATH — local directory, or a HuggingFace repo id.
+  # Relative paths resolve against the repository root. See the Readme for how to
+  # obtain the checkpoint and where to place it.
+  path: models/orpheus-indic-5679
+
+  # ORPHEUS_DTYPE — 'auto' lets vLLM choose: bfloat16 on Ampere and newer,
+  # float16 on older cards. Only set this explicitly to override that choice.
+  dtype: auto
+
+  # ORPHEUS_QUANTIZATION — 'fp8' quantizes weights on load. null serves at dtype.
+  #
+  # Requires compute capability >= 8.9 (Ada / Hopper / Blackwell). On an older
+  # GPU the server logs a warning at boot and vLLM will either fail or fall back
+  # to slow emulation — set this to null there.
+  #
+  # FP8 vs BF16 on the same checkpoint, measured on an earlier deployment at
+  # gpu_memory_utilization 0.90 — NOT re-verified on the current configuration,
+  # which reports 85.3 GiB of KV cache at 0.95. Treat the ratios as indicative and
+  # the absolute KV figure as stale:
+  #   decode rate      239.2 tok/s  vs  164.7 tok/s   (+45%)
+  #   time to first audio  118 ms   vs  171 ms        (31% lower)
+  #   real-time factor     0.343    vs  0.498
+  #   KV cache available   75.8 GiB vs  73.4 GiB      (+2.4 GiB)
+  # Word error rate was unchanged within measurement noise. FP8 is the better
+  # choice wherever it is supported. The FP8 decode rate is consistent with the
+  # current deployment, which measures 0.33-0.34 RTF and 122 ms TTFA.
+  quantization: fp8
+
+  # ORPHEUS_MAX_MODEL_LEN — context window: prompt tokens + generated audio
+  # tokens. 8192 audio tokens is roughly 100 s of speech. Lowering it frees KV
+  # cache for more concurrent streams; raising it costs KV cache per stream.
+  max_model_len: 8192
+
+  # ORPHEUS_TRUST_REMOTE_CODE — only needed for checkpoints shipping custom code.
+  trust_remote_code: false
+
+engine:
+  # ORPHEUS_GPU_MEMORY_UTILIZATION — fraction of GPU memory vLLM reserves for
+  # weights plus KV cache. Everything left over must still hold the SNAC codec
+  # (~0.5 GB) and CUDA context, so do not go above ~0.95.
+  #
+  # Lower this if the GPU is shared with another process; raise it towards 0.95
+  # on a dedicated card to buy KV cache, which is what concurrency is made of.
+  gpu_memory_utilization: 0.90
+
+  # ORPHEUS_MAX_NUM_SEQS — how many streams the engine will work on at once.
+  #
+  #   *** This is an ADMISSION policy, not a throughput control. ***
+  #
+  # Raising it does not make the GPU faster. It changes what happens to traffic
+  # the GPU cannot keep up with: a low value makes extra requests WAIT in a
+  # queue, a high value ADMITS them all and makes every stream slower. Total
+  # throughput is fixed by the hardware either way.
+  #
+  # Measured on one RTX PRO 6000 Blackwell Server Edition (96 GB, FP8,
+  # gpu_memory_utilization 0.95, 85.3 GiB KV cache). All N streams started at the
+  # same instant; a frame counts as LATE if it misses its real-time playback slot
+  # after a 100 ms prebuffer, and "clean" is the share of streams with none late.
+  # Reproduce with: python3 tests/orpheus_test.py --suite concurrency
+  #
+  #   concurrent | audio-s/s | TTFA p50 | TTFA p95 |  RTF | clean
+  #   -----------+-----------+----------+----------+------+-------
+  #        1     |    3.0    |  124 ms  |  124 ms  | 0.33 | 100%
+  #       16     |   30.8    |  169 ms  |  175 ms  | 0.47 | 100%
+  #       32     |   50.5    |  171 ms  |  180 ms  | 0.59 | 100%
+  #       64     |   76.9    |  192 ms  |  229 ms  | 0.78 | 100%   <- last clean value
+  #      128     |  103.4    |  265 ms  |  355 ms  | 1.16 |   0%
+  #      256     |  111.6    |  468 ms  |  694 ms  | 2.19 |   0%
+  #
+  # Throughput keeps rising to ~112 audio-s/s at 256 (37x the single-stream rate),
+  # but past 64 the GPU stops making streams wait and starts making them stutter.
+  # Sustained load reproduces the same knee: 64 gives 76.1 audio-s/s with 100%
+  # clean and 100% started within 500 ms; 128 gives 105.2 audio-s/s with 0% clean.
+  #
+  # So pick by what your clients do with the audio:
+  #
+  #   256 (default here) — maximum admission and maximum throughput. Correct when
+  #       clients BUFFER before playing (batch synthesis, file generation), because
+  #       a late frame costs nothing when nobody is listening yet.
+  #    64 — the highest value where every stream stays real-time. Correct for LIVE
+  #       playback (voice agents, phone lines) where a gap is audible. Costs about
+  #       a third of peak throughput.
+  #    32 — extra headroom for live delivery if your traffic is spikier than the
+  #       test, or if the GPU is shared with other work.
+  #
+  # Whatever you pick, keep decoder.max_batch at or above it, and make sure
+  # warmup.concurrency_widths reaches it.
+  max_num_seqs: 256
+
+  # ORPHEUS_ENFORCE_EAGER — true skips CUDA-graph capture: boots faster and uses
+  # less VRAM, but decodes measurably slower. Turn it on only if graph capture
+  # will not fit in memory.
+  enforce_eager: false
+
+  # ORPHEUS_TENSOR_PARALLEL_SIZE — shard the model across this many GPUs. This
+  # model is ~7.6 GB and fits one card comfortably, so 1 is right unless you are
+  # deliberately trading GPUs for KV-cache headroom. Must divide your GPU count.
+  tensor_parallel_size: 1
+
+  # ORPHEUS_MAX_TOKENS_DEFAULT — generation cap when a request omits max_tokens.
+  # One token is ~12.2 ms of audio (7 tokens = one 85.33 ms frame), so 8192 is
+  # roughly 100 s.
+  #
+  # Set this to match max_model_len. A lower value SILENTLY TRUNCATES long text
+  # mid-sentence with no error — clients get a short clip and no warning.
+  max_tokens_default: 8192
+
+  # ORPHEUS_MAX_TOKENS_LIMIT — ceiling a client cannot exceed, whatever it asks for.
+  max_tokens_limit: 8192
+
+decoder:
+  # ORPHEUS_DECODER_DEVICE — torch device for the SNAC codec ('cuda', 'cuda:1', 'cpu').
+  # On a multi-GPU box, moving the codec to a second card takes decode off the
+  # generation GPU entirely.
+  device: cuda
+
+  # ORPHEUS_DECODER_MAX_BATCH — how many streams' audio frames are decoded in a
+  # single GPU call. Keep this >= engine.max_num_seqs: this batching is what stops
+  # SNAC decode from competing with generation once many streams are live. Setting
+  # it below max_num_seqs is a silent performance bug (the server warns at boot).
+  max_batch: 256
+
+  # ORPHEUS_SNAC_MODEL_ID — codec weights, ~76 MB, downloaded from HuggingFace on
+  # first boot and cached in HF_HOME.
+  model_id: hubertsiuzdak/snac_24khz
+
+sampling:
+  # These are stack-verified for Orpheus. They are exposed for experiments, but
+  # changing them degrades audio quality — temperature above ~0.8 in particular
+  # produces mispronunciations and dropped words.
+  temperature: 0.6
+  top_p: 0.8
+  repetition_penalty: 1.3
+  # Floor before the end-of-speech token is honoured. Temperature sampling can
+  # otherwise stop immediately and return an empty clip; 28 tokens is one full
+  # decode window (~0.34 s).
+  min_tokens: 28
+
+warmup:
+  # vLLM's sampling kernels JIT-compile the first time each batch WIDTH appears.
+  # Without warmup, the first burst of N concurrent users pays a multi-second
+  # stall mid-stream. Doing it at boot moves that cost somewhere nobody waits.
+  #
+  # ORPHEUS_WARMUP_ENABLED — false boots much faster and pushes the JIT cost onto
+  # real traffic. Useful when iterating on config, not for production.
+  enabled: true
+
+  # ORPHEUS_WARMUP_WIDTHS — comma-separated when set via environment.
+  # Should reach engine.max_num_seqs; the wide entries dominate boot time, so
+  # trimming the tail is the main lever if startup is too slow.
+  concurrency_widths: [1, 2, 4, 8, 16, 32, 64, 128, 256]
+
+  # ORPHEUS_WARMUP_MAX_TOKENS — kernels compile per batch width, not per length,
+  # so this only needs to be long enough to run the sampler a few times.
+  max_tokens: 64
+
+server:
+  # host/port apply when the module is run directly (`python -m orpheus_server`).
+  # Under Docker they are not used: the image's CMD fixes the container port at
+  # 9000, and compose remaps it on the host side with ORPHEUS_PORT (`9000:9000`
+  # by default). To serve on a different host port, set ORPHEUS_PORT in .env —
+  # do not change these two keys.
+  host: 0.0.0.0            # ORPHEUS_HOST
+  port: 9000               # ORPHEUS_PORT
+  model_name: orpheus-indic  # ORPHEUS_MODEL_NAME — the id reported by GET /v1/models
+
+  # ORPHEUS_CORS_ORIGINS — comma-separated when set via environment.
+  cors_origins: ["*"]
+
+  # ORPHEUS_DRAIN_TIMEOUT — on shutdown, how long in-flight streams get to finish
+  # before the engine is torn down. /health goes unready immediately, so a load
+  # balancer stops sending new work while the sentences already in progress play
+  # out. 0 disables the wait and cuts every live stream mid-word.
+  #
+  # docker-compose.yml sets stop_grace_period: 60s to sit above this. Raise both
+  # together, never just this one — Docker SIGKILLs at the grace period whatever
+  # the drain is doing.
+  drain_timeout: 30.0
+
+# Roster of languages, speakers and styles. Swap this file to serve a different
+# checkpoint; set prompt_template to "plain" for upstream English Orpheus models.
+voices_file: voices.json   # ORPHEUS_VOICES_FILE

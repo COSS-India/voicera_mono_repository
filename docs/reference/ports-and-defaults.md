@@ -21,6 +21,7 @@ A stock `docker-compose up -d` from the repository root brings up six containers
 | `9000` | `voicera_minio` | HTTP | MinIO S3 API |
 | `9001` | `voicera_minio` | HTTP | MinIO web console |
 | `8080` | `voicera_nginx` | HTTP | Optional reverse proxy |
+| `8100` | `voicera_model_gateway` | HTTP | Optional self-hosted models — see [Model server](../services/model-server.md) |
 
 ## Service URLs
 
@@ -35,6 +36,7 @@ Use these when developing against a local stack.
 | Voice server | `http://localhost:7860` | Health at `/health` |
 | Voice server Swagger | `http://localhost:7860/docs` | REST surface only |
 | Voice server WebSocket | `ws://localhost:7860/agent/{agent_id}` | See [websocket-api.md](websocket-api.md) |
+| Model server | `http://localhost:8100` | Health at `/health`, catalogue at `/models` |
 | MinIO API | `http://localhost:9000` | S3-compatible endpoint |
 | MinIO Console | `http://localhost:9001` | Web UI for buckets |
 | MongoDB | `mongodb://localhost:27017` | Use a client like `mongosh` |
@@ -107,7 +109,13 @@ The voice server defaults align with the stock `.env.example`:
 | STT | Deepgram (`nova-2`) |
 | TTS | Cartesia (`english_male`) |
 
-All three require an API key set via env vars (see [environment-variables.md](environment-variables.md)). Local alternatives via AI4Bharat are documented at [../services/ai4bharat-stt.md](../services/ai4bharat-stt.md) and [../services/ai4bharat-tts.md](../services/ai4bharat-tts.md).
+All three require an API key set via env vars (see [environment-variables.md](environment-variables.md)). To run Indic models on your own hardware instead, see [Model server](../services/model-server.md).
+
+{% hint style="info" %}
+The model server is its own Compose project and the only optional stack that
+publishes a host port. Its STT, TTS and LLM containers listen on 8001, 8002 and
+8003 **inside** that project's network only — nothing binds those on the host.
+{% endhint %}
 
 ## Public URLs (production)
 

@@ -1,5 +1,13 @@
 # Brief: AI4Bharat STT/TTS servers (A5)
 
+{% hint style="warning" %}
+**Superseded (August 2026).** The AI4Bharat STT and TTS servers described below
+no longer run as separate services on ports 8001 and 8002, and the LLM server no
+longer has its own launcher on 8003. All three are now slots in the model
+server, behind one OpenAI-compatible port. This brief is kept as a record of the
+earlier design; write from [Model server](../../services/model-server.md) instead.
+{% endhint %}
+
 **Review gap (original):** No model IDs, GPU VRAM requirements, or API spec for the STT/TTS servers in repository documentation.
 
 **Merge status (VRAM):** API specs and env paths are documented in MkDocs and submodule READMEs. **Exact GPU VRAM (GB) is formally deferred** — checkpoints are customer-specific; engineering has not published reference benchmarks in this sprint. Operator-facing text in `docs/services/ai4bharat-*.md` states deferred status and hosting-partner sizing guidance.
@@ -84,7 +92,7 @@ Use `"bhb"` or `"bhili"` for Bhili.
 
 ### GPU / VRAM
 
-**Production:** NVIDIA GPU expected. **RTX 4000 series and newer** run well (RTX 50xx/40xx consumer, RTX Ada workstation, L40S/L40, H100/H200) — full list in [ai4bharat-tts.md](../services/ai4bharat-tts.md#gpu-vram).
+**Production:** NVIDIA GPU expected. **RTX 4000 series and newer** run well (RTX 50xx/40xx consumer, RTX Ada workstation, L40S/L40, H100/H200) — full list in [ai4bharat-tts.md](../../services/model-server.md#gpu).
 
 **Pinned VRAM (GB):** Still deferred; use hosting-partner / staging sizing in addition to the GPU class guidance above.
 

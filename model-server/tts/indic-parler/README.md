@@ -1,43 +1,58 @@
-# AI4Bharat TTS server
+# Indic Parler (TTS)
 
-Optional **on-premises Indic text-to-speech** (Parler) over WebSocket. Required only when agents use `indic-parler-tts`.
+AI4Bharat's Indic Parler TTS with a custom inference engine — paged KV cache,
+continuous batching, CUDA graphs, and incremental DAC decoding. Fills the TTS
+slot; set `TTS_MODEL=indic-parler` in `model-server/.env`.
 
-## When you need it
-
-| Scenario | Need this server? |
-|----------|-------------------|
-| Cloud TTS only | No |
-| Local Indic TTS / Bhili | Yes (+ GPU recommended) |
+Covers the same 23 Indic languages as the STT model. The voice is chosen by a
+free-text description rather than a fixed preset list, so `voice` and
+`instructions` are recomposed into one prompt on the server.
 
 ## Run
 
+Nothing to run by hand — the slot brings it up:
+
 ```bash
-cd ai4bharat_tts_server
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python server.py
+cd model-server
+docker compose -f compose.model-server.yml --project-directory . up -d --build tts
 ```
 
-Default port **8002**. Monorepo: `make start-voice-only-services`.
+`fetch.sh` in this folder downloads the checkpoints into `checkpoints/`.
 
-## Dependencies
+## API
 
-- Voice server: `AI4BHARAT_TTS_URL` or `INDIC_TTS_SERVER_URL` when agents use local TTS
+Reached through the gateway on `:8100`, never directly.
 
-## Protocol
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /v1/audio/speech` | OpenAI-compatible; streams raw float32 PCM as it generates |
+| `GET /health` | ready to serve |
 
-WebSocket JSON per utterance (`prompt`, `description`, `language`); server streams float32 PCM at 44.1 kHz.
+The response carries `X-Sample-Rate` (44100) and `X-Audio-Format`. Clients must
+read the rate off the header rather than assume it. Chunked HTTP can split a
+4-byte float across reads, so a client that concatenates chunks blindly gets
+noise — carry the remainder forward.
 
-Full detail: [docs/services/ai4bharat-tts.md](../docs/services/ai4bharat-tts.md)
+Hanging up mid-sentence is how barge-in works: the client stops reading, the
+connection drops, and the server evicts the request from the batch, freeing the
+GPU slot immediately rather than finishing a sentence nobody is listening to.
 
-## GPU / VRAM
+## The gated repo
 
-- **Production:** NVIDIA GPU expected for Parler inference.
-- **Recommended:** **RTX 4000 series and newer** — e.g. RTX 5090–5060, RTX 4090–4060 (incl. 4060 Ti 16GB), RTX 6000/5000/4500/4000 Ada, L40S, L40, H100, H200. Full list: [docs/services/ai4bharat-tts.md#gpu-vram](../docs/services/ai4bharat-tts.md#gpu-vram).
-- **Pinned GB figures:** Deferred — VRAM depends on model weights and concurrent utterances; size on staging with `nvidia-smi`.
+The Parler checkpoint comes from Drive, but the tokenizer and T5 encoder are
+pulled from `ai4bharat/indic-parler-tts`, which is **gated**. The container will
+not start without either `HF_TOKEN` set to an account with access, or a
+HuggingFace cache that already holds those files:
 
-## Documentation
+```bash
+docker compose -f compose.model-server.yml -f compose.shared-hf-cache.yml ...
+```
 
-- [AI4Bharat TTS (MkDocs)](../docs/services/ai4bharat-tts.md)
-- [Source brief A5](../docs/source-briefs/A5-ai4bharat-servers.md)
+That overlay mounts an existing cache read-only and sets offline mode, which
+stops HuggingFace making the gated check that would 401.
+
+## GPU
+
+NVIDIA, Ada generation or newer — the engine leans on CUDA graphs and flashinfer.
+VRAM scales with concurrent utterances; measure on staging. Warm
+time-to-first-audio on an H200 is around 250 ms, roughly 1.5 s cold.

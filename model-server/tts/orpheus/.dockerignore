@@ -1,0 +1,12 @@
+models/
+hf-cache/
+.env
+.git/
+Readme.md
+tests/
+**/__pycache__/
+**/*.pyc
+*.wav
+*.mp3
+*.flac
+*.opus
