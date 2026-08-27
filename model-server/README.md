@@ -38,7 +38,7 @@ disagree, the gateway reports a model as deployed that was never started.
 | | |
 |---|---|
 | `POST /v1/audio/transcriptions` | speech to text |
-| `WS /v1/audio/speech` | text to speech |
+| `POST /v1/audio/speech` | text to speech |
 | `POST /v1/chat/completions` | LLM, when a model is deployed |
 | `GET /models` | every model, and which are running |
 | `GET /v1/models` | OpenAI-compatible: only what can be called right now |
@@ -47,10 +47,11 @@ disagree, the gateway reports a model as deployed that was never started.
 `/models` and `/v1/models` differ on purpose. OpenAI clients read `/v1/models`
 as "what can I call", so it must never list something that would answer 503.
 
-**TTS is a WebSocket, not the OpenAI REST shape.** Barge-in has to kill a
-generation mid-stream, and closing a socket does that for free. The OpenAI spec
-has no equivalent, so this is a deliberate exception; STT and the LLM follow the
-spec normally.
+All three follow the OpenAI shape, TTS included. Barge-in still works: when the
+caller interrupts, Pipecat stops reading the response, the connection drops, and
+that drop travels through the gateway to the TTS server, which frees the GPU
+slot. `POST /v1/audio/speech` streams raw float32 PCM as it is generated, with
+the sample rate in an `X-Sample-Rate` header rather than assumed by the client.
 
 ## Adding a model
 
@@ -70,9 +71,10 @@ pytest tests/ -v
 
 No GPU needed — the model layer is stubbed, everything else is real code. They
 cover the things this setup could break quietly: audio surviving the trip
-unchanged, both TTS request formats producing identical speech, the gateway
-streaming rather than buffering, a disconnect actually stopping generation, and
-the KV page allocator never handing one page to two calls.
+unchanged, `voice` + `instructions` recomposing into exactly the prompt the model
+used to get, a chunk boundary splitting a float without corrupting the audio, the
+gateway streaming rather than buffering, a disconnect actually stopping
+generation, and the KV page allocator never handing one page to two calls.
 
 ## Current state
 

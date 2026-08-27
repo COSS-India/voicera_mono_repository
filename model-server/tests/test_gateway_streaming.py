@@ -3,7 +3,6 @@ reach the upstream -- that propagation is what makes barge-in free the TTS slot.
 """
 import asyncio
 import contextlib
-import json
 import socket
 import threading
 import time
@@ -11,8 +10,7 @@ import time
 import httpx
 import pytest
 import uvicorn
-import websockets
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
 CHUNKS, CHUNK_DELAY = 5, 0.20          # a 1.0s response, first byte immediately
@@ -36,24 +34,26 @@ async def _stt():
     return StreamingResponse(gen(), media_type="text/plain")
 
 
-@upstream.websocket("/v1/audio/speech")
-async def _speech(ws: WebSocket):
-    await ws.accept()
-    try:
-        raw = await ws.receive_text()
-    except WebSocketDisconnect:
-        return                                   # health probe: connect and close
-    req = json.loads(raw)
-    await ws.send_text(json.dumps({"type": "speech.meta", "id": req["id"],
-                                   "sample_rate": 44100, "format": "pcm_f32le", "channels": 1}))
-    try:
-        for _ in range(20):
-            await ws.send_bytes(b"\x00\x01" * 160)
-            await asyncio.sleep(0.05)
-        await ws.send_text(json.dumps({"type": "speech.done", "id": req["id"]}))
-        STATE["completed"] += 1
-    except (WebSocketDisconnect, RuntimeError):
-        STATE["cancelled"] += 1                  # the eviction path barge-in relies on
+@upstream.post("/v1/audio/speech")
+async def _speech():
+    """Stands in for the Parler server. The generator's finally block is exactly
+    where the real one calls runner.evict(), so counting cancellations here tests
+    the path barge-in depends on."""
+    async def gen():
+        completed = False
+        try:
+            for _ in range(40):
+                yield b"\x00\x00\x80\x3f" * 40      # 40 float32 samples
+                await asyncio.sleep(0.05)
+            completed = True
+            STATE["completed"] += 1
+        finally:
+            if not completed:
+                STATE["cancelled"] += 1            # the eviction path barge-in relies on
+
+    return StreamingResponse(gen(), media_type="audio/pcm",
+                             headers={"X-Sample-Rate": "44100",
+                                      "X-Audio-Format": "pcm_f32le"})
 
 
 def _free_port():
@@ -82,7 +82,7 @@ def gateway_url():
     os.environ.update(
         STT_MODEL="test-stt", TTS_MODEL="test-tts", LLM_MODEL="",
         STT_UPSTREAM=f"http://127.0.0.1:{up_port}",
-        TTS_UPSTREAM=f"ws://127.0.0.1:{up_port}",
+        TTS_UPSTREAM=f"http://127.0.0.1:{up_port}",
     )
     import app.config
     import app.main
@@ -110,15 +110,38 @@ async def test_http_response_is_streamed_not_buffered(gateway_url):
 
 
 @pytest.mark.asyncio
+async def test_speech_streams_and_reports_the_sample_rate(gateway_url):
+    """The client reads the rate off the header rather than assuming 44.1 kHz,
+    so the gateway must not strip it."""
+    async with (
+        httpx.AsyncClient(timeout=30) as c,
+        c.stream("POST", f"http://{gateway_url}/v1/audio/speech",
+                 json={"input": "hello"}) as r,
+    ):
+        assert r.status_code == 200
+        assert r.headers["x-sample-rate"] == "44100"
+        assert r.headers["x-audio-format"] == "pcm_f32le"
+        got = 0
+        async for chunk in r.aiter_raw():
+            got += len(chunk)
+            if got >= 320:
+                break
+    assert got >= 320
+
+
+@pytest.mark.asyncio
 async def test_client_disconnect_evicts_upstream(gateway_url):
     before = dict(STATE)
-    ws = await websockets.connect(f"ws://{gateway_url}/v1/audio/speech")
-    await ws.send(json.dumps({"type": "speech.create", "id": "x1", "input": "hello",
-                              "voice": {"preset": "Divya"}, "language": "hi"}))
-    await ws.recv()                               # meta
-    for _ in range(3):
-        await ws.recv()                           # a few audio frames
-    await ws.close()                              # barge-in
+    async with (
+        httpx.AsyncClient(timeout=30) as c,
+        c.stream("POST", f"http://{gateway_url}/v1/audio/speech",
+                 json={"input": "hello"}) as r,
+    ):
+        frames = 0
+        async for _ in r.aiter_raw():
+            frames += 1
+            if frames >= 3:
+                break                              # barge-in: stop reading and hang up
     for _ in range(60):
         await asyncio.sleep(0.05)
         if STATE["cancelled"] > before["cancelled"]:

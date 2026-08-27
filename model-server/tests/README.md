@@ -10,10 +10,20 @@ pytest tests/ -v
 ruff check .
 ```
 
-These guard the three things the revamp could silently break:
+These guard the things the revamp could silently break:
 
 | Test | Guards |
 |---|---|
 | `test_stt_audio_parity` | multipart upload decodes to the same samples as the old base64 path |
-| `test_tts_dialect_parity` | legacy and `speech.create` requests reach the runner identically |
+| `test_tts_request_parity` | `voice` + `instructions` recompose into the exact prompt the model used to get |
+| `test_pcm_chunk_boundaries` | a chunk ending mid-float does not desynchronise the audio |
 | `test_gateway_streaming` | the gateway streams rather than buffers, and a client disconnect evicts upstream (barge-in) |
+| `test_page_table` | the KV page allocator never hands one page to two calls |
+| `test_catalogue` | every model marked `ready` has a Compose profile that can start it |
+
+Two scripts are not part of the suite because they need real models on a GPU:
+
+| Script | Use |
+|---|---|
+| `smoke_gpu.py` | end-to-end round trip on the box: TTS speaks, STT transcribes it back |
+| `bench_tts.py` | latency and real-time factor, sequential or at a chosen concurrency |

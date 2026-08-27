@@ -12,13 +12,12 @@ import contextlib
 import logging
 
 import httpx
-import websockets
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from . import catalogue
 from .config import Upstream, settings
-from .proxy import forward_http, make_client, relay_ws
+from .proxy import forward_http, make_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("gateway")
@@ -57,27 +56,12 @@ def _unavailable(up: Upstream) -> JSONResponse:
 # ---------------------------------------------------------------- health / models
 
 async def _probe(client: httpx.AsyncClient, up: Upstream) -> dict:
-    """Health-check an upstream.
-
-    The Parler TTS server is a raw websockets process with no HTTP surface, so a
-    GET /health would report it permanently down. WebSocket upstreams get a TCP
-    connect check instead.
-    """
+    """Health-check an upstream. All three speak HTTP."""
     if not up.enabled:
         return {"deployed": False}
     base = {"deployed": True, "model": up.model}
     try:
-        if up.url.startswith(("ws://", "wss://")):
-            # A bare TCP connect makes the raw-websockets Parler server log an
-            # InvalidMessage traceback on every probe. Completing the handshake
-            # and closing is both quieter and a truer check -- the server's
-            # handler already returns cleanly on ConnectionClosed.
-            ws = await asyncio.wait_for(
-                websockets.connect(f"{up.url}/v1/audio/speech", open_timeout=2),
-                timeout=3.0,
-            )
-            await ws.close()
-            return {**base, "reachable": True}
+        # Every upstream speaks HTTP now, so one probe covers all three.
         r = await client.get(f"{up.url}/health", timeout=2.0)
         return {**base, "reachable": r.status_code < 500}
     except Exception as exc:
@@ -148,12 +132,9 @@ async def transcriptions(request: Request):
 
 # ---------------------------------------------------------------- TTS
 
-@app.websocket("/v1/audio/speech")
-async def speech(websocket: WebSocket):
-    if not settings.tts.enabled:
-        await websocket.close(code=1013, reason="No TTS model deployed")
-        return
-    await relay_ws(websocket, f"{settings.tts.url}/v1/audio/speech")
+@app.post("/v1/audio/speech")
+async def speech(request: Request):
+    return await _rest(request, settings.tts, "/v1/audio/speech")
 
 
 # ---------------------------------------------------------------- LLM (placeholder)

@@ -12,7 +12,8 @@ CATALOGUE = catalogue.CATALOGUE_PATH.parent.parent.parent / "models.yaml"
 
 def test_catalogue_file_is_valid():
     raw = yaml.safe_load(CATALOGUE.read_text(encoding="utf-8"))
-    assert set(raw) <= set(catalogue.KINDS), f"unexpected top-level keys: {set(raw) - set(catalogue.KINDS)}"
+    assert set(raw) <= set(catalogue.KINDS), \
+        f"unexpected top-level keys: {set(raw) - set(catalogue.KINDS)}"
     for kind in catalogue.KINDS:
         for entry in raw.get(kind) or []:
             assert entry.get("id"), f"{kind} entry with no id"

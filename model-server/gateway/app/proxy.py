@@ -1,22 +1,21 @@
 """Transparent streaming proxy.
 
-One hard requirement runs through this whole module: **never buffer**. A proxy
-that collects a full response before forwarding it adds hundreds of milliseconds
-to TTS time-to-first-byte, which is the difference between a natural phone call
-and an awkward one. Both directions of both transports stream.
+One hard requirement runs through this module: **never buffer**. A proxy that
+collects a full response before forwarding adds hundreds of milliseconds to TTS
+time-to-first-byte, which is the difference between a natural phone call and an
+awkward one. Request bodies and response bodies both stream.
+
+Cancellation matters as much as throughput. When a caller is interrupted,
+Pipecat cancels the task reading the response; that closes this connection,
+which closes the upstream one, which frees the model's slot.
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
-
 import httpx
-import websockets
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
-from starlette.websockets import WebSocket, WebSocketDisconnect
 
 # read/write are deliberately unbounded: a TTS generation or an SSE completion
 # holds the response open for as long as the model takes. connect/pool stay short
@@ -66,62 +65,3 @@ async def forward_http(
         headers=_forwardable(resp.headers),
         background=BackgroundTask(resp.aclose),
     )
-
-
-async def relay_ws(client_ws: WebSocket, target_url: str) -> None:
-    """Bidirectional WebSocket relay.
-
-    Barge-in depends on this: when the voice server drops the socket, the
-    client-to-upstream pump ends, the `async with` closes the upstream connection,
-    and the TTS runner sees the disconnect and evicts the request. If the close
-    did not propagate, an abandoned generation would keep occupying one of Parler's
-    24 KV slots and keep consuming decode steps for a caller who already
-    interrupted -- a slow capacity leak under load.
-    """
-    await client_ws.accept()
-
-    try:
-        async with websockets.connect(
-            target_url, max_size=None, ping_interval=20, ping_timeout=20,
-            open_timeout=5,
-        ) as upstream:
-
-            async def client_to_upstream() -> None:
-                while True:
-                    msg = await client_ws.receive()
-                    if msg.get("type") == "websocket.disconnect":
-                        return
-                    if (text := msg.get("text")) is not None:
-                        await upstream.send(text)
-                    elif (data := msg.get("bytes")) is not None:
-                        await upstream.send(data)
-
-            async def upstream_to_client() -> None:
-                async for msg in upstream:
-                    if isinstance(msg, (bytes, bytearray)):
-                        await client_ws.send_bytes(bytes(msg))
-                    else:
-                        await client_ws.send_text(msg)
-
-            pumps = {
-                asyncio.create_task(client_to_upstream()),
-                asyncio.create_task(upstream_to_client()),
-            }
-            done, pending = await asyncio.wait(
-                pumps, return_when=asyncio.FIRST_COMPLETED
-            )
-            for task in pending:
-                task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
-            for task in done:
-                if (exc := task.exception()) and not isinstance(
-                    exc, (WebSocketDisconnect, websockets.ConnectionClosed)
-                ):
-                    raise exc
-
-    except WebSocketDisconnect:
-        pass
-    finally:
-        # Already closed by the disconnect that got us here -- fine either way.
-        with contextlib.suppress(RuntimeError):
-            await client_ws.close()

@@ -1,7 +1,5 @@
 import asyncio
-import json
 import os
-import uuid
 from typing import AsyncGenerator
 
 import aiohttp
@@ -34,19 +32,6 @@ def _parse_gain() -> float:
     return gain
 
 
-def _ws_url(raw: str) -> str:
-    base = raw.strip().rstrip("/")
-    for suffix in ("/tts/stream", "/tts"):
-        if base.endswith(suffix):
-            base = base[: -len(suffix)]
-    low = base.lower()
-    if low.startswith("https://"):
-        return "wss://" + base[8:]
-    if low.startswith("http://"):
-        return "ws://" + base[7:]
-    return base
-
-
 class IndicParlerRESTTTSService(TTSService):
     def __init__(
         self,
@@ -61,7 +46,7 @@ class IndicParlerRESTTTSService(TTSService):
         server_url = os.getenv("MODEL_SERVER_URL") or os.getenv("INDIC_TTS_SERVER_URL")
         if not server_url:
             raise ValueError("MODEL_SERVER_URL environment variable not set")
-        self._ws_url = _ws_url(server_url) + "/v1/audio/speech"
+        self._speech_url = server_url.rstrip("/") + "/v1/audio/speech"
         self._speaker = speaker
         self._description = description
         self._language_id = language_id
@@ -115,75 +100,47 @@ class IndicParlerRESTTTSService(TTSService):
         first_audio = True
 
         try:
-            async with session.ws_connect(self._ws_url, autoping=True) as ws:
-                await ws.send_str(
-                    json.dumps(
-                        {
-                            "type": "speech.create",
-                            "id": uuid.uuid4().hex[:8],
-                            "input": text,
-                            "voice": {
-                                "preset": self._speaker,
-                                "description": self._description,
-                            },
-                            "language": self._language_id,
-                        }
-                    )
-                )
-
-                out_rate = self.sample_rate
-                completed = False
-
-                while True:
-                    msg = await ws.receive()
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        try:
-                            data = json.loads(msg.data)
-                        except json.JSONDecodeError as e:
-                            yield ErrorFrame(f"Invalid server JSON: {e}")
-                            return
-                        kind = data.get("type")
-                        if kind == "error":
-                            yield ErrorFrame(
-                                str(data.get("message", "TTS error"))
-                            )
-                            return
-                        if kind in ("meta", "speech.meta"):
-                            out_rate = int(data.get("sample_rate", out_rate))
-                        elif kind in ("done", "speech.done"):
-                            completed = True
-                            break
-                    elif msg.type == aiohttp.WSMsgType.BINARY:
-                        if not msg.data:
-                            continue
-                        if first_audio:
-                            first_audio = False
-                            await self.stop_ttfb_metrics()
-                        f32 = np.frombuffer(msg.data, dtype=np.float32)
-                        if f32.size == 0:
-                            continue
-                        pcm = (
-                            np.clip(f32 * self._gain, -1.0, 1.0) * 32767.0
-                        ).astype(np.int16).tobytes()
-                        yield TTSAudioRawFrame(
-                            audio=pcm,
-                            sample_rate=out_rate,
-                            num_channels=1,
-                        )
-                    elif msg.type == aiohttp.WSMsgType.ERROR:
-                        yield ErrorFrame(
-                            str(ws.exception() or "WebSocket error")
-                        )
-                        return
-                    elif msg.type in (
-                        aiohttp.WSMsgType.CLOSE,
-                        aiohttp.WSMsgType.CLOSING,
-                    ):
-                        break
-
-                if not completed:
-                    yield ErrorFrame("TTS closed before completion")
+            payload = {
+                "input": text,
+                "voice": self._speaker,
+                "instructions": self._description,
+                "language": self._language_id,
+                # float32 is what the engine produces; asking for anything else
+                # would resample on the server and change the audio.
+                "response_format": "pcm_f32le",
+            }
+            async with session.post(self._speech_url, json=payload) as resp:
+                if resp.status != 200:
+                    detail = (await resp.text())[:200]
+                    yield ErrorFrame(f"TTS request failed: {resp.status} {detail}")
                     return
+
+                out_rate = int(resp.headers.get("X-Sample-Rate", self.sample_rate))
+
+                # Chunked HTTP can split a 4-byte float across reads, which a
+                # WebSocket message never did. Carry the remainder forward or the
+                # samples desynchronise and the audio turns to noise.
+                remainder = b""
+                async for chunk in resp.content.iter_any():
+                    if not chunk:
+                        continue
+                    if first_audio:
+                        first_audio = False
+                        await self.stop_ttfb_metrics()
+                    buf = remainder + chunk
+                    usable = len(buf) - (len(buf) % 4)
+                    remainder = buf[usable:]
+                    if not usable:
+                        continue
+                    f32 = np.frombuffer(buf[:usable], dtype=np.float32)
+                    pcm = (
+                        np.clip(f32 * self._gain, -1.0, 1.0) * 32767.0
+                    ).astype(np.int16).tobytes()
+                    yield TTSAudioRawFrame(
+                        audio=pcm,
+                        sample_rate=out_rate,
+                        num_channels=1,
+                    )
 
             yield TTSStoppedFrame()
 

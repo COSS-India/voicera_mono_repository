@@ -16,17 +16,14 @@ prod TTS. If they sound different, the revamp changed something.
 
 import array
 import asyncio
-import json
 import struct
 import sys
 import time
 import wave
 
 import httpx
-import websockets
 
 GATEWAY = "http://localhost:8000"
-GATEWAY_WS = "ws://localhost:8000"
 SENTENCE = "नमस्ते, आप कैसे हैं? मैं ठीक हूँ, धन्यवाद।"
 OUT_WAV = "/tmp/tts_out.wav"
 
@@ -53,6 +50,12 @@ def resample_linear(samples, src_rate, dst_rate):
     return out
 
 
+def to_pcm16(samples):
+    return b"".join(
+        struct.pack("<h", max(-32768, min(32767, int(s * 32767)))) for s in samples
+    )
+
+
 async def main():
     results = []
 
@@ -74,33 +77,44 @@ async def main():
     print(f"  asked for: {SENTENCE}")
     pcm = array.array("f")
     rate = None
+    fmt = None
     t0 = time.perf_counter()
     ttfb = None
-    async with websockets.connect(f"{GATEWAY_WS}/v1/audio/speech", max_size=None) as ws:
-        await ws.send(json.dumps({
-            "type": "speech.create", "id": "smoke1", "input": SENTENCE,
-            "voice": {"preset": "Divya",
-                      "description": "A clear, natural voice with good audio quality."},
-            "language": "hi",
-        }))
-        async for msg in ws:
-            if isinstance(msg, (bytes, bytearray)):
-                if ttfb is None:
-                    ttfb = time.perf_counter() - t0
-                pcm.frombytes(bytes(msg))
+    async with httpx.AsyncClient(timeout=120) as c:
+        async with c.stream(
+            "POST",
+            f"{GATEWAY}/v1/audio/speech",
+            json={
+                "input": SENTENCE,
+                "voice": "Divya",
+                "instructions": "A clear, natural voice with good audio quality.",
+                "language": "hi",
+                "response_format": "pcm_f32le",
+            },
+        ) as r:
+            if r.status_code != 200:
+                body = (await r.aread())[:200]
+                print(f"  TTS error: HTTP {r.status_code} {body!r}")
             else:
-                d = json.loads(msg)
-                if d["type"] in ("speech.meta", "meta"):
-                    rate = int(d["sample_rate"])
-                elif d["type"] in ("speech.done", "done"):
-                    break
-                elif d["type"] == "error":
-                    print(f"  TTS error: {d}")
-                    results.append(ok("TTS synthesised audio", False))
-                    break
+                rate = int(r.headers.get("X-Sample-Rate", 0)) or None
+                fmt = r.headers.get("X-Audio-Format")
+                # Chunked HTTP can split a float across reads. Carry the tail
+                # forward or every later sample is garbage.
+                remainder = b""
+                async for chunk in r.aiter_raw():
+                    if not chunk:
+                        continue
+                    if ttfb is None:
+                        ttfb = time.perf_counter() - t0
+                    buf = remainder + chunk
+                    usable = len(buf) - (len(buf) % 4)
+                    remainder = buf[usable:]
+                    if usable:
+                        pcm.frombytes(buf[:usable])
     total = time.perf_counter() - t0
     dur = len(pcm) / rate if rate else 0
-    print(f"  sample rate      : {rate} Hz  (from the meta frame, not assumed)")
+    print(f"  sample rate      : {rate} Hz  (from the response header, not assumed)")
+    print(f"  audio format     : {fmt}")
     print(f"  time to first    : {ttfb * 1000:.0f} ms" if ttfb else "  no audio")
     print(f"  wall clock       : {total:.2f} s")
     print(f"  audio duration   : {dur:.2f} s")
@@ -112,14 +126,12 @@ async def main():
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(rate)
-            wf.writeframes(b"".join(
-                struct.pack("<h", max(-32768, min(32767, int(s * 32767)))) for s in pcm))
+            wf.writeframes(to_pcm16(pcm))
         print(f"  written          : {OUT_WAV}  <- copy this out and listen to it")
 
     print("\n=== 3. STT transcribes it back ===")
     if dur > 0.5:
-        down = resample_linear(pcm, rate, 16000)
-        raw = b"".join(struct.pack("<h", max(-32768, min(32767, int(s * 32767)))) for s in down)
+        raw = to_pcm16(resample_linear(pcm, rate, 16000))
         async with httpx.AsyncClient(timeout=60) as c:
             r = await c.post(
                 f"{GATEWAY}/v1/audio/transcriptions",
@@ -132,6 +144,25 @@ async def main():
         results.append(ok("STT returned a transcript", bool(text.strip()), f"{len(text)} chars"))
     else:
         results.append(ok("STT round-trip", False, "no audio to transcribe"))
+
+    print("\n=== 4. hanging up mid-sentence frees the slot ===")
+    # Barge-in. The server should evict the request rather than keep generating.
+    async with httpx.AsyncClient(timeout=60) as c:
+        async with c.stream(
+            "POST",
+            f"{GATEWAY}/v1/audio/speech",
+            json={"input": SENTENCE * 4, "voice": "Divya", "language": "hi"},
+        ) as r:
+            n = 0
+            async for chunk in r.aiter_raw():
+                n += len(chunk)
+                if n > 4096:
+                    break
+    await asyncio.sleep(1.0)
+    async with httpx.AsyncClient(timeout=30) as c:
+        h = (await c.get(f"{GATEWAY}/health")).json()
+    results.append(ok("server still healthy after an aborted stream",
+                      h.get("status") == "healthy", h.get("status", "?")))
 
     print(f"\n=== {sum(results)}/{len(results)} passed ===")
     print("The transcript will not match word for word -- resampling here is crude "

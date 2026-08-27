@@ -1,213 +1,202 @@
-"""
-WebSocket TTS server: continuous batching with the same loop as test_parler_tts.py
-(prefill when a request arrives, step all running requests together, stream PCM chunks).
+"""Indic Parler TTS — OpenAI-compatible speech endpoint.
 
-Client sends one JSON object per utterance:
-  {"prompt": "...", "description": "..."}
+POST /v1/audio/speech streams raw PCM as it is generated. The engine underneath
+is unchanged: one worker thread owns the runner, prefills arriving requests and
+steps the whole batch together (continuous batching).
 
-Server first sends a small JSON metadata frame, then binary frames (float32 mono PCM),
-then a final JSON {"type": "done"}.
+Barge-in: when a caller is interrupted, Pipecat cancels the task reading this
+response, which closes the connection. The generator's `finally` then queues the
+request id for eviction, and the worker frees its KV slot on the next tick. The
+previous WebSocket transport did not do this -- it stopped sending audio but let
+the generation run to completion, holding one of the runner's slots the whole
+time.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import queue
 import threading
 import uuid
+from typing import Literal
 
 import numpy as np
 import torch
-import websockets
+import uvicorn
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from inference.runner import ParlerTTSModelRunner, TTSRequest
+from pydantic import BaseModel, Field
 
-# Hugging Face DAC for Parler-style models is typically 24 kHz mono.
+# Parler's DAC vocoder runs at 44.1 kHz mono.
 AUDIO_SAMPLE_RATE = 44100
 
-here = os.path.dirname(os.path.abspath(__file__))
+app = FastAPI(title="Indic Parler TTS")
 
+_runner: ParlerTTSModelRunner | None = None
+_prefill_q: queue.Queue = queue.Queue()
+_cancel_q: queue.Queue = queue.Queue()
+_stop_evt = threading.Event()
+
+
+# ---------------------------------------------------------------- request
+
+class SpeechRequest(BaseModel):
+    """OpenAI /v1/audio/speech, plus the fields Parler needs.
+
+    `voice` is the speaker preset and `instructions` the free-text style prompt;
+    they are joined exactly as the previous client did before sending, so the
+    model receives an identical description.
+    """
+
+    input: str
+    model: str | None = None
+    voice: str | None = None
+    instructions: str = "A clear, natural voice with good audio quality."
+    # pcm_f32le is the engine's native output. `pcm` converts to 16-bit.
+    response_format: Literal["pcm_f32le", "pcm"] = "pcm_f32le"
+    language: str = "hi"
+    speed: float = Field(default=1.0, description="Accepted for compatibility; not applied.")
+
+    def description(self) -> str:
+        return f"{self.voice}. {self.instructions}" if self.voice else self.instructions
+
+
+# ---------------------------------------------------------------- worker
 
 @torch.no_grad()
-def inference_worker(
-    runner: ParlerTTSModelRunner,
-    prefill_q: queue.Queue,
-    stop_evt: threading.Event,
-    decode_every: int,
-) -> None:
-    """
-    Runs forever: drain new requests (prefill), then one decode step for the whole batch.
-
-    audio_decode() every ``decode_every`` steps uses incremental DAC (short windows),
-    so cost stays bounded instead of re-decoding full histories.
-    """
+def inference_worker(runner: ParlerTTSModelRunner, decode_every: int) -> None:
+    """Drain new requests (prefill), drop cancelled ones, then step the batch."""
     pending_out: dict[str, queue.Queue] = {}
     step_count = 0
 
-    while not stop_evt.is_set():
+    while not _stop_evt.is_set():
+        # New work.
         while True:
             try:
-                job = prefill_q.get_nowait()
+                job = _prefill_q.get_nowait()
             except queue.Empty:
                 break
             if job is None:
                 return
-            req: TTSRequest
-            out_q: queue.Queue
             req, out_q = job
             pending_out[req.pid] = out_q
             try:
                 runner.prefill(req)
-            except Exception as e:
-                out_q.put(("error", str(e)))
+            except Exception as exc:
+                out_q.put(("error", str(exc)))
                 pending_out.pop(req.pid, None)
 
+        # Abandoned work. Freeing the slot is the whole point of barge-in.
+        while True:
+            try:
+                pid = _cancel_q.get_nowait()
+            except queue.Empty:
+                break
+            req = runner.running_requests.get(pid)
+            if req is not None:
+                runner.evict(req)
+                # Nobody is listening, so skip the final DAC decode evict queued.
+                runner._pending_final_tokens.pop(pid, None)
+            pending_out.pop(pid, None)
+
         if runner.running_requests:
-            pids_before = set(runner.running_requests.keys())
+            before = set(runner.running_requests.keys())
             runner.step()
             runner.check_stopping_criteria()
-            pids_after = set(runner.running_requests.keys())
-            evicted = pids_before - pids_after
+            finished = before - set(runner.running_requests.keys())
             step_count += 1
 
-            should_audio_decode = bool(evicted) or (step_count % decode_every == 0)
-            audio_dict = runner.audio_decode() if should_audio_decode else {}
-
-            for pid, arr in audio_dict.items():
+            should_decode = bool(finished) or (step_count % decode_every == 0)
+            for pid, arr in (runner.audio_decode() if should_decode else {}).items():
                 q_out = pending_out.get(pid)
                 if q_out is not None:
                     q_out.put(("audio", arr))
 
-            for pid in evicted:
+            for pid in finished:
                 q_out = pending_out.pop(pid, None)
                 if q_out is not None:
                     q_out.put(("done", None))
         else:
-            stop_evt.wait(0.005)
+            _stop_evt.wait(0.005)
 
 
-async def handle_client(
-    websocket: websockets.ServerProtocol,
-    runner: ParlerTTSModelRunner,
-    prefill_q: queue.Queue,
-) -> None:
-    try:
-        raw = await websocket.recv()
-    except websockets.ConnectionClosed:
-        return
+# ---------------------------------------------------------------- routes
 
-    # Two dialects, one code path. The legacy shape {"prompt","description"} is
-    # what the voice server sends today; speech.create is the new contract.
-    # Both resolve to the same (prompt, description) the runner takes.
-    try:
-        msg = json.loads(raw)
-        if msg.get("type") == "speech.create":
-            dialect = "v1"
-            prompt = msg["input"]
-            voice = msg.get("voice") or {}
-            preset = voice.get("preset")
-            desc = voice.get("description") or ""
-            # Same composition the client used to do before sending.
-            description = f"{preset}. {desc}" if preset else desc
-            req_id = msg.get("id")
-        else:
-            dialect = "legacy"
-            prompt = msg["prompt"]
-            description = msg["description"]
-            req_id = None
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
-        await websocket.send(json.dumps({"type": "error", "message": f"bad request: {e}"}))
-        return
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy" if _runner is not None else "loading",
+        "sample_rate": AUDIO_SAMPLE_RATE,
+        "running_requests": len(_runner.running_requests) if _runner else 0,
+    }
 
+
+@app.post("/v1/audio/speech")
+async def speech(req: SpeechRequest):
     out_q: queue.Queue = queue.Queue()
     pid = uuid.uuid4().hex[:8]
-    req = TTSRequest(prompt=prompt, description=description, pid=pid)
-    prefill_q.put((req, out_q))
+    _prefill_q.put((TTSRequest(prompt=req.input, description=req.description(), pid=pid), out_q))
 
-    if req_id is None:
-        req_id = pid
-    meta = (
-        {"type": "speech.meta", "id": req_id, "sample_rate": AUDIO_SAMPLE_RATE,
-         "format": "pcm_f32le", "channels": 1}
-        if dialect == "v1"
-        else {"type": "meta", "pid": pid, "sample_rate": AUDIO_SAMPLE_RATE,
-              "dtype": "float32", "channels": 1}
+    to_int16 = req.response_format == "pcm"
+
+    async def stream():
+        completed = False
+        try:
+            while True:
+                kind, payload = await asyncio.to_thread(out_q.get)
+                if kind == "error":
+                    # Headers are already sent; ending the body is the only signal left.
+                    return
+                if kind == "audio":
+                    arr = payload.astype(np.float32)
+                    if to_int16:
+                        yield (np.clip(arr, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
+                    else:
+                        yield arr.tobytes()
+                elif kind == "done":
+                    completed = True
+                    return
+        finally:
+            # Client vanished mid-generation -- free the GPU slot.
+            if not completed:
+                _cancel_q.put(pid)
+
+    return StreamingResponse(
+        stream(),
+        media_type="audio/pcm",
+        headers={
+            "X-Sample-Rate": str(AUDIO_SAMPLE_RATE),
+            "X-Audio-Format": req.response_format,
+            "X-Channels": "1",
+            "Cache-Control": "no-store",
+        },
     )
-    await websocket.send(json.dumps(meta))
-
-    while True:
-        kind, payload = await asyncio.to_thread(out_q.get)
-        if kind == "error":
-            await websocket.send(json.dumps({"type": "error", "message": payload}))
-            return
-        if kind == "audio":
-            await websocket.send(payload.astype(np.float32).tobytes())
-        elif kind == "done":
-            done = (
-                {"type": "speech.done", "id": req_id}
-                if dialect == "v1"
-                else {"type": "done", "pid": pid}
-            )
-            await websocket.send(json.dumps(done))
-            return
 
 
-async def main_async(
-    host: str,
-    port: int,
-    checkpoint_path: str,
-    decode_every: int,
-) -> None:
-    runner = ParlerTTSModelRunner(checkpoint_path, play_steps=decode_every)
-    prefill_q: queue.Queue = queue.Queue()
-    stop_evt = threading.Event()
-
-    thread = threading.Thread(
-        target=inference_worker,
-        args=(runner, prefill_q, stop_evt, decode_every),
-        daemon=True,
-    )
-    thread.start()
-
-    async with websockets.serve(
-        lambda ws: handle_client(ws, runner, prefill_q),
-        host,
-        port,
-        max_size=None,
-    ):
-        print(
-            f"TTS WebSocket server ws://{host}:{port} "
-            f"(checkpoints={checkpoint_path}, decode_every={decode_every})"
-        )
-        await asyncio.Future()
-
+# ---------------------------------------------------------------- startup
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Parler TTS WebSocket server (continuous batching)")
+    parser = argparse.ArgumentParser(description="Indic Parler TTS (OpenAI-compatible)")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8002)
-    parser.add_argument(
-        "--checkpoint",
-        default=os.path.join(here, "checkpoints"),
-        help="Model checkpoint directory",
-    )
-    parser.add_argument(
-        "--decode-every",
-        type=int,
-        default=60,
-        metavar="N",
-        help=(
-            "Call audio_decode every N global steps (test_parler_tts.py uses 60). "
-            "Always decodes on steps that finish a request. Default 1 = decode every step."
-        ),
-    )
+    here = os.path.dirname(os.path.abspath(__file__))
+    parser.add_argument("--checkpoint", default=os.path.join(here, "checkpoints"))
+    parser.add_argument("--decode-every", type=int, default=60, metavar="N",
+                        help="Run audio_decode every N steps. Always decodes on steps "
+                             "that finish a request.")
     args = parser.parse_args()
     if args.decode_every < 1:
         parser.error("--decode-every must be >= 1")
-    asyncio.run(
-        main_async(args.host, args.port, args.checkpoint, args.decode_every),
-    )
+
+    global _runner
+    _runner = ParlerTTSModelRunner(args.checkpoint, play_steps=args.decode_every)
+    threading.Thread(target=inference_worker, args=(_runner, args.decode_every),
+                     daemon=True).start()
+    print(f"Indic Parler TTS on http://{args.host}:{args.port} "
+          f"(checkpoints={args.checkpoint}, decode_every={args.decode_every})")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":

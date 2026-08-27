@@ -14,7 +14,7 @@ from dataclasses import dataclass
 # Compose service names on the internal network. Overridden by <KIND>_UPSTREAM.
 _DEFAULT_URL = {
     "stt": "http://stt:8001",
-    "tts": "ws://tts:8002",
+    "tts": "http://tts:8002",
     "llm": "http://llm:8003",
 }
 

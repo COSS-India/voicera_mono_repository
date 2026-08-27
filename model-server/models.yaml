@@ -37,7 +37,7 @@ tts:
     status: ready
     runtime: parler
     sample_rate: 44100
-    streaming: true
+    streaming: true          # streams PCM as it generates, over chunked HTTP
     voice: {presets: [Divya], free_text_description: true, cloning: false}
     languages: [hi, bn, ta, te, kn, ml, mr, gu, pa, or, as, ur, ne, sa, brx, doi, kok, ks, mai, mni, sat, sd, bhb]
 
