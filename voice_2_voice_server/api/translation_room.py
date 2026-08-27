@@ -134,6 +134,17 @@ AUDIO_PREFETCH_DEPTH = 2
 # backlog can shrink *during* a continuous talk instead of only in the gaps
 # between sentences. 5% is inaudible on speech.
 SERVER_CATCHUP_RATE = 1.05
+# Sarvam's non-streaming HTTP TTS has a multi-second floor PER CALL that
+# doesn't shrink with shorter text (observed ~3s minimum). _run_synth used to
+# fetch one sentence at a time, so a continuously-talking presenter (especially
+# after the eager-punctuation flush above, which produces more, smaller
+# segments) could produce sentences faster than that single fetch pipeline
+# could clear them -- each additional sentence's own time-to-first-audio then
+# included however long it sat waiting behind everyone ahead of it, not just
+# its own TTS call. Running a few fetches concurrently (still delivered to
+# listeners in strict original order -- see _emit_in_order) hides that queueing
+# wait instead of stacking it onto every sentence's perceived latency.
+FETCH_CONCURRENCY = int(os.getenv("TRANSLATION_TTS_FETCH_CONCURRENCY", "2"))
 # A stalled TTS provider must not mute a language for the rest of the broadcast.
 # This is an *inactivity* limit (time since the last audio frame), not a
 # total-duration limit, so a legitimately long sentence is never cut short. The
@@ -389,7 +400,7 @@ class LangWorker:
         self._queue: "asyncio.Queue[tuple[str, float]]" = asyncio.Queue(
             maxsize=MAX_SEGMENT_BACKLOG
         )
-        self._synth_queue: "asyncio.Queue[tuple[str, _SegmentTiming]]" = asyncio.Queue(
+        self._synth_queue: "asyncio.Queue[tuple[int, str, _SegmentTiming]]" = asyncio.Queue(
             maxsize=MAX_SENTENCE_BACKLOG
         )
         self._audio_queue: "asyncio.Queue[tuple[bytes, _SegmentTiming]]" = asyncio.Queue(
@@ -398,8 +409,17 @@ class LangWorker:
         self._tts: Optional[Any] = None
         self._http_session: Optional[Any] = None
         self._consumer_task: Optional[asyncio.Task] = None
-        self._synth_task: Optional[asyncio.Task] = None
+        self._synth_tasks: "list[asyncio.Task]" = []
         self._deliver_task: Optional[asyncio.Task] = None
+        # Ordering state for FETCH_CONCURRENCY concurrent fetch workers: sentences
+        # are tagged with a sequence number as they're queued (in _consume, the
+        # single producer, so assignment order == speaking order) and _emit_in_order
+        # holds a fetch back from _audio_queue until every earlier-numbered one has
+        # already been handed off, even if it finished its own fetch sooner.
+        self._next_fetch_seq = 0
+        self._next_emit_seq = 0
+        self._pending_fetch_results: Dict[int, tuple] = {}
+        self._order_lock = asyncio.Lock()
         self._resampler = create_stream_resampler()
         self._slot_acquired = False
         self._start_time = 0.0
@@ -484,7 +504,9 @@ class LangWorker:
                 StartFrame(audio_out_sample_rate=LISTEN_SAMPLE_RATE)
             )
             self._consumer_task = asyncio.create_task(self._consume())
-            self._synth_task = asyncio.create_task(self._run_synth())
+            self._synth_tasks = [
+                asyncio.create_task(self._run_synth()) for _ in range(FETCH_CONCURRENCY)
+            ]
             self._deliver_task = asyncio.create_task(self._run_deliver())
             logger.info(f"translation[{self.language}]: worker started")
             return True
@@ -556,7 +578,9 @@ class LangWorker:
                     )
                     first = False
                     seg.note_sentence()
-                    await self._synth_queue.put((sentence, seg))
+                    seq = self._next_fetch_seq
+                    self._next_fetch_seq += 1
+                    await self._synth_queue.put((seq, sentence, seg))
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -570,33 +594,52 @@ class LangWorker:
                     logger.info(f"translation[{self.language}]: {seg.summary()}")
 
     async def _run_synth(self) -> None:
-        """Fetch stage: synthesise queued sentences' audio, one at a time.
+        """Fetch stage worker: synthesise queued sentences' audio.
 
-        Deliberately does not pace or send anything -- that is the separate
-        deliver stage below, decoupled from this one by ``_audio_queue``. This is
-        what lets sentence N+1's TTS round-trip run *while* sentence N is still
-        being paced out to listeners, instead of only starting once N has
-        finished playing. See ``AUDIO_PREFETCH_DEPTH``.
+        FETCH_CONCURRENCY instances of this run concurrently (started in
+        ``start()``), so sentence N+1's TTS round-trip doesn't have to wait for
+        sentence N's fetch to finish -- only for its *turn* to actually reach a
+        listener, enforced by ``_emit_in_order``. Deliberately does not pace or
+        send anything itself -- that is the separate deliver stage below,
+        decoupled from this one by ``_audio_queue``.
         """
         while True:
-            sentence, seg = await self._synth_queue.get()
+            seq, sentence, seg = await self._synth_queue.get()
             pcm = b""
             try:
                 pcm, error = await self._synthesize(sentence)
                 if error and not pcm:
-                    seg.note_sentence_done(0)
-                    if seg.report_ready():
-                        logger.info(f"translation[{self.language}]: {seg.summary()}")
+                    await self._emit_in_order(seq, b"", seg)
                     continue
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.error(f"translation[{self.language}]: synthesis failed: {e}")
-                seg.note_sentence_done(0)
-                if seg.report_ready():
-                    logger.info(f"translation[{self.language}]: {seg.summary()}")
+                await self._emit_in_order(seq, b"", seg)
                 continue
-            await self._audio_queue.put((pcm, seg))
+            await self._emit_in_order(seq, pcm, seg)
+
+    async def _emit_in_order(self, seq: int, pcm: bytes, seg: "_SegmentTiming") -> None:
+        """Hand a finished fetch to the delivery stage strictly in the order
+        sentences were produced, even though FETCH_CONCURRENCY fetch workers can
+        finish out of order (a short sentence queued second can finish before a
+        long one queued first). Holding ``_order_lock`` across the (possibly
+        blocking, if ``_audio_queue`` is full) ``put`` below is deliberate: no
+        later sentence may reach a listener before this one does, so a fetch
+        worker that finished early simply waits its turn here -- it has already
+        paid the network cost by this point, so nothing is lost by waiting.
+        """
+        async with self._order_lock:
+            self._pending_fetch_results[seq] = (pcm, seg)
+            while self._next_emit_seq in self._pending_fetch_results:
+                ready_pcm, ready_seg = self._pending_fetch_results.pop(self._next_emit_seq)
+                self._next_emit_seq += 1
+                if not ready_pcm:
+                    ready_seg.note_sentence_done(0)
+                    if ready_seg.report_ready():
+                        logger.info(f"translation[{self.language}]: {ready_seg.summary()}")
+                    continue
+                await self._audio_queue.put((ready_pcm, ready_seg))
 
     async def _synthesize(self, text: str) -> "tuple[bytes, Optional[str]]":
         """Fetch one chunk's audio; returns the resampled PCM.
@@ -801,7 +844,8 @@ class LangWorker:
         await _maybe_cleanup_room(room)
 
     async def stop(self) -> None:
-        for task in (self._consumer_task, self._synth_task, self._deliver_task):
+        tasks = [self._consumer_task, *self._synth_tasks, self._deliver_task]
+        for task in tasks:
             if task is not None:
                 task.cancel()
                 try:
@@ -809,7 +853,7 @@ class LangWorker:
                 except (asyncio.CancelledError, Exception):
                     pass
         self._consumer_task = None
-        self._synth_task = None
+        self._synth_tasks = []
         self._deliver_task = None
         if self._tts is not None:
             # Mirror the pipeline shutdown we bypassed at start: stop() closes the
