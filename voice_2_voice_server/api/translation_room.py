@@ -112,6 +112,17 @@ LISTENER_GRACE_SECS = int(os.getenv("TRANSLATION_LISTENER_GRACE_SECS", "20"))
 # wait + LLM call + TTS call — so over-shortening this makes the pipeline both
 # slower and worse. Env-tunable per speaker cadence.
 VAD_STOP_SECS = float(os.getenv("TRANSLATION_VAD_STOP_SECS", "0.4"))
+# Safety-net flush: the two triggers above (punctuation, VAD silence) both
+# assume the presenter eventually produces one or the other. Continuous
+# unbroken speech -- reading from a script, a long explanation with no full
+# stops or pauses over VAD_STOP_SECS -- satisfies neither, so the buffer would
+# otherwise grow for as long as the presenter keeps talking (observed: a
+# ~293-char, ~23s buffer from one uninterrupted stretch) before translation
+# even starts. Force a flush once the oldest unflushed fragment has been
+# sitting for this long, sentence boundary or not -- worse for that one
+# fragment's translation quality (may split mid-clause), far better than the
+# listener hearing nothing for the length of the whole passage.
+MAX_BUFFER_SECS = float(os.getenv("TRANSLATION_MAX_BUFFER_SECS", "5"))
 
 # Sentences waiting to be synthesised for this language. Translation of the next
 # segment runs while the current one is still being spoken (see LangWorker), so
@@ -195,12 +206,14 @@ class TranscriptCollector(FrameProcessor):
         super().__init__()
         self._on_final = on_final
         self._buffer: list[str] = []
+        self._buffer_started_at: Optional[float] = None
 
     async def _flush(self) -> None:
         if not self._buffer:
             return
         full_text = " ".join(self._buffer).strip()
         self._buffer.clear()
+        self._buffer_started_at = None
         if full_text:
             try:
                 await self._on_final(full_text)
@@ -212,8 +225,22 @@ class TranscriptCollector(FrameProcessor):
         if isinstance(frame, TranscriptionFrame):
             text = (getattr(frame, "text", "") or "").strip()
             if text:
+                if not self._buffer:
+                    self._buffer_started_at = time.monotonic()
                 self._buffer.append(text)
                 if _SOURCE_SENTENCE_END.search(text):
+                    await self._flush()
+                elif (
+                    self._buffer_started_at is not None
+                    and time.monotonic() - self._buffer_started_at >= MAX_BUFFER_SECS
+                ):
+                    # No sentence boundary and no VAD gap in MAX_BUFFER_SECS of
+                    # continuous speech -- flush what we have rather than let the
+                    # presenter's next pause be the first chance to.
+                    logger.info(
+                        f"translation: buffer hit {MAX_BUFFER_SECS:.0f}s with no sentence "
+                        "boundary, forcing flush"
+                    )
                     await self._flush()
         elif isinstance(frame, UserStoppedSpeakingFrame):
             await self._flush()
