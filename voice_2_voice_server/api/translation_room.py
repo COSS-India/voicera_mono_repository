@@ -96,6 +96,14 @@ LISTENER_DROP_BLOCK = LISTENER_SEND_BACKLOG // 2
 # Keep a room (and its language workers) alive briefly after the presenter drops,
 # so a transient reconnect doesn't tear down every listener's session.
 PRESENTER_GRACE_SECS = int(os.getenv("TRANSLATION_PRESENTER_GRACE_SECS", "20"))
+# Same idea, listener side: a listener's WebSocket can blip (tab backgrounded,
+# brief network drop, the frontend's own defensive close-before-reopen when a
+# reconnect fires) and the frontend already retries with backoff. Without a
+# grace period here, the LAST subscriber dropping instantly stops the worker
+# mid-delivery (cutting whatever sentence is in flight) and releases its call
+# slot, so every blip pays for a full TTS-session rebuild instead of just
+# resubscribing to a still-warm worker.
+LISTENER_GRACE_SECS = int(os.getenv("TRANSLATION_LISTENER_GRACE_SECS", "20"))
 # Silence (seconds) before VAD declares the utterance finished and the pipeline
 # (STT → translate → TTS) fires. Tempting to shorten for "real time", but an
 # ordinary mid-sentence breath is 200-300 ms: drop below that and clauses split
@@ -395,6 +403,7 @@ class LangWorker:
         self._resampler = create_stream_resampler()
         self._slot_acquired = False
         self._start_time = 0.0
+        self._teardown_task: Optional[asyncio.Task] = None
 
     async def start(self) -> bool:
         """Build the TTS service and start consuming. Returns False on capacity/error."""
@@ -757,6 +766,40 @@ class LangWorker:
         for listener in self.subscribers.values():
             listener.enqueue(message)
 
+    def schedule_teardown(self, room: "TranslationRoom", language: str) -> None:
+        """Defer this worker's teardown by LISTENER_GRACE_SECS instead of
+        stopping it the instant the last subscriber drops. Mirrors
+        TranslationRoom.schedule_end_broadcast on the presenter side: a brief
+        listener blip (backgrounded tab, network hiccup, the frontend's own
+        close-before-reopen on reconnect) shouldn't cut mid-delivery audio and
+        release the call slot, only to pay for a full rebuild moments later when
+        the listener's own reconnect logic reconnects anyway. A resubscribe
+        before the grace expires cancels this via cancel_teardown()."""
+        if self._teardown_task and not self._teardown_task.done():
+            return
+        self._teardown_task = asyncio.create_task(self._teardown_after_grace(room, language))
+
+    def cancel_teardown(self) -> None:
+        """Abort a pending grace-period teardown because a listener resubscribed."""
+        if self._teardown_task and not self._teardown_task.done():
+            self._teardown_task.cancel()
+        self._teardown_task = None
+
+    async def _teardown_after_grace(self, room: "TranslationRoom", language: str) -> None:
+        try:
+            await asyncio.sleep(LISTENER_GRACE_SECS)
+        except asyncio.CancelledError:
+            return
+        async with room.lock:
+            # Still no subscribers and still the registered worker for this
+            # language (a presenter restart could have already replaced it).
+            if not self.subscribers and room.workers.get(language) is self:
+                await self.stop()
+                room.workers.pop(language, None)
+            else:
+                return
+        await _maybe_cleanup_room(room)
+
     async def stop(self) -> None:
         for task in (self._consumer_task, self._synth_task, self._deliver_task):
             if task is not None:
@@ -1085,6 +1128,10 @@ async def run_listener(websocket: WebSocket, room: TranslationRoom, language: st
                 await _maybe_cleanup_room(room)
                 return
             room.workers[language] = worker
+        else:
+            # Resubscribing inside the grace window: keep the still-warm worker
+            # (and its call slot / TTS session) instead of letting it tear down.
+            worker.cancel_teardown()
         worker.add_subscriber(websocket)
     logger.info(f"translation[{room.agent_id}]: listener joined lang={language}")
 
@@ -1115,7 +1162,14 @@ async def run_listener(websocket: WebSocket, room: TranslationRoom, language: st
             # presenter restart (end_broadcast) or reconnect can replace it with
             # a new worker for the same language; popping by key would orphan the
             # replacement (leaking its slot and muting its listeners).
+            #
+            # Grace period, not immediate teardown: a listener drop is often just
+            # the frontend's own reconnect (exponential backoff up to 15s) or a
+            # brief network blip. Stopping the worker synchronously here used to
+            # cut whatever sentence was mid-delivery and release the call slot on
+            # every such blip, even though the listener was about to come right
+            # back. schedule_teardown defers the actual stop; cancel_teardown()
+            # above aborts it if a resubscribe lands first.
             if not worker.subscribers and room.workers.get(language) is worker:
-                await worker.stop()
-                room.workers.pop(language, None)
+                worker.schedule_teardown(room, language)
         await _maybe_cleanup_room(room)
