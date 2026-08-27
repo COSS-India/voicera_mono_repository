@@ -561,7 +561,17 @@ def create_stt_service(
             api_key=api_key,
             language=STT_LANGUAGE_MAP[provider][language],
             model=model,
-            sample_rate=sample_rate
+            sample_rate=sample_rate,
+            # Sarvam's streaming STT decides utterance boundaries server-side and
+            # only emits a transcript once it decides one ended. Default sensitivity
+            # can go a very long time without deciding a continuous, evenly-paced
+            # passage (no long pause) has ended -- observed: 20-25s of dead air before
+            # any transcript at all, which no amount of tuning on our side of the
+            # websocket can shorten, since we never see partial text until Sarvam
+            # sends it. high_vad_sensitivity drops Sarvam's own silence boundary to
+            # ~64ms, so it segments on ordinary speech pauses instead of waiting for
+            # an unusually long one.
+            params=SarvamSTTService.InputParams(high_vad_sensitivity=True),
         )
 
     else:
