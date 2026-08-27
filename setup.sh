@@ -329,6 +329,16 @@ MODEL_PROFILES=""
 [ -n "$LLM_SEL" ] && MODEL_PROFILES="$MODEL_PROFILES,llm"
 MODEL_PROFILES="${MODEL_PROFILES#,}"
 
+# A model folder may bring extra services with it (a sidecar the model needs).
+# Found by existence, so adding such a model never edits this script.
+COMPOSE_FILES="-f $MS_DIR/compose.model-server.yml"
+for slot_model in "stt/$STT_SEL" "tts/$TTS_SEL" "llm/$LLM_SEL"; do
+  case "$slot_model" in */) continue;; esac
+  extra="$MS_DIR/$slot_model/compose.extra.yml"
+  [ -f "$extra" ] && COMPOSE_FILES="$COMPOSE_FILES -f $extra" && \
+    ok "$slot_model brings extra services (compose.extra.yml)"
+done
+
 sed -i "s|^STT_MODEL=.*|STT_MODEL=$STT_SEL|; \
         s|^TTS_MODEL=.*|TTS_MODEL=$TTS_SEL|; \
         s|^LLM_MODEL=.*|LLM_MODEL=$LLM_SEL|; \
@@ -348,8 +358,7 @@ fi
 if [ -n "$MODEL_PROFILES" ]; then
   log "Building model images (first build takes 20-40 min)"
   # No COMPOSE_PROFILES here: it comes from .env, same as everything else.
-  docker compose -f "$MS_DIR/compose.model-server.yml" \
-    --project-directory "$MS_DIR" build
+  docker compose $COMPOSE_FILES --project-directory "$MS_DIR" build
   ok "Model images built for slots: $MODEL_PROFILES"
 fi
 
@@ -433,8 +442,7 @@ STARTEOF
 # Models start as containers. Same ports as the tmux windows they replace,
 # so nothing downstream can tell the difference.
 [ -n "$MODEL_PROFILES" ] && cat >> "$HOME/start_voicera.sh" << STARTEOF
-docker compose -f $REPO_DIR/model-server/compose.model-server.yml \
-  --project-directory $REPO_DIR/model-server up -d
+docker compose $COMPOSE_FILES --project-directory $REPO_DIR/model-server up -d
 STARTEOF
 
 cat >> "$HOME/start_voicera.sh" << 'STARTEOF'

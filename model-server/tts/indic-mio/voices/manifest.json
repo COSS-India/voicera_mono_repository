@@ -1,0 +1,10 @@
+{
+  "default": "Aditi",
+  "voices": [
+    { "name": "Aditi",  "gender": "female", "ref": "aditi.wav",  "source": "ai4bharat/Rasa: Hindi (female)" },
+    { "name": "Meera",  "gender": "female", "ref": "meera.wav",  "source": "ai4bharat/Rasa: Tamil (female)" },
+    { "name": "Ananya", "gender": "female", "ref": "ananya.wav", "source": "ai4bharat/Rasa: Bengali (female)" },
+    { "name": "Rahul",  "gender": "male",   "ref": "rahul.wav",  "source": "ai4bharat/Rasa: Hindi (male)" },
+    { "name": "Arjun",  "gender": "male",   "ref": "arjun.wav",  "source": "ai4bharat/Rasa: Telugu (male)" }
+  ]
+}

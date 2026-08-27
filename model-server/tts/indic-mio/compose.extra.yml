@@ -1,0 +1,62 @@
+# Extra services this model needs alongside its own container.
+#
+# Indic-Mio is the first model here that is not one process. It delegates token
+# generation to a vLLM serving SPRINGLab/Indic-Mio and does only the MioCodec
+# decode itself, which is how upstream runs it. Rather than fold vLLM into the
+# model's image -- its Dockerfile pins torch 2.7.1/cu128 for Blackwell kernels
+# and vLLM's image brings its own torch -- the folder brings the sidecar with it.
+#
+# The slot contract is unchanged: one service named `tts` on 8002, answering the
+# OpenAI route. This adds a service that only `tts` talks to, on the internal
+# network, publishing nothing.
+#
+#   docker compose -f compose.model-server.yml \
+#                  -f tts/indic-mio/compose.extra.yml --project-directory . up -d
+#
+# setup.sh adds the overlay automatically when TTS_MODEL names a folder that has
+# one, so this is only needed when driving Compose by hand.
+
+services:
+  vllm-mio:
+    image: vllm/vllm-openai:v0.27.1
+    container_name: voicera_model_tts_vllm
+    restart: unless-stopped
+    command:
+      - --model=SPRINGLab/Indic-Mio
+      - --served-model-name=SPRINGLab/Indic-Mio
+      - --host=0.0.0.0
+      - --port=8100
+      - --dtype=bfloat16
+      - --max-model-len=2048
+      # Upstream uses 0.35. That is a fraction of the card's TOTAL memory, so on
+      # a 143 GB H200 it would reserve ~50 GB -- on a GPU shared with production
+      # through MPS, which does not partition memory.
+      - --gpu-memory-utilization=${MIO_VLLM_GPU_MEMORY_UTILIZATION:-0.06}
+    environment:
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+      CUDA_MPS_PIPE_DIRECTORY: /tmp/nvidia-mps
+      CUDA_MPS_LOG_DIRECTORY: /tmp/nvidia-mps-log
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      # YAML anchors do not cross files, so the MPS mounts are spelled out here.
+      - "/tmp/nvidia-mps-gpu1:/tmp/nvidia-mps"
+      - "/tmp/nvidia-mps-log-gpu1:/tmp/nvidia-mps-log"
+    networks: [model_net]
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEVICE_IDS:-1}"]
+              capabilities: [gpu]
+
+  tts:
+    environment:
+      INDIC_MIO_VLLM_URL: ${INDIC_MIO_VLLM_URL:-http://vllm-mio:8100/v1}
+    depends_on:
+      - vllm-mio

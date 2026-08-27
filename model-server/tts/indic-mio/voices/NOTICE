@@ -1,0 +1,12 @@
+Preset voice reference clips
+============================
+
+The speaker reference clips under voices/refs/ (and the speaker embeddings
+derived from them) are sourced from:
+
+  ai4bharat/Rasa
+  https://huggingface.co/datasets/ai4bharat/Rasa
+  License: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+  https://creativecommons.org/licenses/by/4.0/
+
+Attribution: "Rasa" by AI4Bharat, used under CC-BY-4.0.

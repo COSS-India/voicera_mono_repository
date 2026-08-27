@@ -672,6 +672,24 @@ def create_tts_service(
                 # keeps this path byte-identical to what it has always served.
                 audio_format="pcm_f32le",
             )
+        elif model == "indic-mio-tts":
+            # Same service class again. Indic-Mio's speaker embedding carries the
+            # accent, so `language` is informational; `voice` is a preset id from
+            # the model's own roster (GET /v1/voices on the slot).
+            speaker = tts_config.get("speaker") or args.get("speaker")
+            description = tts_config.get("description") or args.get("description") or ""
+            language_id = (
+                TTS_LANGUAGE_MAP[provider].get(language, language) if language else "hi"
+            )
+            return ModelServerTTSService(
+                speaker=speaker,
+                description=description,
+                language_id=language_id,
+                sample_rate=sample_rate,
+                # 44.1 kHz float32 out of MioCodec, same shape as Parler.
+                audio_format="pcm_f32le",
+            )
+
         elif model == "orpheus-tts":
             # Same service class, different model. `voice` is the speaker name,
             # which for Orpheus also selects the language, and `instructions` is
@@ -692,8 +710,8 @@ def create_tts_service(
             )
         else:
             raise ServiceCreationError(
-                f"Unknown ai4bharat TTS model: {model}. "
-                f"Expected 'indic-parler-tts' or 'orpheus-tts'"
+                f"Unknown ai4bharat TTS model: {model}. Expected one of "
+                f"'indic-parler-tts', 'orpheus-tts', 'indic-mio-tts'"
             )
     
     elif provider == "Bhashini":

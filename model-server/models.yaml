@@ -50,11 +50,16 @@ tts:
 
   - id: indic-mio
     name: SPRINGLab Indic-Mio 0.6B
-    status: planned
+    status: ready
     runtime: vllm
-    sample_rate: 44000
-    voice: {cloning: true}
-    notes: Qwen3-0.6B backbone with MioCodec; vLLM-servable.
+    sample_rate: 44100
+    audio_format: pcm_f32le      # native; also serves pcm (16-bit) on request
+    streaming: true
+    voice: {presets: [Aditi, Meera, Ananya, Rahul, Arjun], cloning: true}
+    notes: >-
+      Qwen3-0.6B backbone with MioCodec. Two containers: token generation is a
+      vLLM sidecar this folder brings via compose.extra.yml. Not yet run on
+      hardware.
 
   - id: orpheus
     name: AI4Bharat Orpheus Indic TTS

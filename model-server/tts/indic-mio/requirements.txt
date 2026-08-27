@@ -1,0 +1,11 @@
+# torch + torchaudio are installed separately from the CUDA wheel index in the
+# Dockerfile (and pinned via constraints.txt). Do not add them here.
+git+https://github.com/Aratako/MioCodec
+huggingface_hub
+aiohttp>=3.9
+fastapi
+uvicorn[standard]
+numpy
+scipy
+soundfile
+python-dotenv>=1.0.0
