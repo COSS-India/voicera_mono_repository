@@ -719,9 +719,26 @@ def create_tts_service(
         # Default speaker by model: bulbul:v2 -> anushka, bulbul:v3 -> aditya (per Sarvam docs)
         if not speaker:
             speaker = "anushka" if model == "bulbul:v2" else "aditya"
+        # The dashboard saves Sarvam's tuning knobs as top-level tts_model keys,
+        # not nested under args (that nesting is only used for cartesia/gcp/
+        # elevenlabs -- see assistants/[id]/page.tsx). args.get() alone was
+        # always empty for Sarvam, so these silently fell back to the 1.0/None
+        # defaults below regardless of what was configured. Pace has a second,
+        # separate mismatch on top of that: the dashboard saves it under the key
+        # "speed" (it's the same UI slider as every other provider's speed
+        # control), not "pace" -- so even fixing the args/top-level fallback
+        # alone would still have missed it.
         pitch = args.get("pitch")
+        if pitch is None:
+            pitch = tts_config.get("pitch")
         pace = args.get("pace")
+        if pace is None:
+            pace = tts_config.get("pace")
+        if pace is None:
+            pace = tts_config.get("speed")
         loudness = args.get("loudness")
+        if loudness is None:
+            loudness = tts_config.get("loudness")
         # bulbul:v3 does not support pitch/loudness; do not pass them
         if model == "bulbul:v3":
             pitch = None

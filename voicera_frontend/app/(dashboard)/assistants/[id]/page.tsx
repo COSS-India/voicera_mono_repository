@@ -1062,6 +1062,14 @@ export default function AgentDetailPage() {
               ...(ttsModel && { model: ttsModel }),
               ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") &&
                 ttsDescription && { description: ttsDescription }),
+              // Sarvam pace/pitch/loudness were silently dropped here: this
+              // branch never included them, so the change-detector could never
+              // see a speed/pitch/loudness edit as a real change, and (see the
+              // matching block in the actual save handler below) the value
+              // never reached the saved config either.
+              speed: speed || 1.0,
+              ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
+              ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
             },
           }
         : {
@@ -1212,6 +1220,14 @@ export default function AgentDetailPage() {
                   speaker: "",
                   ...((ttsProvider === "ai4bharat" || ttsProvider === "bhashini") &&
                     ttsDescription && { description: ttsDescription }),
+                  // This branch (translation agents) never included speed/pitch/
+                  // loudness, unlike the non_conversational and conversational
+                  // branches below -- saving a translation agent silently reset
+                  // any Sarvam pace/pitch/loudness setting since the field was
+                  // simply absent from the payload, not explicitly cleared.
+                  speed: speed,
+                  ...(agent.agent_config?.tts_model?.pitch !== undefined && { pitch: agent.agent_config.tts_model.pitch }),
+                  ...(agent.agent_config?.tts_model?.loudness !== undefined && { loudness: agent.agent_config.tts_model.loudness }),
                 },
               }
             : (() => {
