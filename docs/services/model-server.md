@@ -54,8 +54,8 @@ reachable only through the gateway or `docker compose exec`.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /v1/audio/transcriptions` | Speech to text, one utterance. Multipart `file` (a WAV) plus a `language` field. |
-| `WS /v1/asr/ws` | Speech to text, live. PCM16 in, JSON partials and finals out. Only when the deployed model streams. |
+| `POST /v1/audio/transcriptions` | Speech to text, one segment. Multipart `file` (a WAV) plus a `language` field. |
+| `WS /v1/asr/ws` | Speech to text, incremental. PCM16 in, JSON partials and finals out. Only when the deployed model serves it. |
 | `POST /v1/audio/speech` | Text to speech. Streams PCM as it generates. |
 | `POST /v1/chat/completions` | LLM. Streams SSE. |
 | `GET /models` | The whole catalogue, and which models are running. |
@@ -68,12 +68,19 @@ as "what can I call", so it must never list something that would answer 503.
 deployed.
 
 `/v1/asr/ws` is the one route with no OpenAI equivalent, and the only one that
-is a WebSocket. That is not inconsistency: live transcription is two-directional
--- audio arrives for as long as someone is speaking while partial transcripts go
-back the other way -- whereas TTS is one-directional and therefore moved *off*
-WebSockets onto plain HTTP, which gives cancellation for free. A model that does
-not stream simply does not serve the route, and the gateway answers with a
-readable frame rather than refusing the handshake.
+is a WebSocket. That is not inconsistency: incremental transcription is
+two-directional -- audio arrives for as long as someone is speaking while
+partial transcripts go back the other way -- whereas TTS is one-directional and
+therefore moved *off* WebSockets onto plain HTTP, which gives cancellation for
+free.
+
+**The route is not what makes transcription live.** Every STT model here returns
+partials mid-utterance, and the pipeline has done that since before the
+model-server existed -- telephony requires it. The difference is where the
+partials come from: `indic-conformer` has the client re-transcribe the open
+segment every 600 ms over the POST route, so cost grows with utterance length,
+while `indic-transcribe` decodes forward incrementally over the socket. A model
+without the route is not a model that waits for you to stop talking.
 
 ### Audio format
 
@@ -160,8 +167,8 @@ write.
 
 | Slot | Model | Notes |
 |------|-------|-------|
-| `stt` | `indic-conformer` | AI4Bharat Indic Conformer 600M via NeMo. 23 Indic languages; Bhili (`bhb`) uses a second checkpoint, enabled with `BHILI_ENABLE=yes`. One-shot only. |
-| `stt` | `indic-transcribe` | Canary 1.2B. 25 languages — a superset of the above, adding Bhojpuri and English — and streams word by word. Checkpoint is in a private HuggingFace repo and needs a one-time conversion. Not yet run on hardware. |
+| `stt` | `indic-conformer` | AI4Bharat Indic Conformer 600M via NeMo. 23 Indic languages; Bhili (`bhb`) uses a second checkpoint, enabled with `BHILI_ENABLE=yes`. Partials come from the client re-transcribing every 600 ms. **This is what production runs.** |
+| `stt` | `indic-transcribe` | Canary 1.2B. 25 languages — a superset of the above, adding Bhojpuri and English — and decodes incrementally instead of re-transcribing, which is a latency and GPU-cost win rather than a new capability. Checkpoint is in a private HuggingFace repo and needs a one-time conversion. Not yet run on hardware. |
 | `tts` | `indic-parler` | AI4Bharat Indic Parler. Voice chosen by free-text description rather than a preset list. Needs a HuggingFace token — the tokenizer and T5 encoder are in a gated repo. |
 | `tts` | `orpheus` | AI4Bharat Orpheus, Llama-3.2-3B with a SNAC codec on vLLM. The speaker name selects the language, so voice and language are not independent. Not yet run on hardware. |
 | `tts` | `indic-mio` | SPRINGLab Indic-Mio 0.6B. Preset voices plus cloning. Two containers — it brings its own vLLM sidecar. Not yet run on hardware. |

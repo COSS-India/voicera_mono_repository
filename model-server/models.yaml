@@ -13,6 +13,19 @@
 #              <KIND>_MODEL=<id> in .env to deploy it
 #   planned  - chosen, not built yet
 #
+# STT and "streaming": two different questions, and conflating them is a mistake
+# that has already been made once here. Read them as:
+#
+#   partial_transcripts   what the CALLER gets. `native` or `client-side` both
+#                         mean words come back while the speaker is still
+#                         talking, which telephony requires and every STT model
+#                         in this repo has always done. There is no `none`.
+#   streaming_endpoint    whether the MODEL serves WS /v1/asr/ws. False does not
+#                         mean the caller waits for a full sentence -- it means
+#                         the client produces the partials instead, by
+#                         re-transcribing the segment every AI4BHARAT_INTERIM_MS
+#                         (600 ms). Same experience, more GPU per utterance.
+#
 # Adding a model = one entry here plus one folder. A test enforces that every
 # `ready` id has a folder, so the two cannot drift apart.
 
@@ -22,7 +35,8 @@ stt:
     status: ready
     runtime: nemo
     sample_rate: 16000
-    streaming: false
+    partial_transcripts: client-side   # re-transcribes the segment every 600 ms
+    streaming_endpoint: false          # no WS route; the client does the work
     languages: [hi, bn, ta, te, kn, ml, mr, gu, pa, or, as, ur, ne, sa, brx, doi, kok, ks, mai, mni, sat, sd, bhb]
     notes: Bhili (bhb) uses a separate checkpoint; enable with BHILI_ENABLE=yes.
 
@@ -31,14 +45,17 @@ stt:
     status: ready
     runtime: nemo
     sample_rate: 16000
-    upload_format: wav          # soundfile only -- 415s headerless PCM
-    streaming: true             # WS /v1/asr/ws, AlignAtt decoder with VAD
+    upload_format: wav                 # soundfile only -- 415s headerless PCM
+    partial_transcripts: native        # AlignAtt decodes incrementally
+    streaming_endpoint: true           # WS /v1/asr/ws, with its own VAD
     languages: [25 Indian languages]
     notes: >-
-      Canary 1.2B. Live word-by-word transcription, unlike indic-conformer which
-      is one-shot. Checkpoint lives in a private HuggingFace repo, so it needs a
-      token with read access. Source is unreleased -- see the folder README.
-      Not yet run on hardware.
+      Canary 1.2B. Both STT models return partial transcripts mid-utterance;
+      the difference is cost, not capability. indic-conformer re-transcribes the
+      whole segment every 600 ms, so work grows with utterance length; this one
+      decodes incrementally, so each new word costs one word. Checkpoint lives
+      in a private HuggingFace repo and needs a token with read access. Source
+      is unreleased -- see the folder README. Not yet run on hardware.
 
   - id: canary
     name: NVIDIA Canary

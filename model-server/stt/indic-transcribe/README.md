@@ -3,10 +3,17 @@
 The second model for the STT slot. Set `STT_MODEL=indic-transcribe` in
 `model-server/.env`.
 
-25 Indian languages, and — the reason it is here — **live transcription**.
-Indic-Conformer waits for you to finish a sentence and then transcribes it;
-this one emits words as you speak them, using NeMo's AlignAtt streaming decoder
-with a Silero VAD in front.
+25 Indian languages, and — the reason it is here — **incremental decoding**,
+using NeMo's AlignAtt streaming decoder with a Silero VAD in front.
+
+Be precise about what that buys, because it is easy to overstate. Both STT
+models return partial transcripts while the caller is still talking; the
+pipeline has done that since before the model-server existed. Indic-Conformer
+gets there by re-transcribing the whole open segment every 600 ms, so the work
+per utterance grows as the utterance does. This model decodes forward from where
+it left off, so each new word costs one word.
+
+The gain is latency and GPU cost, not the existence of partial transcripts.
 
 > **This source is not public yet.**
 > Read the next section before pushing anything.
@@ -156,10 +163,13 @@ The gateway relays `/v1/asr/ws` in both directions
 (`tests/test_stt_streaming.py`), so the route is reachable end to end today.
 
 What does **not** exist yet is the Pipecat side: the voice pipeline still uses
-the one-shot REST path for both models, because that path works against either
-one. Wiring the pipeline to consume partials is a separate change to
-`ModelServerSTTService` — worth doing, since it is most of the latency win this
-model offers, and not required to deploy it.
+the REST path for both models, and produces its own partials from it, because
+that works against either one. Moving it onto the socket for models that serve
+one is a separate change to `ModelServerSTTService`.
+
+Until that is done, deploying this model is safe but buys little — the client
+keeps re-transcribing segments over POST and the incremental decoder goes
+unused. The socket work is where this model's advantage actually lands.
 
 ## GPU
 

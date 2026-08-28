@@ -70,8 +70,8 @@ about what is running.
 
 | | |
 |---|---|
-| `POST /v1/audio/transcriptions` | speech to text, one utterance at a time |
-| `WS /v1/asr/ws` | speech to text, live — when the deployed model streams |
+| `POST /v1/audio/transcriptions` | speech to text, one segment per request |
+| `WS /v1/asr/ws` | speech to text, incremental — when the deployed model serves it |
 | `POST /v1/audio/speech` | text to speech |
 | `POST /v1/chat/completions` | LLM, when a model is deployed |
 | `GET /models` | every model, and which are running |
@@ -89,9 +89,24 @@ that -- it is one-directional, so it moved *off* WebSockets to plain HTTP, which
 gave cancellation for free. Direction of travel decides the transport, not
 fashion.
 
-A model that does not stream simply does not serve the route, and the gateway
-says so in a readable frame rather than failing the handshake. `streaming:` in
-`models.yaml` records which models do.
+**This route is not what makes transcription live.** Every STT model here
+returns partial transcripts while the caller is still speaking, and always has —
+that is a telephony requirement, not a feature. What differs is where the
+partials come from:
+
+| | how partials are produced | cost |
+|---|---|---|
+| `indic-conformer` | the client re-transcribes the open segment every 600 ms (`AI4BHARAT_INTERIM_MS`) over the POST route | grows with utterance length |
+| `indic-transcribe` | the model decodes incrementally over the WebSocket | one word costs one word |
+
+So a model without the WebSocket route is not a model that waits for you to
+finish. It is a model whose partials the client produces on its behalf, by
+brute force. `models.yaml` records both facts separately — `partial_transcripts`
+for what the caller gets, `streaming_endpoint` for what the model serves —
+because collapsing them into one `streaming:` flag misled a reader once already.
+
+`tests/test_partial_transcripts.py` pins the client-side path, which is what
+production runs today.
 
 All three follow the OpenAI shape, TTS included. Barge-in still works: when the
 caller interrupts, Pipecat stops reading the response, the connection drops, and
