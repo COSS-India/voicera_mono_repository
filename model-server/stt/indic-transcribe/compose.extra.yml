@@ -1,0 +1,47 @@
+# What this model needs from the slot beyond a build context.
+#
+# Indic-Transcribe does not fetch its own weights. `HF_HUB_OFFLINE=1` is baked
+# into its image on purpose -- the checkpoint is in a private HuggingFace repo,
+# and a container that silently tried to reach out for it would fail slowly and
+# obscurely instead of quickly. So two paths have to be mounted in, and the
+# folder declares them here rather than the slot hardcoding them:
+#
+#   /models/core   the HuggingFace checkpoint, read-only
+#   /artifacts     the converted .nemo the engine actually restores
+#
+# See README.md for how those are produced. It is a one-time step and it does
+# not happen automatically.
+#
+# The slot contract is unchanged: one service named `stt` on 8001, answering the
+# OpenAI route (and now a WebSocket alongside it). Nothing new is published.
+#
+#   docker compose -f compose.model-server.yml \
+#                  -f stt/indic-transcribe/compose.extra.yml --project-directory . up -d
+#
+# setup.sh adds the overlay automatically when STT_MODEL names a folder that has
+# one, so this is only needed when driving Compose by hand.
+
+services:
+  stt:
+    environment:
+      # The image defaults these; they are repeated so the mounts above and the
+      # paths the engine looks in cannot drift apart silently.
+      CORE_CKPT: /artifacts/indic_transcribe_core.nemo
+      CORE_HF_DIR: /models/core
+      CORE_LANGUAGE: ${CORE_LANGUAGE:-hi}
+      # Overrides the slot's default of 0. This image has no path that can fetch
+      # anything -- see above -- and offline mode turns a hang into an error.
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      # Read-only: the engine reads this and nothing should write it. Both
+      # default to a path beside the model folder, which is gitignored.
+      #
+      # Path note, and it is not the intuitive one: these resolve against
+      # `--project-directory` (model-server/), NOT against this file's own
+      # folder. That is why they are spelled from the project root rather than
+      # as ./models/core, even though this file sits inside the model folder.
+      # `additional_contexts` in the base file follows a *different* rule -- it
+      # resolves against the compose file's directory -- so the two cannot be
+      # reasoned about interchangeably. Verified with `docker compose config`.
+      - ${CORE_MODELS_DIR:-./stt/indic-transcribe/models/core}:/models/core:ro
+      - ${CORE_ARTIFACTS_DIR:-./stt/indic-transcribe/artifacts}:/artifacts

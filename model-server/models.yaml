@@ -28,9 +28,17 @@ stt:
 
   - id: indic-transcribe
     name: AI4Bharat / BodhanAI Indic-Transcribe 1.2B
-    status: planned
+    status: ready
     runtime: nemo
-    languages: [26 Indian languages]
+    sample_rate: 16000
+    upload_format: wav          # soundfile only -- 415s headerless PCM
+    streaming: true             # WS /v1/asr/ws, AlignAtt decoder with VAD
+    languages: [25 Indian languages]
+    notes: >-
+      Canary 1.2B. Live word-by-word transcription, unlike indic-conformer which
+      is one-shot. Checkpoint lives in a private HuggingFace repo, so it needs a
+      token with read access. Source is unreleased -- see the folder README.
+      Not yet run on hardware.
 
   - id: canary
     name: NVIDIA Canary

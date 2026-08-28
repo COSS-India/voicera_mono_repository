@@ -52,6 +52,32 @@ except ImportError:
 _PRE_ROLL_MS = 800
 
 
+def _wav(pcm: bytes, sample_rate: int, channels: int = 1) -> bytes:
+    """Wrap 16-bit PCM in a RIFF header.
+
+    Headerless PCM cannot say what it is -- not its rate, not its sample width,
+    not even where the samples begin. One STT model here reads uploads with
+    soundfile and refuses anything without a container; another parses raw int16.
+    WAV is what both accept, and what the OpenAI transcriptions endpoint expects.
+
+    Built by hand rather than through `wave` so nothing touches a temp file on
+    the hot path of a live call.
+    """
+    byte_rate = sample_rate * channels * 2
+    return b"".join((
+        b"RIFF", (36 + len(pcm)).to_bytes(4, "little"), b"WAVE",
+        b"fmt ", (16).to_bytes(4, "little"),
+        (1).to_bytes(2, "little"),                 # format 1 = uncompressed PCM
+        channels.to_bytes(2, "little"),
+        sample_rate.to_bytes(4, "little"),
+        byte_rate.to_bytes(4, "little"),
+        (channels * 2).to_bytes(2, "little"),      # block align
+        (16).to_bytes(2, "little"),                # bits per sample
+        b"data", len(pcm).to_bytes(4, "little"),
+        pcm,
+    ))
+
+
 @dataclass
 class VADProcessor:
     """Energy-based VAD for AI4Bharat REST STT segment boundaries.
@@ -106,8 +132,13 @@ class VADProcessor:
         return "CONTINUE" if self.is_speaking else "IDLE"
 
 
-class IndicConformerRESTSTTService(STTService):
+class ModelServerSTTService(STTService):
     """REST client for the model-server STT slot.
+
+    Model-agnostic on purpose. It posts a WAV to `/v1/audio/transcriptions` with
+    a language field, which is what the slot promises -- not what any one model
+    implements. Indic-Conformer and Indic-Transcribe are both served by this
+    class unchanged; the gateway routes to whichever is deployed.
 
     One endpoint for every language: the server routes Bhili (\"bhb\") to its own
     checkpoint off the request's language field, so callers do not pick a URL.
@@ -122,6 +153,7 @@ class IndicConformerRESTSTTService(STTService):
         audio_channels: int = 1,
         chunk_ms: int = 200,
         suppress_vad_frames: bool = False,
+        model: str = "",
         **kwargs,
     ):
         if not AIOHTTP_AVAILABLE:
@@ -143,6 +175,10 @@ class IndicConformerRESTSTTService(STTService):
         self._audio_channels = audio_channels
         self._chunk_ms = chunk_ms
         self._suppress_vad_frames = suppress_vad_frames
+        # Logging and error text only -- the gateway routes by slot, so the wire
+        # request is identical whichever model is deployed behind it.
+        self._model = model or "unknown"
+        self._refusal_logged = False
         self._pre_roll_ms = _PRE_ROLL_MS
         self._chunk_samples = int(self._input_sample_rate * self._chunk_ms / 1000)
         self._chunk_bytes = self._chunk_samples * self._audio_channels * 2
@@ -169,8 +205,9 @@ class IndicConformerRESTSTTService(STTService):
         self._speech_started_at: Optional[float] = None
 
         logger.info(
-            "AI4Bharat REST STT initialized | url={} language={} input_rate={} target_rate={} "
-            "chunk_ms={} pre_roll_ms={} suppress_vad_frames={}",
+            "AI4Bharat REST STT initialized | model={} url={} language={} input_rate={} "
+            "target_rate={} chunk_ms={} pre_roll_ms={} suppress_vad_frames={}",
+            self._model,
             self._transcribe_url,
             self._language_id,
             self._input_sample_rate,
@@ -197,9 +234,11 @@ class IndicConformerRESTSTTService(STTService):
 
         try:
             form = aiohttp.FormData()
+            # The buffer is already resampled to _target_sample_rate; the header
+            # has to declare that rate, not the transport's.
             form.add_field(
-                "file", audio_buffer, filename="audio.pcm",
-                content_type="application/octet-stream",
+                "file", _wav(audio_buffer, self._target_sample_rate),
+                filename="audio.wav", content_type="audio/wav",
             )
             form.add_field("language", self._language_id)
             async with self._session.post(
@@ -210,7 +249,22 @@ class IndicConformerRESTSTTService(STTService):
                 if response.status == 200:
                     data = await response.json()
                     return str(data.get("text", "")).strip()
-                logger.error("AI4Bharat transcription request failed: {}", response.status)
+                # A 4xx is a request this model will refuse every time -- an
+                # unsupported language, most likely. Without the body the operator
+                # sees "failed: 400" once per chunk and a call that transcribes
+                # nothing, which looks identical to a silent caller.
+                if 400 <= response.status < 500 and not self._refusal_logged:
+                    self._refusal_logged = True
+                    detail = (await response.text())[:300]
+                    logger.error(
+                        "STT model {} refused the request ({}): {} | language={} "
+                        "-- this will not recover during this call",
+                        self._model, response.status, detail, self._language_id,
+                    )
+                elif response.status >= 500:
+                    logger.error(
+                        "STT model {} errored: {}", self._model, response.status
+                    )
                 return ""
         except Exception as exc:
             logger.error("AI4Bharat transcription error: {}", exc)
@@ -479,3 +533,8 @@ class Ai4BharatKenpathUserContextAggregator(OpenAIUserContextAggregator):
             )
             await self.push_aggregation()
         self._silero_armed = False
+
+
+#: Original name, kept so existing imports and configs keep working. Nothing
+#: in the class was ever Conformer-specific.
+IndicConformerRESTSTTService = ModelServerSTTService

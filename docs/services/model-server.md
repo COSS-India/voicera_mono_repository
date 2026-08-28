@@ -54,8 +54,9 @@ reachable only through the gateway or `docker compose exec`.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /v1/audio/transcriptions` | Speech to text. Multipart `file` plus a `language` field. |
-| `POST /v1/audio/speech` | Text to speech. Streams raw float32 PCM as it generates. |
+| `POST /v1/audio/transcriptions` | Speech to text, one utterance. Multipart `file` (a WAV) plus a `language` field. |
+| `WS /v1/asr/ws` | Speech to text, live. PCM16 in, JSON partials and finals out. Only when the deployed model streams. |
+| `POST /v1/audio/speech` | Text to speech. Streams PCM as it generates. |
 | `POST /v1/chat/completions` | LLM. Streams SSE. |
 | `GET /models` | The whole catalogue, and which models are running. |
 | `GET /v1/models` | OpenAI-compatible: only what can be called right now. |
@@ -66,16 +67,39 @@ as "what can I call", so it must never list something that would answer 503.
 `/models` is the fuller picture, including models that are catalogued but not
 deployed.
 
+`/v1/asr/ws` is the one route with no OpenAI equivalent, and the only one that
+is a WebSocket. That is not inconsistency: live transcription is two-directional
+-- audio arrives for as long as someone is speaking while partial transcripts go
+back the other way -- whereas TTS is one-directional and therefore moved *off*
+WebSockets onto plain HTTP, which gives cancellation for free. A model that does
+not stream simply does not serve the route, and the gateway answers with a
+readable frame rather than refusing the handshake.
+
 ### Audio format
 
-`POST /v1/audio/speech` returns raw PCM, not a container format. The response
-carries `X-Sample-Rate` (44100 for Indic Parler) and `X-Audio-Format`. **Read
-the rate off the header rather than assuming it** — a different TTS model will
-report a different one.
+Both directions have a rule, and they are opposites for a good reason.
 
-Chunked HTTP can split a 4-byte float across two reads, so a client that
-concatenates chunks and decodes blindly gets noise partway through. Carry the
-remainder forward to the next chunk.
+**Uploads must be a real audio file.** The transcriptions endpoint takes a WAV;
+headerless PCM cannot state its own sample rate, and models that decode with
+`soundfile` answer 415 to it. This was ours to fix, not the models' -- OpenAI's
+endpoint has always taken files. The client wraps its buffer in a 44-byte RIFF
+header, which costs nothing and every model accepts.
+
+**Downloads say what they are.** `POST /v1/audio/speech` returns raw PCM, not a
+container format. The response
+carries `X-Sample-Rate` and `X-Audio-Format`. **Read both off the header rather
+than assuming them** — the models shipped here already disagree: Indic Parler
+sends 44.1 kHz float32 as `pcm_f32le`, Orpheus sends 24 kHz signed 16-bit as
+`pcm`. Neither is wrong; `pcm` is OpenAI's own name for 16-bit, and `pcm_f32le`
+is an extension Parler serves because float32 is what its engine produces.
+
+Getting this wrong does not raise an error. It produces plausible bytes that
+sound like noise on a phone line.
+
+Chunked HTTP can split a sample across two reads, so a client that concatenates
+chunks and decodes blindly desynchronises everything after the split. Carry the
+remainder forward to the next chunk — and size it from the declared width, not
+from a constant, or a 16-bit model reopens the bug the moment it is deployed.
 
 ### Interrupting the bot
 
@@ -136,9 +160,15 @@ write.
 
 | Slot | Model | Notes |
 |------|-------|-------|
-| `stt` | `indic-conformer` | AI4Bharat Indic Conformer 600M via NeMo. 23 Indic languages; Bhili (`bhb`) uses a second checkpoint, enabled with `BHILI_ENABLE=yes`. |
+| `stt` | `indic-conformer` | AI4Bharat Indic Conformer 600M via NeMo. 23 Indic languages; Bhili (`bhb`) uses a second checkpoint, enabled with `BHILI_ENABLE=yes`. One-shot only. |
+| `stt` | `indic-transcribe` | Canary 1.2B. 25 languages — a superset of the above, adding Bhojpuri and English — and streams word by word. Checkpoint is in a private HuggingFace repo and needs a one-time conversion. Not yet run on hardware. |
 | `tts` | `indic-parler` | AI4Bharat Indic Parler. Voice chosen by free-text description rather than a preset list. Needs a HuggingFace token — the tokenizer and T5 encoder are in a gated repo. |
+| `tts` | `orpheus` | AI4Bharat Orpheus, Llama-3.2-3B with a SNAC codec on vLLM. The speaker name selects the language, so voice and language are not independent. Not yet run on hardware. |
+| `tts` | `indic-mio` | SPRINGLab Indic-Mio 0.6B. Preset voices plus cloning. Two containers — it brings its own vLLM sidecar. Not yet run on hardware. |
 | `llm` | `qwen3.5-4b` | Qwen3.5-4B on vLLM. Off by default. |
+
+One model per slot runs at a time; the extra rows are choices, not a stack.
+Pick with `<SLOT>_MODEL` in `.env`, or answer `setup.sh`'s menu.
 
 Each folder has its own README with the model-specific detail — flags, GPU
 notes, and known upstream bugs. That is deliberately not repeated here, so there

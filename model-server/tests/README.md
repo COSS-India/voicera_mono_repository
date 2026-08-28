@@ -28,6 +28,14 @@ These guard the things the revamp could silently break:
 | `test_setup_selection` | setup.sh offers a menu per slot instead of assuming a model, and runs the chosen model's `fetch.sh` |
 | `test_llm_slot` | an empty slot answers 503 rather than 404 or a hang, is not advertised at `/v1/models`, and does not mark health degraded; a filled one routes and streams token by token |
 | `test_tts_format_negotiation` | the client decodes by declared format, so 44.1 kHz float32 and 24 kHz int16 both work; gain never wraps; a sample split across chunks survives at either width |
+| `test_model_extras` | a model folder that brings a `compose.extra.yml` merges cleanly and does not disturb its slot's service name, port or route |
+| `test_stt_streaming` | the live transcription socket relays binary and text both ways, unbuffered, and a caller hanging up reaches the model; an empty slot explains itself instead of failing the handshake |
+| `test_client_selection` | every model marked `ready` can actually be named by an agent config, and every name the client accepts has a model behind it |
+
+Reading the table top to bottom: the early entries guard the audio itself, the
+middle ones guard the wiring between files, and the last two guard the seam
+between the model-server and the voice pipeline -- which is where a mistake is
+invisible until a live call.
 
 Two scripts are not part of the suite because they need real models on a GPU:
 

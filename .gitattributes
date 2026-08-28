@@ -1,0 +1,25 @@
+# Line endings are normalised on the way INTO git, not in your working tree.
+#
+# This repo is edited on Windows and deployed on Linux. Without this file, a
+# `git add -A` from a Windows checkout rewrites every file it touches with CRLF
+# -- 348 of them, at the time this was added, against 12 with real changes. The
+# diff becomes unreadable, and worse: `setup.sh` with CRLF endings does not run
+# on Linux at all. It fails on the first function definition with
+#
+#   syntax error near unexpected token `$'{\r''
+#
+# `text=auto eol=lf` stores everything as LF regardless of how it looks locally.
+# Windows editors keep showing CRLF; git simply stops recording it.
+* text=auto eol=lf
+
+# Shell scripts are the case where this is not cosmetic -- see above.
+*.sh text eol=lf
+
+# Never touch these.
+*.png binary
+*.jpg binary
+*.nemo binary
+*.pt   binary
+*.onnx binary
+*.tgz  binary
+*.gz   binary

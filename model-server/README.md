@@ -70,7 +70,8 @@ about what is running.
 
 | | |
 |---|---|
-| `POST /v1/audio/transcriptions` | speech to text |
+| `POST /v1/audio/transcriptions` | speech to text, one utterance at a time |
+| `WS /v1/asr/ws` | speech to text, live — when the deployed model streams |
 | `POST /v1/audio/speech` | text to speech |
 | `POST /v1/chat/completions` | LLM, when a model is deployed |
 | `GET /models` | every model, and which are running |
@@ -79,6 +80,18 @@ about what is running.
 
 `/models` and `/v1/models` differ on purpose. OpenAI clients read `/v1/models`
 as "what can I call", so it must never list something that would answer 503.
+
+`/v1/asr/ws` is the one route that is not OpenAI-shaped, because OpenAI has no
+equivalent. It exists because live transcription is genuinely two-directional:
+audio flows in for as long as someone is talking while partial transcripts flow
+back, and neither side knows when the other will speak next. TTS is not like
+that -- it is one-directional, so it moved *off* WebSockets to plain HTTP, which
+gave cancellation for free. Direction of travel decides the transport, not
+fashion.
+
+A model that does not stream simply does not serve the route, and the gateway
+says so in a readable frame rather than failing the handshake. `streaming:` in
+`models.yaml` records which models do.
 
 All three follow the OpenAI shape, TTS included. Barge-in still works: when the
 caller interrupts, Pipecat stops reading the response, the connection drops, and
@@ -109,6 +122,7 @@ builds must:
 | answer its slot's OpenAI route | `/v1/audio/transcriptions`, `/v1/audio/speech`, or `/v1/chat/completions` |
 | stop work when the client hangs up | for TTS this is what makes barge-in free the GPU |
 | say what it is sending | TTS only: `X-Audio-Format` and `X-Sample-Rate` on every response |
+| accept a WAV upload | STT only — see below |
 
 That last row is what keeps the slot model-agnostic. Two TTS models here
 disagree on the wire — Indic Parler streams 44.1 kHz float32 under the name
@@ -117,10 +131,28 @@ and the client decodes whichever arrives by reading the headers. Nothing is
 mandated about *what* a model sends, only that it says so. A format the client
 cannot decode produces a clear error naming it, never silence or noise.
 
-Optionally, the folder may contain **`fetch.sh`**: `setup.sh` runs it if it is
-there, so a model that needs weights brings its own download step rather than
-adding a branch to the installer. It must resolve paths from its own location
-and be safe to re-run.
+The STT row is the same principle pointed the other way. Uploads are a real
+audio file, not a bare PCM stream: `soundfile`-based models answer 415 to
+headerless bytes, and headerless bytes cannot state their own sample rate
+anyway. We were the off-spec side here -- OpenAI's transcriptions endpoint takes
+files -- so the client now wraps its buffer in a 44-byte WAV header, which costs
+nothing and every model reads.
+
+Optionally, a folder may also contain either of two files, both found by
+existence so that adding one never edits `setup.sh`:
+
+**`fetch.sh`** — a model that needs weights brings its own download step. It
+must resolve paths from its own location and be safe to re-run. It runs *before*
+the build, which is the right time for a download and the wrong time for
+anything that needs the built image.
+
+**`compose.extra.yml`** — an overlay merged on top of the base Compose file. Two
+quite different needs turned out to have the same answer: `tts/indic-mio/` uses
+it to bring a vLLM sidecar it delegates token generation to, and
+`stt/indic-transcribe/` uses it to mount the weights its image is forbidden to
+fetch. Either way the slot contract is unchanged -- one service, one port, one
+route. Paths in an overlay resolve against the **project directory**
+(`model-server/`), not against the overlay's own folder.
 
 That is the whole interface. Some folders are a full server — `tts/indic-parler/`
 carries a paged-KV-cache engine. Some are a Dockerfile and nothing else:
@@ -148,8 +180,15 @@ gateway streaming rather than buffering, a disconnect actually stopping
 generation, the KV page allocator never handing one page to two calls, naming a
 different model actually building a different folder, the LLM's model id meaning
 the same string in all four files that have to agree on it, an undeployed slot
-refusing calls clearly instead of hanging, and two TTS models with different
-sample widths both decoding correctly.
+refusing calls clearly instead of hanging, two TTS models with different sample
+widths both decoding correctly, a live transcription socket relaying both frame
+types both ways and carrying a hang-up through to the model, and every model
+marked `ready` actually being nameable by an agent config.
+
+That last one is worth a sentence, because it is the failure with no symptom
+until a call drops: a model can be catalogued, built, healthy and listed at
+`/models` while the voice server has never heard of its name. Deploying it looks
+like success right up to the first agent that asks for it.
 
 ## Current state
 

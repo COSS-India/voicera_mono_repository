@@ -31,7 +31,7 @@ from services.kenpath_llm.llm import (
     normalize_kenpath_backend,
 )
 from services.ai4bharat.tts import ModelServerTTSService
-from services.ai4bharat.stt import IndicConformerRESTSTTService
+from services.ai4bharat.stt import ModelServerSTTService
 from services.bhashini.stt import BhashiniSTTService
 from services.bhashini.socketio_stt import BhashiniSocketIOSTTService
 from services.bhashini.bhili_stt import BhashiniBhiliSTTService
@@ -465,15 +465,28 @@ def create_stt_service(
     
     elif provider == "AI4Bharat":
         model = args.get("model") or stt_config.get("model")
-        if model == "indic-conformer-stt":
-            return IndicConformerRESTSTTService(
+        # One client for both models. The slot takes a WAV and a language code;
+        # which checkpoint answers is a deploy-time choice (STT_MODEL in
+        # model-server/.env) that the voice pipeline never sees.
+        #
+        # They are not identical models, only identical callers:
+        #   indic-conformer    22 languages, whole-utterance
+        #   indic-transcribe   25 (adds Bhojpuri and English), and streams --
+        #                      a superset, so switching cannot lose a language
+        #                      this map can ask for
+        if model in ("indic-conformer-stt", "indic-transcribe-stt"):
+            return ModelServerSTTService(
                 language_id=STT_LANGUAGE_MAP[provider][language],
                 sample_rate=16000,
                 input_sample_rate=sample_rate,
                 suppress_vad_frames=(vad_analyzer is not None),
+                model=model,
             )
         else:
-            raise ServiceCreationError(f"Unknown ai4bharat STT model: {model}. Expected 'indic-conformer-stt'")
+            raise ServiceCreationError(
+                f"Unknown ai4bharat STT model: {model}. Expected one of "
+                f"'indic-conformer-stt', 'indic-transcribe-stt'"
+            )
     
     elif provider == "Bhashini":
         lang_code = STT_LANGUAGE_MAP[provider].get(language, language)

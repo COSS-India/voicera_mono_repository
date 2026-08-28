@@ -1,0 +1,29 @@
+# The converted checkpoint (4.6 GB). Regenerate with tools/hf_to_nemo.py — see SETUP.md.
+artifacts/*.nemo
+artifacts/*.ckpt
+
+# Benchmark audio (26 MB, FLEURS). Regenerate with tools/make_corpus.py — see SETUP.md.
+corpus/
+
+# Model weights are never in this repo. The checkpoint is obtained separately and
+# bind-mounted read-only; see SETUP.md.
+models/
+
+# results/ is where the benchmark harness writes and where docker-compose bind-mounts. The
+# raw run data behind the published numbers is NOT shipped in this repo — REPORT.md and
+# LOADTEST.md are the finished documents, generated from it by bench/report.py. Only the
+# directory itself is tracked, so the mount target exists in a fresh clone.
+results/*
+!results/.gitkeep
+
+# Local deployment values (public hostname, ports). Ship .env.example instead.
+.env
+
+# Caddy state, if a local run ever writes it here rather than to a volume.
+caddy/data/
+caddy/config/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store

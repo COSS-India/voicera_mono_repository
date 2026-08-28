@@ -1,0 +1,5 @@
+# Clients used only by bench/ -- deliberately a SEPARATE file and a separate Docker layer.
+# They change far more often than torch/NeMo, and putting them in requirements.txt
+# invalidates the ~6.5 GB wheel layer on every edit.
+openai==3.3.1
+websockets==17.0.1

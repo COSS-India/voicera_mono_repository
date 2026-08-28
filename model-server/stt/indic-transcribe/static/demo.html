@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Indic Transcribe · Live</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --line:#262b36; --ink:#e8eaed; --dim:#9aa3b2;
+    --accent:#6ea8fe; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 ui-sans-serif,system-ui,"Segoe UI",Roboto,"Noto Sans",sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:24px 18px 64px}
+  h1{font-size:20px;margin:0 0 2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+         padding:14px 16px;margin-bottom:14px}
+  label{display:block;font-size:12px;color:var(--dim);margin-bottom:5px;
+        text-transform:uppercase;letter-spacing:.05em}
+  select,button{font:inherit;color:var(--ink);background:#11141a;
+                border:1px solid var(--line);border-radius:7px;padding:9px 12px}
+  select{width:100%;max-width:420px}
+  button{cursor:pointer;font-weight:600}
+  button.go{background:var(--accent);color:#0b0d11;border-color:transparent}
+  button.stop{background:var(--bad);color:#1a0b0b;border-color:transparent}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .warn{border-left:3px solid var(--warn);background:#241f10;color:#f5deb3;
+        padding:9px 12px;border-radius:0 7px 7px 0;font-size:13px;margin-top:10px}
+  .warn.hide{display:none}
+  .transcript{min-height:150px;font-size:21px;line-height:1.7;white-space:pre-wrap;
+              word-break:break-word}
+  .committed{color:var(--ink)}
+  .partial{color:var(--accent);opacity:.85}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:10px}
+  .stat{background:#11141a;border:1px solid var(--line);border-radius:7px;padding:9px 11px}
+  .stat .k{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+  .stat .v{font-size:19px;font-variant-numeric:tabular-nums;margin-top:2px}
+  .geo{color:var(--dim);font-size:12px;margin-top:10px;font-variant-numeric:tabular-nums}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);
+       margin-right:7px;vertical-align:middle}
+  .dot.live{background:var(--ok);animation:pulse 1.2s infinite}
+  .dot.err{background:var(--bad)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  code{background:#11141a;padding:1px 5px;border-radius:4px;font-size:12px}
+  .opt{display:flex;gap:9px;align-items:flex-start;margin-top:12px;text-transform:none;
+       letter-spacing:0;font-size:13px;color:var(--dim);cursor:pointer}
+  .opt input{margin-top:2px;accent-color:var(--accent)}
+  .opt b{color:var(--ink);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Indic Transcribe <span style="color:var(--dim);font-weight:400">· live streaming</span></h1>
+  <div class="sub">Canary 1.2B · AlignAtt streaming · 25 languages · Start to Stop</div>
+
+  <div class="panel">
+    <label for="lang">Language <span id="langcount" style="text-transform:none"></span></label>
+    <select id="lang"></select>
+
+    <div class="warn hide" id="weakwarn"></div>
+    <div class="warn" id="nolid">
+      No auto-detect. A wrong language produces output in the wrong script, with no error.
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <button class="go" id="start">● Start</button>
+      <button class="stop" id="stop" disabled>■ Stop</button>
+      <span id="status"><span class="dot"></span>idle</span>
+    </div>
+    <label class="opt" for="autoseg">
+      <input type="checkbox" id="autoseg">
+      <span>Commit a turn after a pause. Off: the stream runs until Stop.</span>
+    </label>
+    <div class="geo" id="geo"></div>
+  </div>
+
+  <div class="panel">
+    <label>Transcript <span style="text-transform:none">— <span class="committed">committed</span>
+      vs <span class="partial">in flight</span></span></label>
+    <div class="transcript"><span class="committed" id="committed"></span><span class="partial" id="live"></span></div>
+  </div>
+
+  <div class="panel stats">
+    <div class="stat"><div class="k">Time to first partial</div><div class="v" id="m_ttfp">–</div></div>
+    <div class="stat"><div class="k">Delta lag p50</div><div class="v" id="m_lag">–</div></div>
+    <div class="stat"><div class="k">Partials</div><div class="v" id="m_np">–</div></div>
+    <div class="stat"><div class="k">Words / partial</div><div class="v" id="m_wpp">–</div></div>
+    <div class="stat"><div class="k">Turns committed</div><div class="v" id="m_turns">–</div></div>
+  </div>
+</div>
+
+<script>
+// The scheme is derived from location.protocol, so serving this page over HTTPS makes it dial
+// wss:// with no code change -- which is the whole reason the TLS front door needs no
+// application support.
+const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/v1/asr/ws';
+const SAMPLE_RATE = 16000;
+
+const $ = id => document.getElementById(id);
+let ws = null, ctx = null, node = null, stream = null;
+let lags = [], words = [], partials = 0, turns = 0, t0 = null;
+
+// The selector is populated from /v1/languages so it can never drift from what the checkpoint
+// actually supports. Hard-coding 27 here is exactly the bug the endpoint exists to prevent.
+async function loadLanguages(){
+  const r = await fetch('/v1/languages');
+  const d = await r.json();
+  $('langcount').textContent = `— ${d.count} supported`;
+  const groups = {};
+  for (const l of d.languages) (groups[l.group] ||= []).push(l);
+  const order = ['Indian English','Scheduled languages','Other'];
+  const sel = $('lang');
+  sel.innerHTML = '';
+  for (const g of order){
+    if (!groups[g]) continue;
+    const og = document.createElement('optgroup');
+    og.label = `${g} (${groups[g].length})`;
+    for (const l of groups[g]){
+      const o = document.createElement('option');
+      o.value = l.code;
+      o.textContent = `${l.name} — ${l.script}${l.weak_lid ? ' ⚠' : ''}`;
+      o.dataset.weak = l.weak_lid ? '1' : '';
+      o.dataset.name = l.name;
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
+  }
+  sel.value = 'hi';
+  onLangChange();
+}
+
+function onLangChange(){
+  const o = $('lang').selectedOptions[0];
+  const w = $('weakwarn');
+  if (o && o.dataset.weak){
+    w.innerHTML = `<strong>${o.dataset.name}</strong> is one of four Hindi-belt languages this
+      model confuses with each other. Measured top-1 identification: bho 0.05, hi 0.26,
+      mai 0.36, ur 0.49.`;
+    w.classList.remove('hide');
+  } else {
+    w.classList.add('hide');
+  }
+}
+
+function setStatus(text, cls){
+  $('status').innerHTML = `<span class="dot ${cls||''}"></span>${text}`;
+}
+
+function resetStats(){
+  lags = []; words = []; partials = 0; turns = 0; t0 = null;
+  for (const k of ['m_ttfp','m_lag','m_np','m_wpp','m_turns']) $(k).textContent = '–';
+  $('committed').textContent = ''; $('live').textContent = '';
+}
+
+function median(a){ if(!a.length) return null; const s=[...a].sort((x,y)=>x-y); return s[s.length>>1]; }
+
+async function start(){
+  resetStats();
+  const lang = $('lang').value;
+  setStatus('requesting mic…');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,
+      echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
+  } catch(e){
+    setStatus('mic denied — HTTPS is required for getUserMedia', 'err');
+    return;
+  }
+
+  ctx = new (window.AudioContext||window.webkitAudioContext)({sampleRate: SAMPLE_RATE});
+  // endpoint=1 only if the user asked for it; otherwise the stream is theirs to end.
+  const autoseg = $('autoseg').checked;
+  ws = new WebSocket(WS_URL + '?language=' + encodeURIComponent(lang)
+                     + '&endpoint=' + (autoseg ? '1' : '0'));
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    setStatus('listening', 'live');
+    $('start').disabled = true; $('stop').disabled = false;
+    $('autoseg').disabled = true;
+    const src = ctx.createMediaStreamSource(stream);
+    node = ctx.createScriptProcessor(2048, 1, 1);
+    node.onaudioprocess = e => {
+      if (!ws || ws.readyState !== 1) return;
+      const f = e.inputBuffer.getChannelData(0);
+      const pcm = new Int16Array(f.length);
+      for (let i=0;i<f.length;i++){
+        const s = Math.max(-1, Math.min(1, f[i]));
+        pcm[i] = s < 0 ? s*0x8000 : s*0x7fff;
+      }
+      if (t0 === null) t0 = performance.now();
+      ws.send(pcm.buffer);
+    };
+    src.connect(node); node.connect(ctx.destination);
+  };
+
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'ready'){
+      $('geo').textContent =
+        `effective chunk ${m.chunk_secs_effective}s + right ${m.right_secs_effective}s = `
+        + `${m.theoretical_latency_s}s theoretical · AlignAtt token budget ${m.token_budget} · `
+        + `${m.language} (${m.script})`;
+      return;
+    }
+    if (m.type === 'error'){ setStatus('error: ' + m.error, 'err'); return; }
+
+    if (m.type === 'closed'){
+      $('committed').textContent = m.transcript || '';
+      $('live').textContent = '';
+      setStatus('stopped', '');
+      return;
+    }
+
+    if (m.type === 'partial' || m.type === 'turn_final'){
+      partials++;
+      if (m.latency_ms != null) lags.push(m.latency_ms);
+      const n = (m.text||'').trim().split(/\s+/).filter(Boolean).length;
+      if (n) words.push(n);
+
+      // `transcript` spans every turn so far. A pause ends a turn, NOT the stream, so the
+      // page keeps listening and keeps appending — it must never treat a turn end as the end.
+      if (m.type === 'turn_final'){
+        $('committed').textContent = m.transcript || '';
+        $('live').textContent = '';
+        turns++;
+        $('m_turns').textContent = turns;
+      } else {
+        const done = (m.transcript || '').slice(0, (m.transcript||'').length - (m.full_text||'').length);
+        $('committed').textContent = done;
+        $('live').textContent = m.full_text || '';
+      }
+
+      if (m.ttfp_ms != null && $('m_ttfp').textContent === '–')
+        $('m_ttfp').textContent = Math.round(m.ttfp_ms) + ' ms';
+      const md = median(lags);
+      if (md != null) $('m_lag').textContent = Math.round(md) + ' ms';
+      $('m_np').textContent = partials;
+      if (words.length)
+        $('m_wpp').textContent = (words.reduce((a,b)=>a+b,0)/words.length).toFixed(1);
+      setStatus('listening', 'live');
+    }
+  };
+
+  ws.onclose = ev => {
+    setStatus(ev.reason ? ('closed: ' + ev.reason) : 'closed', ev.reason ? 'err' : '');
+    teardown();
+  };
+  ws.onerror = () => setStatus('socket error', 'err');
+}
+
+function teardown(){
+  if (node){ node.disconnect(); node.onaudioprocess = null; node = null; }
+  if (ctx){ ctx.close(); ctx = null; }
+  if (stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+  $('start').disabled = false; $('stop').disabled = true;
+  $('autoseg').disabled = false;
+}
+
+function stop(){
+  if (ws && ws.readyState === 1){
+    setStatus('finalising…');
+    ws.send(JSON.stringify({type:'stop'}));
+    setTimeout(()=>{ if(ws) ws.close(); }, 4000);
+  }
+  teardown();
+}
+
+$('start').onclick = start;
+$('stop').onclick = stop;
+$('lang').onchange = onLangChange;
+loadLanguages().catch(e => setStatus('could not load languages: '+e, 'err'));
+</script>
+</body>
+</html>

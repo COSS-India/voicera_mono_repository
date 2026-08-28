@@ -1,0 +1,40 @@
+# Top-level pins for the indic-transcribe-core gateway.
+# Full transitive freeze is recorded in constraints.txt AFTER the build (pip freeze).
+#
+# torch arrives via nemo-toolkit's cu13 extra as torch==2.12.0+cu132, which lives on the
+# PyTorch index, so installs need:
+#   --extra-index-url https://download.pytorch.org/whl/cu132
+# cu132 matches this host's CUDA 13.2 driver and carries sm_120 (Blackwell) kernels. The
+# cu126 build the model card recommends does NOT, and will not run on this GPU.
+nemo-toolkit[asr,cu13]==3.0.0
+
+# Pinned explicitly so nothing installed later can quietly swap the CUDA build out.
+torch==2.12.0+cu132
+
+# torchaudio is NOT here on purpose -- see the Dockerfile. There is no cu132 build of it
+# (verified against the index: torch has 2.12.0+cu132, torchaudio's newest is 2.11.0 and
+# ships only cpu/cu126/cu128/cu129/cu130), so it is installed separately with --no-deps.
+
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
+soundfile==0.14.0
+onnxruntime==1.29.0
+
+# The HF oracle (tools/transcribe_hf.py) runs models/core's shipped code, which needs
+# transformers + sentencepiece. Both already arrive via nemo; pinned so the oracle and the
+# NeMo path cannot drift apart.
+transformers==5.15.1
+sentencepiece==0.2.2
+
+# Corpus construction (tools/make_corpus.py). All three come in via nemo[asr] anyway; listed
+# because we import them directly and there is no ffmpeg/sox on this box -- audio work is
+# pure Python.
+datasets==5.0.1
+librosa==1.0.0
+scipy==1.18.1
+
+# NOTE: silero-vad is installed with --no-deps (see Dockerfile). It declares torchaudio and
+# would drag in a CUDA-mismatched build. We only want its bundled .onnx, driven by
+# onnxruntime on the CPU (see vad.py).
+# silero-vad==6.2.1  (installed via --no-deps)

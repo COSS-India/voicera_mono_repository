@@ -2,12 +2,28 @@
 line-length = 100
 target-version = "py312"
 
-# Model folders may vendor an upstream project wholesale -- tts/orpheus/src is
-# the AI4Bharat Orpheus server as its authors wrote it. Restyling that to our
-# rules would make every future sync from upstream a merge conflict for no
-# behavioural gain, so it is excluded. Everything we author stays strict,
-# including the server entrypoints we rewrote ourselves.
-exclude = ["*/src/orpheus_server/**"]
+# Vendored upstream code is excluded; everything we author stays strict.
+#
+# Most model folders are somebody else's project lifted in whole. Restyling that
+# to our rules would turn every future sync from upstream into a merge conflict
+# for no behavioural gain -- and a diff full of cosmetic churn is where a real
+# change hides. What the slot actually requires of these folders is pinned by
+# tests, not by lint.
+#
+# This list is deliberately path-by-path rather than a blanket `stt/**`,
+# `tts/**`. The files we write to fit a model into the slot sit *inside* these
+# folders -- tts/indic-mio/server.py is ours, and it is linted -- so a blanket
+# rule would quietly stop checking our own code the day someone adds a file.
+exclude = [
+  "*/src/orpheus_server/**",        # tts/orpheus: AI4Bharat's server, verbatim
+  "stt/indic-conformer/model.py",
+  "stt/indic-conformer/server.py",
+  "stt/indic-transcribe/**",        # entirely upstream; only the Dockerfile is ours
+  "tts/indic-parler/inference/**",  # the paged-attention engine
+  "tts/indic-mio/config.py",
+  "tts/indic-mio/tts_engine.py",
+  "tts/indic-mio/scripts/**",
+]
 
 [lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RET", "ARG"]
@@ -21,12 +37,12 @@ extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Query", "fast
 # Stubs exist to satisfy a signature and ignore the arguments. That is the point.
 "tests/stubs/**/*.py" = ["ARG001", "ARG002", "ARG004", "F401"]
 
-# The inference engine implements several interchangeable KV-cache backends
-# (VirtualMemoryPaged / SDPA / Dense / Compare). They share a signature, so each
-# necessarily ignores arguments the others use -- that is interface conformance,
-# not dead parameters.
+# A vendored inference engine typically implements several interchangeable
+# KV-cache backends (VirtualMemoryPaged / SDPA / Dense / Compare). They share a
+# signature, so each necessarily ignores arguments the others use -- that is
+# interface conformance, not dead parameters.
 #
-# Path note: this became tts/<model>/inference/** when models moved into their
-# own folders. Left as a glob so it keeps matching if another model vendors an
-# engine the same way.
+# Indic Parler's engine is excluded outright above, so this currently matches
+# nothing. It is kept for the next model that vendors an engine the same way but
+# is otherwise clean enough to lint.
 "tts/*/inference/**/*.py" = ["ARG001", "ARG002"]

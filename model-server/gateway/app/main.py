@@ -17,13 +17,13 @@ import contextlib
 import logging
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import JSONResponse
 
 from . import catalogue
 from .config import Settings, Upstream
 from .config import settings as env_settings
-from .proxy import forward_http, make_client
+from .proxy import forward_http, make_client, relay_ws
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("gateway")
@@ -135,6 +135,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/audio/transcriptions")
     async def transcriptions(request: Request):
         return await _rest(request, conf(request).stt, "/v1/audio/transcriptions")
+
+    @app.websocket("/v1/asr/ws")
+    async def asr_stream(ws: WebSocket):
+        """Live transcription, for STT models that offer it.
+
+        Not an OpenAI route -- OpenAI's realtime transcription is a different and
+        much larger protocol, and claiming its path while speaking something else
+        would be worse than an honest name of our own. The relay is transparent,
+        so the protocol is entirely between the client and whichever model is
+        loaded; a model that does not stream simply has nothing listening here.
+        """
+        up = ws.app.state.settings.stt
+        if not up.enabled:
+            await ws.accept()
+            await ws.send_json({
+                "type": "error", "reason": "upstream_not_configured",
+                "error": "No STT model is deployed. Set STT_MODEL in .env and "
+                         "include stt in COMPOSE_PROFILES.",
+            })
+            await ws.close(code=1013, reason="no STT model deployed")
+            return
+        target = up.url.replace("http://", "ws://", 1).replace("https://", "wss://", 1)
+        query = ws.url.query
+        await relay_ws(ws, f"{target}/v1/asr/ws" + (f"?{query}" if query else ""))
 
     @app.post("/v1/audio/speech")
     async def speech(request: Request):

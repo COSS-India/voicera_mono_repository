@@ -1,0 +1,13 @@
+# Big generated things that must never enter the build context.
+artifacts/
+corpus/
+models/
+results/
+docs/
+
+# Local deployment values.
+.env
+
+.git/
+__pycache__/
+*.py[cod]
