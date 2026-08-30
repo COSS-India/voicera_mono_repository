@@ -1,0 +1,58 @@
+# Attach the model containers to an NVIDIA MPS daemon.
+#
+# Only layer this in when a daemon is actually running on the host. setup.sh
+# checks and adds it automatically; by hand it is:
+#
+#   docker compose -f compose.model-server.yml -f compose.mps.yml \
+#                  --project-directory . up -d
+#
+# ---------------------------------------------------------------------------
+# Why this is a separate file rather than part of the base
+#
+# MPS is a property of the host, not of this stack. A GPU in Exclusive Process
+# mode can only be shared through it, which is our situation on ace-h200 -- the
+# prod TTS workers hold the card and we attach alongside them. A GPU in the
+# ordinary Default mode needs none of this, and pointing a container at a pipe
+# directory with no daemon behind it is not a configuration, it is a guess.
+#
+# It used to live in the base file with the pipe directory written out as
+# /tmp/nvidia-mps-gpu1. That was wrong in two ways at once. It ignored
+# GPU_DEVICE_IDS, so selecting GPU 3 gave you GPU 3 with GPU 1's pipe -- a
+# mismatch nothing would report, because the client simply fails to find its
+# daemon. And it applied on every host, including those with no daemon at all.
+#
+# ---------------------------------------------------------------------------
+# Paths
+#
+# The daemon's pipe directory is per-GPU by convention on this box:
+# /tmp/nvidia-mps-gpu<N>. So the default below follows GPU_DEVICE_IDS rather
+# than naming a GPU, and MPS_PIPE_DIR overrides it outright when a host puts
+# the daemon somewhere else -- which is also the escape hatch when
+# GPU_DEVICE_IDS names more than one device and the convention stops applying.
+#
+# setup.sh writes MPS_PIPE_DIR into .env explicitly, so a deployed stack never
+# depends on the nested default resolving.
+
+x-mps-client: &mps-client
+  # The daemon's shared memory lives in the host IPC namespace; a container in
+  # its own namespace cannot see it.
+  ipc: host
+  ulimits:
+    memlock: -1
+    stack: 67108864
+  environment:
+    CUDA_MPS_PIPE_DIRECTORY: /tmp/nvidia-mps
+    CUDA_MPS_LOG_DIRECTORY: /tmp/nvidia-mps-log
+  volumes:
+    - "${MPS_PIPE_DIR:-/tmp/nvidia-mps-gpu${GPU_DEVICE_IDS:-1}}:/tmp/nvidia-mps"
+    - "${MPS_LOG_DIR:-/tmp/nvidia-mps-log-gpu${GPU_DEVICE_IDS:-1}}:/tmp/nvidia-mps-log"
+
+services:
+  # The gateway is absent on purpose: pure async I/O, no CUDA context, nothing
+  # to attach.
+  stt:
+    <<: *mps-client
+  tts:
+    <<: *mps-client
+  llm:
+    <<: *mps-client

@@ -169,6 +169,35 @@ fetch. Either way the slot contract is unchanged -- one service, one port, one
 route. Paths in an overlay resolve against the **project directory**
 (`model-server/`), not against the overlay's own folder.
 
+**`compose.mps.yml`** — only for a model that brings GPU sidecars. The slot
+services get their MPS wiring from `model-server/compose.mps.yml`, but that file
+cannot name a sidecar that may not exist, so the model brings its own. Added
+only when the model is selected *and* a daemon is detected.
+
+## MPS
+
+A GPU in Exclusive Process mode can only be shared through an NVIDIA MPS daemon.
+That is our situation on ace-h200, where the production TTS workers hold the card
+and we attach alongside them. A GPU in the ordinary Default mode needs none of
+it, which is every other machine anyone is likely to try this on.
+
+So it is **detected, not configured**. `setup.sh` looks for the daemon's
+`control` pipe and layers in `compose.mps.yml` only if it finds one; otherwise it
+says so and carries on. Both mistakes are silent if you get them wrong — attach
+with no daemon and the client finds nothing to talk to; skip it on an Exclusive
+Process GPU and the container never gets a CUDA context at all.
+
+The pipe directory follows `GPU_DEVICE_IDS`, since the convention here is one per
+GPU. `MPS_PIPE_DIR` overrides that outright, which is also the answer when
+`GPU_DEVICE_IDS` names more than one device and `gpu<N>` stops meaning anything.
+
+This was previously hardcoded in the base compose file as
+`/tmp/nvidia-mps-gpu1`, which ignored `GPU_DEVICE_IDS` — selecting GPU 3 gave you
+GPU 3 with GPU 1's pipe — and applied on hosts with no daemon at all.
+`tests/test_mps.py` pins both directions against real `docker compose config`
+output, including that the overlay adds to a service rather than replacing its
+mounts.
+
 That is the whole interface. Some folders are a full server — `tts/indic-parler/`
 carries a paged-KV-cache engine. Some are a Dockerfile and nothing else:
 `llm/qwen3.5-4b/` is 30 lines, because vLLM already serves the spec, so there is

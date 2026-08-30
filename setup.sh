@@ -36,6 +36,9 @@ XAI_API_KEY="${XAI_API_KEY:-}"
 log()  { echo -e "\n\033[1;32m[VoicEra]\033[0m $1"; }
 ok()   { echo -e "\033[1;34m  ✓\033[0m $1"; }
 err()  { echo -e "\033[1;31m[ERROR]\033[0m $1"; exit 1; }
+# Unlike err, this does not exit: it marks something the operator should know
+# about but which does not stop the install.
+warn() { echo -e "\033[1;33m  !\033[0m $1"; }
 ask()  { read -r -p "  $1: " "$2"; }
 
 REPO_DIR="$HOME/voicera_mono_repository"
@@ -329,15 +332,43 @@ MODEL_PROFILES=""
 [ -n "$LLM_SEL" ] && MODEL_PROFILES="$MODEL_PROFILES,llm"
 MODEL_PROFILES="${MODEL_PROFILES#,}"
 
-# A model folder may bring extra services with it (a sidecar the model needs).
-# Found by existence, so adding such a model never edits this script.
-COMPOSE_FILES="-f $MS_DIR/compose.model-server.yml"
-for slot_model in "stt/$STT_SEL" "tts/$TTS_SEL" "llm/$LLM_SEL"; do
-  case "$slot_model" in */) continue;; esac
-  extra="$MS_DIR/$slot_model/compose.extra.yml"
-  [ -f "$extra" ] && COMPOSE_FILES="$COMPOSE_FILES -f $extra" && \
-    ok "$slot_model brings extra services (compose.extra.yml)"
-done
+# The compose file list is built by model-server/compose-files.sh, because
+# `make up` has to produce exactly the same list and previously did not: it used
+# the base file alone, which silently dropped model sidecars and, once MPS moved
+# to an overlay, dropped MPS too. One script, three callers.
+#
+# It reads .env, so the model selections have to be written before it runs.
+
+# ---- MPS ------------------------------------------------------------------
+# A GPU in Exclusive Process mode can only be shared through an MPS daemon, and
+# our card on ace-h200 is shared with the prod workers that way. A GPU in the
+# ordinary Default mode needs none of it.
+#
+# So this is detected, not configured. The daemon publishes a `control` pipe in
+# its pipe directory; that file existing is the fact we need. Guessing wrong in
+# either direction is silent: attach with no daemon and the client finds
+# nothing, skip it on an Exclusive Process GPU and the container cannot get a
+# context at all.
+#
+# The convention on this box is one pipe directory per GPU. MPS_PIPE_DIR
+# overrides it, which is also the answer when GPU_DEVICE_IDS names more than one
+# device and "gpu<N>" stops meaning anything.
+MPS_PIPE_DIR="${MPS_PIPE_DIR:-/tmp/nvidia-mps-gpu${GPU_DEVICE_IDS:-1}}"
+MPS_LOG_DIR="${MPS_LOG_DIR:-/tmp/nvidia-mps-log-gpu${GPU_DEVICE_IDS:-1}}"
+
+if [ -e "$MPS_PIPE_DIR/control" ] || pgrep -x nvidia-cuda-mps-control >/dev/null 2>&1; then
+  ok "MPS daemon found at $MPS_PIPE_DIR -- attaching as a client"
+else
+  warn "No MPS daemon at $MPS_PIPE_DIR -- running without it."
+  warn "  Correct on a GPU in Default mode. If this card is in Exclusive"
+  warn "  Process mode, start the daemon first or the containers get no"
+  warn "  CUDA context: nvidia-smi -q | grep -i 'compute mode'"
+fi
+
+# Written out rather than left to the compose default, so a deployed stack
+# never depends on nested variable substitution resolving.
+sed -i "s|^# *MPS_PIPE_DIR=.*|MPS_PIPE_DIR=$MPS_PIPE_DIR|; \
+        s|^# *MPS_LOG_DIR=.*|MPS_LOG_DIR=$MPS_LOG_DIR|" "$MS_DIR/.env"
 
 sed -i "s|^STT_MODEL=.*|STT_MODEL=$STT_SEL|; \
         s|^TTS_MODEL=.*|TTS_MODEL=$TTS_SEL|; \
@@ -350,6 +381,11 @@ sed -i "s|^HF_TOKEN=.*|HF_TOKEN=$HF_TOKEN|" "$MS_DIR/.env"
 if [ -n "$NEMO_DIR" ]; then
   sed -i "s|^NEMO_CONTEXT_PATH=.*|NEMO_CONTEXT_PATH=$NEMO_DIR|" "$MS_DIR/.env"
 fi
+# Now that .env holds the selections, ask the shared script what to run with.
+# Same list `make up` will produce, because it is the same script.
+COMPOSE_FILES=$(sh "$MS_DIR/compose-files.sh")
+ok "compose files: $(echo "$COMPOSE_FILES" | sed "s|$MS_DIR/||g")"
+
 if [ "$ENABLE_TTS" = "yes" ] && [ -z "$HF_TOKEN" ]; then
   echo "  WARNING: TTS is enabled but no HF_TOKEN was given. ai4bharat/indic-parler-tts"
   echo "           is gated -- the container will fail to start. Either supply a token,"

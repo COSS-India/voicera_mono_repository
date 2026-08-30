@@ -1,0 +1,24 @@
+# MPS attachment for this model's vLLM sidecar.
+#
+# The slot services are covered by model-server/compose.mps.yml, but that file
+# cannot mention `vllm-mio`: the service exists only when this model's
+# compose.extra.yml is layered in, and naming an undefined service is a Compose
+# error rather than a no-op. So a model that brings GPU sidecars brings their
+# MPS wiring too, in a file named the same way.
+#
+# setup.sh adds <slot>/<model>/compose.mps.yml when the model is selected AND a
+# daemon is detected -- both conditions, found by existence, so a model without
+# sidecars simply has no such file.
+#
+# Paths follow GPU_DEVICE_IDS exactly as the slot services do; keeping the two
+# in step is what stops the sidecar and the model it serves attaching to
+# different daemons.
+
+services:
+  vllm-mio:
+    environment:
+      CUDA_MPS_PIPE_DIRECTORY: /tmp/nvidia-mps
+      CUDA_MPS_LOG_DIRECTORY: /tmp/nvidia-mps-log
+    volumes:
+      - "${MPS_PIPE_DIR:-/tmp/nvidia-mps-gpu${GPU_DEVICE_IDS:-1}}:/tmp/nvidia-mps"
+      - "${MPS_LOG_DIR:-/tmp/nvidia-mps-log-gpu${GPU_DEVICE_IDS:-1}}:/tmp/nvidia-mps-log"

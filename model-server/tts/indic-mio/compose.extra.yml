@@ -34,15 +34,15 @@ services:
       - --gpu-memory-utilization=${MIO_VLLM_GPU_MEMORY_UTILIZATION:-0.06}
     environment:
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
-      CUDA_MPS_PIPE_DIRECTORY: /tmp/nvidia-mps
-      CUDA_MPS_LOG_DIRECTORY: /tmp/nvidia-mps-log
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
     volumes:
       - hf_cache:/root/.cache/huggingface
-      # YAML anchors do not cross files, so the MPS mounts are spelled out here.
-      - "/tmp/nvidia-mps-gpu1:/tmp/nvidia-mps"
-      - "/tmp/nvidia-mps-log-gpu1:/tmp/nvidia-mps-log"
     networks: [model_net]
+    # vLLM wants the host IPC namespace for its own shared memory, regardless of
+    # whether MPS is in play, so this stays here. The MPS attachment does not --
+    # it moved to compose.mps.yml in this folder, added only when a daemon
+    # exists. It used to be spelled out with the pipe hardcoded to gpu1, which
+    # silently ignored GPU_DEVICE_IDS.
     ipc: host
     ulimits:
       memlock: -1

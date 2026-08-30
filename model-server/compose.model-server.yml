@@ -27,24 +27,19 @@ x-gpu: &gpu
             device_ids: ["${GPU_DEVICE_IDS:-1}"]
             capabilities: [gpu]
 
-# GPU 1 runs in Exclusive Process mode behind an MPS daemon shared with the prod
-# workers. A container cannot claim the device directly -- it has to attach as an
-# MPS client: the host IPC namespace for the daemon's shared memory, raised
-# memlock/stack limits, and the pipe + log directories bind-mounted in. This
-# mirrors what deploy/compose/docker-compose.prod.yml already does successfully.
-x-mps: &mps
-  ipc: host
-  ulimits:
-    memlock: -1
-    stack: 67108864
-
-x-mps-env: &mps-env
+# MPS lives in compose.mps.yml, not here.
+#
+# On ace-h200 our GPU runs in Exclusive Process mode behind an MPS daemon shared
+# with the prod workers, so a container cannot claim the device directly -- it
+# has to attach as an MPS client. That was originally wired into this file with
+# the pipe directory hardcoded to /tmp/nvidia-mps-gpu1, which was wrong twice:
+# it did not follow GPU_DEVICE_IDS (so GPU 3 got GPU 1's pipe), and it applied
+# on hosts with no daemon at all, where there is nothing to attach to.
+#
+# It is now an overlay, added only when a daemon is actually there. setup.sh
+# detects that; see compose.mps.yml for the detection and the paths.
+x-alloc: &alloc
   PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
-  CUDA_MPS_PIPE_DIRECTORY: /tmp/nvidia-mps
-  CUDA_MPS_LOG_DIRECTORY: /tmp/nvidia-mps-log
-
-x-mps-pipe: &mps-pipe "/tmp/nvidia-mps-gpu1:/tmp/nvidia-mps"
-x-mps-log: &mps-log "/tmp/nvidia-mps-log-gpu1:/tmp/nvidia-mps-log"
 
 services:
 
@@ -105,7 +100,7 @@ services:
     container_name: voicera_model_stt
     restart: unless-stopped
     environment:
-      <<: *mps-env
+      <<: *alloc
       PORT: 8001
       INDIC_NEMO_PATH: ${INDIC_NEMO_PATH:-/app/models/IndicConformer.nemo}
       BHILI_ENABLE: ${BHILI_ENABLE:-no}
@@ -116,10 +111,8 @@ services:
       # IndicConformer.nemo into it. Bind-mounting also means editing server.py
       # does not need a rebuild.
       - ./stt/${STT_MODEL:-indic-conformer}:/app
-      - *mps-pipe
-      - *mps-log
     networks: [model_net]
-    <<: [*gpu, *mps]
+    <<: *gpu
 
   # ---- TTS slot ---------------------------------------------------------
   tts:
@@ -130,7 +123,7 @@ services:
     container_name: voicera_model_tts
     restart: unless-stopped
     environment:
-      <<: *mps-env
+      <<: *alloc
       PORT: 8002
       CHECKPOINT_PATH_DEFAULT: /app/checkpoints
       # ai4bharat/indic-parler-tts is a gated repo, so the tokenizer and T5
@@ -143,10 +136,8 @@ services:
     volumes:
       - ./tts/${TTS_MODEL:-indic-parler}:/app
       - hf_cache:/root/.cache/huggingface
-      - *mps-pipe
-      - *mps-log
     networks: [model_net]
-    <<: [*gpu, *mps]
+    <<: *gpu
 
   # ---- LLM slot ---------------------------------------------------------
   # vLLM speaks OpenAI spec natively, so these folders hold no code at all --
@@ -159,7 +150,7 @@ services:
     container_name: voicera_model_llm
     restart: unless-stopped
     environment:
-      <<: *mps-env
+      <<: *alloc
       PORT: 8003
       # Never vLLM's 0.9 default: several processes share this GPU through MPS,
       # and MPS does not partition memory.
@@ -169,10 +160,8 @@ services:
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
     volumes:
       - hf_cache:/root/.cache/huggingface
-      - *mps-pipe
-      - *mps-log
     networks: [model_net]
-    <<: [*gpu, *mps]
+    <<: *gpu
 
 volumes:
   # Compose creates this and the containers download into it, which needs

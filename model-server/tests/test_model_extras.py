@@ -122,7 +122,15 @@ def test_a_gpu_sidecar_does_not_grab_the_card(slot, model):
 def test_setup_applies_overlays_by_existence_not_by_model_name():
     """Adding a model with a sidecar must not mean editing the installer."""
     src = SETUP.read_text(encoding="utf-8").replace("\r\n", "\n")
-    assert "compose.extra.yml" in src, "setup.sh no longer looks for model overlays"
+    # The discovery itself moved into model-server/compose-files.sh so that
+    # `make up` produces the same file list; setup.sh calls that script. Check
+    # wherever the logic actually lives rather than pinning it to one file.
+    files_sh = (SETUP.parent / "model-server" / "compose-files.sh")
+    combined = src + (files_sh.read_text(encoding="utf-8") if files_sh.is_file() else "")
+    assert "compose.extra.yml" in combined, \
+        "nothing looks for model overlays any more"
+    assert "compose-files.sh" in src, \
+        "setup.sh builds its own compose file list again, so `make up` can diverge"
     assert "COMPOSE_FILES" in src, "the overlay list is not built"
     for _slot, model in models_with_extras():
         assert model not in src.split("STT_SEL=")[0], (
