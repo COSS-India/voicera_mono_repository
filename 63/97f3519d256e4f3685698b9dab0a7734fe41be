@@ -1,0 +1,19 @@
+voice_2_voice_server/utils/bot_utils.py
+  s_9707041c41a7e2::t_7ab2edd9227a0e 220-225,229-230,232-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "6397f3519d256e4f3685698b9dab0a7734fe41be",
+  "prompts": {},
+  "sessions": {
+    "s_9707041c41a7e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e30ebdd-aeab-4725-819c-f66b5c5b8c5d",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
