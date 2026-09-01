@@ -217,15 +217,20 @@ class FastPunctuationAggregator(BaseTextAggregator):
         for char in text:
             self._text += char
             if char in self._FLUSH_CHARS:
-                if self._text.strip():
-                    yield Aggregation(self._text.strip(), AggregationType.SENTENCE)
+                stripped = self._text.strip()
+                # Consecutive flush chars ("?!", "...") re-enter this branch on an
+                # already-flushed (or punctuation-only) buffer; only yield if there's
+                # real text, or a lone "!" after "Really?" becomes its own utterance.
+                if stripped.strip("".join(self._FLUSH_CHARS)):
+                    yield Aggregation(stripped, AggregationType.SENTENCE)
                 self._text = ""
 
     async def flush(self):
-        if self._text.strip():
-            result = self._text.strip()
+        stripped = self._text.strip()
+        if stripped.strip("".join(self._FLUSH_CHARS)):
             self._text = ""
-            return Aggregation(result, AggregationType.SENTENCE)
+            return Aggregation(stripped, AggregationType.SENTENCE)
+        self._text = ""
         return None
 
     async def handle_interruption(self):
