@@ -1,0 +1,30 @@
+voice_2_voice_server/api/server.py
+  s_9707041c41a7e2::t_1a91f0cef510c3 563
+  s_9707041c41a7e2::t_c6b0e110f91560 564
+ai4bharat_tts_server/server.py
+  s_9707041c41a7e2::t_efddd3b4ca83af 41-86
+  s_9707041c41a7e2::t_925095248fa90f 246
+voice_2_voice_server/utils/call_management/usage_guard.py
+  s_9707041c41a7e2::t_bc02b07b186a44 63
+  s_9707041c41a7e2::t_9a0adabc34c7fc 70,80
+  s_9707041c41a7e2::t_5a39b85ebb79e0 3-6,11,18-20,33-41
+  s_9707041c41a7e2::t_e1c68f127d6fef 21-32
+voice_2_voice_server/utils/bot_utils.py
+  s_9707041c41a7e2::t_176f6d051be2b4 198,200-204,207,218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "b388814883d99eb2379c7c247831071400a13fdf",
+  "prompts": {},
+  "sessions": {
+    "s_9707041c41a7e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e30ebdd-aeab-4725-819c-f66b5c5b8c5d",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
