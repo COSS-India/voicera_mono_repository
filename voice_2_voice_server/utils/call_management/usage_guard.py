@@ -1,17 +1,44 @@
 """Per-org call budget guardrails: concurrency, daily minutes, and call duration ceiling.
 
-State is in-memory and per-process by design: it resets whenever the voice server
-restarts, which aligns with the sandbox's daily operational schedule.
+State is in-memory and per-process by design: it also resets whenever the voice
+server restarts. ``_minutes_used_by_org`` additionally rolls over on its own once
+a UTC calendar day boundary is crossed, so a long-lived process doesn't lock an
+org out of the daily-minute budget indefinitely between restarts.
 """
 
 import asyncio
 import os
+from datetime import date, datetime, timezone
 
 from loguru import logger
 
 _lock = asyncio.Lock()
 _active_calls_by_org: dict[str, int] = {}
 _minutes_used_by_org: dict[str, float] = {}
+_minutes_reset_day_by_org: dict[str, date] = {}
+
+
+def _effective_minutes_used(org_id: str) -> float:
+    """Minutes used today, treating a counter from a previous UTC day as zero.
+
+    Pure read: keeps the non-mutating ``peek_capacity_available`` consistent with
+    ``try_acquire_call_slot`` across a day boundary.
+    """
+    today = datetime.now(timezone.utc).date()
+    if _minutes_reset_day_by_org.get(org_id) != today:
+        return 0.0
+    return _minutes_used_by_org.get(org_id, 0.0)
+
+
+def _roll_day_if_needed(org_id: str) -> None:
+    """Zero out an org's daily-minute counter the first time we see a new UTC day.
+
+    Must be called while holding ``_lock``.
+    """
+    today = datetime.now(timezone.utc).date()
+    if _minutes_reset_day_by_org.get(org_id) != today:
+        _minutes_reset_day_by_org[org_id] = today
+        _minutes_used_by_org[org_id] = 0.0
 
 
 def _max_concurrent_calls_per_org() -> int:
@@ -33,13 +60,14 @@ def _has_capacity(org_id: str) -> bool:
         )
     return (
         _active_calls_by_org.get(org_id, 0) < _max_concurrent_calls_per_org()
-        and _minutes_used_by_org.get(org_id, 0.0) < _max_minutes_per_org_per_day()
+        and _effective_minutes_used(org_id) < _max_minutes_per_org_per_day()
     )
 
 
 async def try_acquire_call_slot(org_id: str) -> bool:
     """Atomically check concurrency + daily-minute budget and reserve a slot if both pass."""
     async with _lock:
+        _roll_day_if_needed(org_id)
         if not _has_capacity(org_id):
             return False
         _active_calls_by_org[org_id] = _active_calls_by_org.get(org_id, 0) + 1
@@ -49,6 +77,7 @@ async def try_acquire_call_slot(org_id: str) -> bool:
 async def release_call_slot(org_id: str, duration_seconds: float) -> None:
     """Release a previously acquired slot and record the minutes consumed."""
     async with _lock:
+        _roll_day_if_needed(org_id)
         _active_calls_by_org[org_id] = max(0, _active_calls_by_org.get(org_id, 0) - 1)
         _minutes_used_by_org[org_id] = (
             _minutes_used_by_org.get(org_id, 0.0) + duration_seconds / 60

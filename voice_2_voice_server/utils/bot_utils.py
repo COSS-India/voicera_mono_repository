@@ -195,13 +195,16 @@ def get_user_online_detection_closing_message(agent_config: dict) -> str:
 
 
 class FastPunctuationAggregator(BaseTextAggregator):
-    """Fast aggregator that flushes on punctuation - no lookahead/NLTK.
+    """Fast aggregator that flushes on sentence-ending punctuation - no lookahead/NLTK.
 
-    Punctuation (``.!?,`` and Indic ``।``) triggers a sentence yield for low-latency
-    TTS, but those characters are dropped and never sent to the TTS model.
+    Punctuation (``.!?`` and Indic ``।``) triggers a sentence yield for low-latency
+    TTS. Commas are excluded from the flush set so mid-sentence pauses (lists,
+    "3.5", "1,000") don't get split into separate TTS utterances, which produced
+    flat, choppy prosody. The triggering character is kept in the yielded text
+    (not dropped) so the TTS model still gets a sentence-final cue.
     """
 
-    _FLUSH_CHARS = frozenset(".!?,।")
+    _FLUSH_CHARS = frozenset(".!?।")
 
     def __init__(self):
         self._text = ""
@@ -212,18 +215,22 @@ class FastPunctuationAggregator(BaseTextAggregator):
 
     async def aggregate(self, text: str):
         for char in text:
+            self._text += char
             if char in self._FLUSH_CHARS:
-                if self._text.strip():
-                    yield Aggregation(self._text.strip(), AggregationType.SENTENCE)
+                stripped = self._text.strip()
+                # Consecutive flush chars ("?!", "...") re-enter this branch on an
+                # already-flushed (or punctuation-only) buffer; only yield if there's
+                # real text, or a lone "!" after "Really?" becomes its own utterance.
+                if stripped.strip("".join(self._FLUSH_CHARS)):
+                    yield Aggregation(stripped, AggregationType.SENTENCE)
                 self._text = ""
-            else:
-                self._text += char
 
     async def flush(self):
-        if self._text.strip():
-            result = self._text.strip()
+        stripped = self._text.strip()
+        if stripped.strip("".join(self._FLUSH_CHARS)):
             self._text = ""
-            return Aggregation(result, AggregationType.SENTENCE)
+            return Aggregation(stripped, AggregationType.SENTENCE)
+        self._text = ""
         return None
 
     async def handle_interruption(self):
