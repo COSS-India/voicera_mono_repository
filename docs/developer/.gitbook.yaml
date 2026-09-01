@@ -1,0 +1,9 @@
+# GitBook Git Sync — Developer space (top-navigation tab 2 of 3).
+# Set this space's Git Sync "Project directory" to docs/developer.
+# See the root .gitbook.yaml for how the three tabs fit together.
+
+root: ./
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md

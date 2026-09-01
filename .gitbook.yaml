@@ -1,0 +1,41 @@
+# GitBook Git Sync — Guides space (default).
+#
+# This repo publishes THREE GitBook spaces, one per top-navigation tab:
+#
+#   Tab              Directory            Config
+#   ---------------  -------------------  --------------------------------
+#   Guides           docs/guides/         this file
+#   Developer        docs/developer/      docs/developer/.gitbook.yaml
+#   API Reference    docs/api-reference/  docs/api-reference/.gitbook.yaml
+#
+# Tabs themselves are a SITE-level setting with no YAML equivalent. To wire
+# them up once, in GitBook:
+#   1. Site sidebar -> General -> Site structure -> New section (x3).
+#   2. Name the sections Guides, Developer, API Reference.
+#   3. Give each section a space, and set that space's Git Sync
+#      "Project directory" to the directory in the table above.
+# After that, pushes to this branch update all three tabs.
+
+root: ./docs/guides/
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
+
+redirects:
+  # Old mono-repo URLs
+  services/frontend: ../developer/frontend/overview.md
+  services/llm-server: ../developer/model-server/llm-models.md
+  services/ai4bharat-stt: ../developer/model-server/stt-models.md
+  services/ai4bharat-tts: ../developer/model-server/tts-models.md
+  services/voice-server: ../developer/services/runtime.md
+  services/backend: ../developer/services/api.md
+  services/integrations: concepts/provider-registry.md
+  guides/deployment/mongodb-to-ferretdb: concepts/data-store.md
+  # Pre-tab flat layout
+  introduction/what-is-voicera: introduction/what-is-voicera.md
+  quickstart/install-and-run: quickstart/install-and-run.md
+  concepts/architecture: concepts/architecture.md
+  reference/rest-api: ../api-reference/overview.md
+  reference/endpoints-cheatsheet: ../api-reference/endpoints-cheatsheet.md
+  reference/data-model: ../developer/reference/data-model.md

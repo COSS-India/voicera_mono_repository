@@ -1,0 +1,9 @@
+# GitBook Git Sync — API Reference space (top-navigation tab 3 of 3).
+# Set this space's Git Sync "Project directory" to docs/api-reference.
+# See the root .gitbook.yaml for how the three tabs fit together.
+
+root: ./
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
