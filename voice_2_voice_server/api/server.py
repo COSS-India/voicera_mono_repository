@@ -555,11 +555,12 @@ async def browser_websocket_endpoint(websocket: WebSocket, agent_id: str):
 
     try:
         agent_config = await fetch_agent_config_from_backend(agent_id)
-        agent_type = agent_config.get("agent_type")
 
         if not agent_config:
             logger.error(f"❌ Failed to fetch agent config from backend: {agent_id}")
             return
+
+        agent_type = agent_config.get("agent_type")
 
         first_message = await websocket.receive_text()
         data = json.loads(first_message)

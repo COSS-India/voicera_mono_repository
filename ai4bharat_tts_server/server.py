@@ -38,6 +38,52 @@ import websockets
 AUDIO_SAMPLE_RATE = 44100
 here = os.path.dirname(os.path.abspath(__file__))
 
+# Parler-TTS has no separate language input; it infers language from the
+# description text. Documented protocol (README.md) accepts a "language" field,
+# so fold it into the description as a spoken-language clause the model expects.
+_LANGUAGE_NAMES = {
+    "hi": "Hindi",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "kn": "Kannada",
+    "ml": "Malayalam",
+    "bn": "Bengali",
+    "pa": "Punjabi",
+    "mr": "Marathi",
+    "gu": "Gujarati",
+    "as": "Assamese",
+    "or": "Odia",
+    "ur": "Urdu",
+    "ne": "Nepali",
+    "sa": "Sanskrit",
+    "brx": "Bodo",
+    "doi": "Dogri",
+    "kok": "Konkani",
+    "ks": "Kashmiri",
+    "mai": "Maithili",
+    "mni": "Manipuri",
+    "sat": "Santali",
+    "sd": "Sindhi",
+    "en": "English",
+    "bhb": "Bhili",
+    "bhili": "Bhili",
+}
+
+
+def _apply_language(description: str, language: str | None) -> str:
+    """Append a spoken-language clause to `description` if not already present.
+
+    No-op when `language` is missing/unmapped, so requests that omit the field
+    (or use a code we don't recognise) behave exactly as before.
+    """
+    if not language:
+        return description
+    name = _LANGUAGE_NAMES.get(str(language).strip().lower())
+    if not name or name.lower() in (description or "").lower():
+        return description
+    clause = f"The speech is in {name}."
+    return f"{description} {clause}" if description else clause
+
 
 def worker_main(
     worker_id: int,
@@ -197,6 +243,7 @@ async def handle_client(
         msg = json.loads(raw)
         prompt = msg["prompt"]
         description = msg["description"]
+        description = _apply_language(description, msg.get("language"))
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         await websocket.send(json.dumps({"type": "error", "message": f"bad request: {e}"}))
         return

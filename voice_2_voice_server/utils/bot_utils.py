@@ -195,13 +195,16 @@ def get_user_online_detection_closing_message(agent_config: dict) -> str:
 
 
 class FastPunctuationAggregator(BaseTextAggregator):
-    """Fast aggregator that flushes on punctuation - no lookahead/NLTK.
+    """Fast aggregator that flushes on sentence-ending punctuation - no lookahead/NLTK.
 
-    Punctuation (``.!?,`` and Indic ``।``) triggers a sentence yield for low-latency
-    TTS, but those characters are dropped and never sent to the TTS model.
+    Punctuation (``.!?`` and Indic ``।``) triggers a sentence yield for low-latency
+    TTS. Commas are excluded from the flush set so mid-sentence pauses (lists,
+    "3.5", "1,000") don't get split into separate TTS utterances, which produced
+    flat, choppy prosody. The triggering character is kept in the yielded text
+    (not dropped) so the TTS model still gets a sentence-final cue.
     """
 
-    _FLUSH_CHARS = frozenset(".!?,।")
+    _FLUSH_CHARS = frozenset(".!?।")
 
     def __init__(self):
         self._text = ""
@@ -212,12 +215,11 @@ class FastPunctuationAggregator(BaseTextAggregator):
 
     async def aggregate(self, text: str):
         for char in text:
+            self._text += char
             if char in self._FLUSH_CHARS:
                 if self._text.strip():
                     yield Aggregation(self._text.strip(), AggregationType.SENTENCE)
                 self._text = ""
-            else:
-                self._text += char
 
     async def flush(self):
         if self._text.strip():
