@@ -104,7 +104,7 @@ In Docker Compose deployments the same files are mounted via `env_file:` in `doc
 
 | Name | Service | Default | Required | Description |
 |------|---------|---------|----------|-------------|
-| `VOBIZ_API_BASE` | voice server | `https://api.vobiz.in/v1` | yes | Vobiz API base URL |
+| `VOBIZ_API_BASE` | voice server | `https://api.vobiz.ai/api/v1` | yes | Vobiz API base URL |
 | `VOBIZ_CALLER_ID` | voice server | – | no | Default outbound caller ID |
 
 ### Backend integration

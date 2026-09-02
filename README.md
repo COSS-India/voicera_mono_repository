@@ -166,7 +166,7 @@ MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 
 # Vobiz Telephony API
-VOBIZ_API_BASE_URL=https://api.vobiz.in/v1
+VOBIZ_API_BASE_URL=https://api.vobiz.ai/api/v1
 VOBIZ_ACCOUNT_ID=your-account-id
 VOBIZ_AUTH_ID=your-auth-id
 VOBIZ_AUTH_TOKEN=your-auth-token
@@ -188,7 +188,7 @@ VOICE_SERVER_URL=http://localhost:7860
 # Vobiz Telephony API
 VOBIZ_AUTH_ID=your-vobiz-auth-id
 VOBIZ_AUTH_TOKEN=your-vobiz-auth-token
-VOBIZ_API_BASE=https://api.vobiz.in/v1
+VOBIZ_API_BASE=https://api.vobiz.ai/api/v1
 VOBIZ_CALLER_ID=+91XXXXXXXXXX
 
 # Server URLs (your public domain)
