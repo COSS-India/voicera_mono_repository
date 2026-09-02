@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 
-// Voice server URL - use Docker service name in container, localhost for local dev
-const VOICE_SERVER_URL = process.env.VOICE_SERVER_URL || "http://localhost:7860"
+// Voice server URL - use Docker service name in container, localhost for local dev.
+// Falls back to the public voice host when only NEXT_PUBLIC_JOHNAIC_SERVER_URL is set.
+const VOICE_SERVER_URL = (
+  process.env.VOICE_SERVER_URL ||
+  process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL ||
+  "http://localhost:7860"
+).replace(/\/$/, "")
 
 export async function POST(request: NextRequest) {
   try {
