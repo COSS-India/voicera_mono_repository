@@ -1,0 +1,11 @@
+# Checkpoints are bind-mounted at /models, never baked into the image (~4.8 GB)
+models/
+*.nemo
+
+__pycache__/
+*.py[cod]
+.git/
+.venv/
+
+# runtime mic captures
+debug/

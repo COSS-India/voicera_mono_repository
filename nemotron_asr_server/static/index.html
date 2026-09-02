@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI4Bharat Nemotron Streaming ASR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .animate-pulse-slow {
+      animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-start p-4 sm:p-8">
+  
+  <div class="max-w-4xl w-full bg-gray-900 border border-gray-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
+    
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-800 pb-5">
+      <div>
+        <div class="flex items-center gap-3">
+          <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">AI4Bharat Indic ASR</h1>
+          <span class="px-2.5 py-0.5 text-xs font-semibold bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 rounded-full">
+            Nemotron 600M
+          </span>
+        </div>
+        <p class="text-xs sm:text-sm text-gray-400 mt-1">
+          Low-latency cache-aware streaming ASR on NVIDIA RTX PRO 6000 Blackwell GPU
+        </p>
+      </div>
+      
+      <div id="statusBadge" class="flex items-center gap-2 px-3.5 py-1.5 bg-red-950/80 border border-red-800/80 text-red-300 text-xs font-semibold rounded-full shadow-inner">
+        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+        <span id="statusText">Disconnected</span>
+      </div>
+    </div>
+
+    <!-- Diagnostic banner: sample-rate mismatch, mic errors -->
+    <div id="diagBanner" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
+
+    <!-- Controls Bar -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      
+      <!-- Language Selector -->
+      <div class="sm:col-span-1">
+        <label class="block text-xs font-medium text-gray-300 mb-1.5">Target Language</label>
+        <select id="langSelect" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all">
+          <option value="hi" selected>Hindi (हिन्दी)</option>
+          <option value="mr">Marathi (मराठी)</option>
+          <option value="bhili">Bhili (भीली)</option>
+          <option value="ta">Tamil (தமிழ்)</option>
+          <option value="te">Telugu (తెలుగు)</option>
+          <option value="bn">Bengali (বাংলা)</option>
+          <option value="gu">Gujarati (ગુજરાતી)</option>
+          <option value="kn">Kannada (ಕನ್ನಡ)</option>
+          <option value="ml">Malayalam (മലയാളം)</option>
+          <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
+          <option value="as">Assamese (অসমীয়া)</option>
+          <option value="or">Odia (ଓଡ଼ିଆ)</option>
+          <option value="ur">Urdu (اردو)</option>
+          <option value="sa">Sanskrit (संस्कृतम्)</option>
+          <option value="ne">Nepali (नेपाली)</option>
+          <option value="sd">Sindhi (سنڌي)</option>
+          <option value="mai">Maithili (मैथिली)</option>
+          <option value="doi">Dogri (डोगरी)</option>
+          <option value="kok">Konkani (कोंकणी)</option>
+          <option value="brx">Bodo (बड़ो)</option>
+          <option value="mni">Manipuri (মৈতৈলোन्)</option>
+          <option value="sat">Santali (ᱥᱟᱱᱛᱟᱲᱤ)</option>
+          <option value="ks">Kashmiri (کٲشُر)</option>
+          <option value="en">English (Indian Accent)</option>
+        </select>
+      </div>
+
+      <!-- Live Mic Control -->
+      <div class="sm:col-span-1 flex flex-col justify-end gap-1.5">
+        <div class="flex items-center gap-2">
+          <span class="text-[11px] uppercase tracking-wider text-gray-400 shrink-0">Input</span>
+          <div class="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div id="levelBar" class="h-full w-0 bg-emerald-500 transition-[width] duration-75"></div>
+          </div>
+          <span id="levelVal" class="text-[11px] font-mono text-gray-500 w-10 text-right">--</span>
+        </div>
+        <button id="toggleMicBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] font-semibold text-white py-2.5 px-4 rounded-xl transition-all flex justify-center items-center gap-2 shadow-lg shadow-indigo-900/30">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+          </svg>
+          <span id="micBtnText">Start Microphone</span>
+        </button>
+      </div>
+
+      <!-- WAV File Upload / Simulation -->
+      <div class="sm:col-span-1 flex flex-col justify-end">
+        <label for="audioFileInput" class="w-full bg-gray-800 hover:bg-gray-700 active:scale-[0.98] border border-gray-700 text-gray-200 font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-all flex justify-center items-center gap-2 text-sm text-center">
+          <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+          </svg>
+          <span id="fileUploadText">Stream Audio File</span>
+        </label>
+        <input type="file" id="audioFileInput" accept="audio/*" class="hidden" />
+      </div>
+
+    </div>
+
+    <!-- Live Telemetry / Metrics Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="bg-gray-950 p-3.5 rounded-xl border border-gray-800/80 text-center">
+        <div class="text-[11px] font-medium uppercase tracking-wider text-gray-400" title="Measured from speech onset, not from opening the microphone">Time to First Word</div>
+        <div id="ttfwVal" class="text-base font-mono font-bold text-fuchsia-400 mt-0.5">&mdash;</div>
+      </div>
+      <div class="bg-gray-950 p-3.5 rounded-xl border border-gray-800/80 text-center">
+        <div class="text-[11px] font-medium uppercase tracking-wider text-gray-400">End-to-End Delay</div>
+        <div id="delayVal" class="text-base font-mono font-bold text-amber-400 mt-0.5">&mdash;</div>
+      </div>
+      <div class="bg-gray-950 p-3.5 rounded-xl border border-gray-800/80 text-center">
+        <div class="text-[11px] font-medium uppercase tracking-wider text-gray-400">Compute Latency</div>
+        <div id="latencyVal" class="text-base font-mono font-bold text-emerald-400 mt-0.5">&mdash;</div>
+      </div>
+      <div class="bg-gray-950 p-3.5 rounded-xl border border-gray-800/80 text-center">
+        <div class="text-[11px] font-medium uppercase tracking-wider text-gray-400">Model Chunk</div>
+        <div id="chunkIntervalVal" class="text-base font-mono font-bold text-sky-400 mt-0.5">&mdash;</div>
+      </div>
+    </div>
+
+    <!-- Live Transcription Output Area -->
+    <div class="space-y-2">
+      <div class="flex justify-between items-center">
+        <label class="text-xs font-medium uppercase tracking-wider text-gray-300">Live Transcription Output</label>
+        <div class="flex gap-2">
+          <button id="copyBtn" class="text-xs text-gray-400 hover:text-indigo-400 transition-colors flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            Copy
+          </button>
+          <button id="clearBtn" class="text-xs font-semibold text-gray-200 bg-gray-800 hover:bg-red-900/70 hover:text-red-200 border border-gray-700 hover:border-red-700 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div id="transcriptBox" class="w-full h-64 bg-gray-950 border border-gray-800 rounded-xl p-5 overflow-y-auto font-sans text-base sm:text-lg leading-relaxed shadow-inner">
+        <span id="finalizedText" class="text-gray-200"></span>
+        <span id="interimText" class="text-indigo-400 font-semibold"></span>
+        <span id="placeholderText" class="text-gray-600 italic select-none">Press "Start Microphone" or upload an audio file to begin streaming speech recognition...</span>
+      </div>
+    </div>
+
+    <!-- Footer Status -->
+    <div class="flex justify-between items-center text-xs text-gray-500 pt-2 border-t border-gray-800/60">
+      <span>AI4Bharat Nemotron Cache-Aware Streaming Conformer</span>
+      <span>WebSocket: <code class="text-indigo-400 font-mono">/v1/asr/ws</code></span>
+    </div>
+
+  </div>
+
+  <script>
+    let socket = null;
+    let audioContext = null;
+    let micStream = null;
+    let workletNode = null;
+    let isRecording = false;
+    let isStopping = false;
+    let finalTimer = null;
+    let buildId = null;
+    let recStartTs = null;     // first audio frame sent
+    let speechStartTs = null;  // first frame with actual speech in it
+    let lastSendTs = null;     // last wire frame sent, for end-to-end delay
+    let ttfwMs = null;
+
+    // Time-to-first-word must be measured from when the SPEAKER starts, not from when
+    // the microphone opens. Counting the pause between clicking Start and beginning to
+    // talk inflates it by however long that took -- typically a second or more.
+    const SPEECH_RMS = 0.008;   // 40x above room tone (0.0002), well below speech median (0.02-0.06)
+
+    function resetMetrics() {
+      recStartTs = null; speechStartTs = null; lastSendTs = null; ttfwMs = null;
+      ttfwVal.innerText = '\u2014';
+      delayVal.innerText = '\u2014';
+      latencyVal.innerText = '\u2014';
+    }
+
+    function clearTranscript() {
+      finalizedText.innerText = '';
+      interimText.innerText = '';
+      placeholderText.style.display = 'inline';
+    }
+    let serverReady = false;
+
+    // Report the rate the AudioContext actually gave us, so the server can flag a
+    // mismatch before a single audio frame is sent. Needs both the server handshake
+    // and a live AudioContext, which race each other.
+    function sendHello() {
+      if (!serverReady || !audioContext) return;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({
+        action: 'hello',
+        sampleRate: audioContext.sampleRate,
+        userAgent: navigator.userAgent,
+      }));
+    }
+
+    const toggleMicBtn = document.getElementById('toggleMicBtn');
+    const micBtnText = document.getElementById('micBtnText');
+    const statusBadge = document.getElementById('statusBadge');
+    const statusText = document.getElementById('statusText');
+    const langSelect = document.getElementById('langSelect');
+    const interimText = document.getElementById('interimText');
+    const finalizedText = document.getElementById('finalizedText');
+    const placeholderText = document.getElementById('placeholderText');
+    const latencyVal = document.getElementById('latencyVal');
+    const ttfwVal = document.getElementById('ttfwVal');
+    const delayVal = document.getElementById('delayVal');
+    const chunkIntervalVal = document.getElementById('chunkIntervalVal');
+    const diagBanner = document.getElementById('diagBanner');
+    const levelBar = document.getElementById('levelBar');
+    const levelVal = document.getElementById('levelVal');
+
+    function showBanner(kind, html) {
+      const styles = {
+        error: 'bg-red-950/70 border-red-800/70 text-red-200',
+        warn:  'bg-amber-950/70 border-amber-800/70 text-amber-200',
+        info:  'bg-sky-950/70 border-sky-800/70 text-sky-200',
+      };
+      diagBanner.className = 'rounded-xl border px-4 py-3 text-sm ' + styles[kind];
+      diagBanner.innerHTML = html;
+    }
+
+    function clearBanner() {
+      diagBanner.className = 'hidden rounded-xl border px-4 py-3 text-sm';
+      diagBanner.innerHTML = '';
+    }
+    const clearBtn = document.getElementById('clearBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const audioFileInput = document.getElementById('audioFileInput');
+    const fileUploadText = document.getElementById('fileUploadText');
+
+    // Language Change
+    langSelect.addEventListener('change', () => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: "set_language", language: langSelect.value }));
+      }
+    });
+
+    // Clear & Copy
+    clearBtn.addEventListener('click', () => {
+      clearTranscript();
+      resetMetrics();
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: "reset" }));
+      }
+    });
+
+    copyBtn.addEventListener('click', () => {
+      const fullText = (finalizedText.innerText + ' ' + interimText.innerText).trim();
+      if (fullText) {
+        navigator.clipboard.writeText(fullText);
+        copyBtn.innerText = 'Copied!';
+        setTimeout(() => copyBtn.innerText = 'Copy', 1500);
+      }
+    });
+
+    // Toggle Mic
+    toggleMicBtn.addEventListener('click', async () => {
+      if (!isRecording) {
+        await startStreaming();
+      } else {
+        stopStreaming();
+      }
+    });
+
+    async function startStreaming() {
+      const lang = langSelect.value;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/v1/asr/ws?language=${lang}`;
+      
+      isStopping = false;
+      serverReady = false;
+      clearBanner();
+      // A new recording is a new transcript; leaving the old text on screen made it
+      // impossible to tell which run produced what.
+      clearTranscript();
+      resetMetrics();
+      socket = new WebSocket(wsUrl);
+      socket.binaryType = 'arraybuffer';
+
+      socket.onopen = async () => {
+        statusBadge.className = 'flex items-center gap-2 px-3.5 py-1.5 bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 text-xs font-semibold rounded-full shadow-inner';
+        statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span><span>Connected (Live)</span>';
+        
+        try {
+          await initMicrophone();
+          isRecording = true;
+          placeholderText.style.display = 'none';
+          micBtnText.innerText = 'Stop Microphone';
+          toggleMicBtn.className = 'w-full bg-rose-600 hover:bg-rose-500 active:scale-[0.98] font-semibold text-white py-2.5 px-4 rounded-xl transition-all flex justify-center items-center gap-2 shadow-lg shadow-rose-900/30';
+        } catch (err) {
+          console.error("Microphone access error:", err);
+          showBanner('error', `<b>Could not start the microphone.</b> ${err.message}`);
+          stopStreaming();
+        }
+      };
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.status === 'ready') {
+          chunkIntervalVal.innerText = data.model_chunk_ms + ' ms';
+          buildId = data.build_id;
+          serverReady = true;
+          // The AudioContext may not exist yet -- hello is sent from sendHello() once
+          // both the handshake has landed and the mic is up.
+          sendHello();
+          return;
+        }
+
+        if (data.status === 'sample_rate_mismatch') {
+          showBanner('error',
+            `<b>Microphone sample rate is wrong.</b> Your browser is capturing at ` +
+            `<b>${data.client_sample_rate} Hz</b> but the server expects ` +
+            `<b>${data.expected_sample_rate} Hz</b>. Transcripts will be nonsense. ` +
+            `Hard-reload the page (Ctrl/Cmd+Shift+R) and try again.`);
+          return;
+        }
+
+        if (data.status === 'audio_rate_warning') {
+          showBanner('error',
+            `<b>Audio is arriving at ${data.ratio}x real time.</b> That means the ` +
+            `browser is sending <b>~${data.implied_sample_rate} Hz</b> audio labelled ` +
+            `as ${data.expected_sample_rate} Hz &mdash; almost always a cached copy of ` +
+            `an older page. Hard-reload (Ctrl/Cmd+Shift+R) and try again.`);
+          return;
+        }
+
+        if (data.status === 'hello_ack') { return; }
+
+        if (data.status === 'language_detected') {
+          showBanner('info', `Detected language: <b>${data.language}</b>`);
+          return;
+        }
+
+        if (data.text !== undefined) {
+          if (data.text && ttfwMs === null && (speechStartTs || recStartTs) !== null) {
+            // Fall back to mic-open time only if the level never crossed the speech
+            // threshold, in which case the number is an upper bound.
+            ttfwMs = performance.now() - (speechStartTs || recStartTs);
+            ttfwVal.innerText = ttfwMs.toFixed(0) + ' ms';
+          }
+          if (data.text && lastSendTs !== null) {
+            // Lag between the newest audio we handed over and its text coming back.
+            delayVal.innerText = (performance.now() - lastSendTs).toFixed(0) + ' ms';
+          }
+          if (data.is_final) {
+            // The server sends the whole utterance here; appending it locally as
+            // well (on stop, or on a second onclose) duplicated the transcript.
+            if (data.text.trim()) {
+              finalizedText.innerText += (finalizedText.innerText ? ' ' : '') + data.text.trim();
+            }
+            interimText.innerText = '';
+
+            // endpoint === "silence" means the speaker paused, which closes an
+            // utterance -- NOT the stream. Only the operator stops the microphone.
+            if (data.endpoint === 'silence') return;
+
+            if (finalTimer) { clearTimeout(finalTimer); finalTimer = null; }
+            if (socket) socket.close();
+          } else {
+            interimText.innerText = ' ' + data.text;
+          }
+          placeholderText.style.display = 'none';
+        }
+        if (data.latency_ms !== undefined) {
+          latencyVal.innerText = data.latency_ms + ' ms';
+        }
+      };
+
+      socket.onclose = () => {
+        statusBadge.className = 'flex items-center gap-2 px-3.5 py-1.5 bg-red-950/80 border border-red-800/80 text-red-300 text-xs font-semibold rounded-full shadow-inner';
+        statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span><span>Disconnected</span>';
+        stopStreaming();
+      };
+
+      socket.onerror = (err) => {
+        console.error("WebSocket error:", err);
+      };
+    }
+
+    async function initMicrophone() {
+      // Ask for a 16 kHz context so the browser's band-limited resampler does the
+      // rate conversion; the worklet then only packs float32 -> int16.
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioContext = new AC({ sampleRate: 16000 });
+      if (audioContext.sampleRate !== 16000) {
+        // Some browsers ignore the sampleRate option. The worklet resamples in that
+        // case; measured, that path is indistinguishable from a native 16 kHz context
+        // except on a deliberately noisy microphone, so refusing to run would trade a
+        // working page for nothing.
+        console.warn(
+          `AudioContext is ${audioContext.sampleRate} Hz, not 16000 Hz; ` +
+          `the worklet will resample.`);
+      }
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
+      await audioContext.audioWorklet.addModule('/static/audio-processor.js?v=' + Date.now());
+      
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          // "ideal", not exact: an exact constraint throws OverconstrainedError on some
+          // devices, and createMediaStreamSource resamples into the 16 kHz context anyway.
+          sampleRate: { ideal: 16000 },
+          echoCancellation: true,
+          // AGC and noise suppression reshape the spectrum away from the conditions
+          // the acoustic model was trained on, which costs accuracy.
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      });
+      
+      const source = audioContext.createMediaStreamSource(micStream);
+      workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
+      
+      workletNode.port.onmessage = (e) => {
+        if (e.data && e.data.notice === 'resampling') {
+          showBanner('info',
+            `Microphone is running at <b>${e.data.from} Hz</b>; resampling to 16 kHz in ` +
+            `the browser. Transcription is unaffected.`);
+          return;
+        }
+        const { pcm, rms, peak } = e.data;
+        // Meter first, so a dead mic is visible even if the socket has dropped.
+        const pct = Math.min(100, Math.round(Math.sqrt(rms) * 220));
+        levelBar.style.width = pct + '%';
+        levelBar.className = 'h-full transition-[width] duration-75 ' +
+          (peak > 0.99 ? 'bg-red-500' : pct > 4 ? 'bg-emerald-500' : 'bg-gray-600');
+        levelVal.innerText = rms > 0 ? (20 * Math.log10(rms)).toFixed(0) + ' dB' : '--';
+
+        if (!isRecording || !socket || socket.readyState !== WebSocket.OPEN) return;
+        const now = performance.now();
+        if (recStartTs === null) recStartTs = now;
+        if (speechStartTs === null && rms > SPEECH_RMS) speechStartTs = now;
+        lastSendTs = now;
+        socket.send(pcm);
+      };
+
+      // Direct to processor only (NO destination connection to eliminate feedback loop)
+      source.connect(workletNode);
+
+      sendHello();
+    }
+
+    // Idempotent: onclose calls this too, and re-entering it used to append the
+    // transcript a second time.
+    function stopStreaming() {
+      if (isStopping) return;
+      isStopping = true;
+      isRecording = false;
+
+      if (workletNode) {
+        workletNode.disconnect();
+        workletNode = null;
+      }
+      if (micStream) {
+        micStream.getTracks().forEach(t => t.stop());
+        micStream = null;
+      }
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+      }
+      levelBar.style.width = '0%';
+      levelVal.innerText = '--';
+
+      // Ask for the final transcript and let onmessage close the socket once it
+      // arrives; closing immediately would discard the tail of the utterance.
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: "eos" }));
+        finalTimer = setTimeout(() => {
+          finalTimer = null;
+          if (socket) socket.close();
+        }, 3000);
+      }
+
+      micBtnText.innerText = 'Start Microphone';
+      toggleMicBtn.className = 'w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] font-semibold text-white py-2.5 px-4 rounded-xl transition-all flex justify-center items-center gap-2 shadow-lg shadow-indigo-900/30';
+    }
+
+    // High-Fidelity Audio File Upload Streamer with Automatic 16kHz Resampling
+    audioFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      fileUploadText.innerText = 'Decoding & resampling to 16kHz...';
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        
+        // Decode audio in temporary context
+        const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const decodedBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+        await tempCtx.close();
+
+        // Resample decoded buffer to exact 16000 Hz using OfflineAudioContext
+        const offlineCtx = new OfflineAudioContext(1, Math.ceil(decodedBuffer.duration * 16000), 16000);
+        const source = offlineCtx.createBufferSource();
+        source.buffer = decodedBuffer;
+        source.connect(offlineCtx.destination);
+        source.start(0);
+        const resampledBuffer = await offlineCtx.startRendering();
+        const floatAudio = resampledBuffer.getChannelData(0);
+
+        // Convert Float32 -> Int16 PCM
+        const pcm16 = new Int16Array(floatAudio.length);
+        for (let i = 0; i < floatAudio.length; i++) {
+          const s = Math.max(-1.0, Math.min(1.0, floatAudio[i]));
+          pcm16[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+        }
+
+        // Connect WebSocket & stream in 160ms chunks (2560 samples @ 16kHz)
+        const lang = langSelect.value;
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/v1/asr/ws?language=${lang}`;
+        
+        fileUploadText.innerText = 'Streaming audio...';
+        const fileSocket = new WebSocket(wsUrl);
+        fileSocket.binaryType = 'arraybuffer';
+
+        fileSocket.onopen = async () => {
+          placeholderText.style.display = 'none';
+          const chunkSize = 2560; // 160ms @ 16kHz
+          const chunkBytes = chunkSize * 2;
+          const rawBytes = new Uint8Array(pcm16.buffer);
+
+          for (let offset = 0; offset < rawBytes.byteLength; offset += chunkBytes) {
+            const chunk = rawBytes.slice(offset, offset + chunkBytes);
+            if (chunk.byteLength < chunkBytes) {
+              // Pad with zeros to 160ms
+              const padded = new Uint8Array(chunkBytes);
+              padded.set(chunk);
+              fileSocket.send(padded);
+            } else {
+              fileSocket.send(chunk);
+            }
+            await new Promise(r => setTimeout(r, 160)); // 160ms pacing
+          }
+
+          fileSocket.send(JSON.stringify({ action: "eos" }));
+        };
+
+        fileSocket.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.status === 'ready') {
+            chunkIntervalVal.innerText = data.model_chunk_ms + ' ms';
+            return;
+          }
+          if (data.text !== undefined) {
+            if (data.is_final) {
+              if (data.text.trim()) {
+                finalizedText.innerText += (finalizedText.innerText ? ' ' : '') + data.text.trim();
+              }
+              interimText.innerText = '';
+              // A pause inside the file ends an utterance, not the upload.
+              if (data.endpoint === 'silence') return;
+              fileSocket.close();
+              fileUploadText.innerText = 'Stream Audio File';
+            } else {
+              interimText.innerText = ' ' + data.text;
+            }
+          }
+          if (data.latency_ms !== undefined) {
+            latencyVal.innerText = data.latency_ms + ' ms';
+          }
+        };
+
+      } catch (err) {
+        alert("Error processing audio file: " + err.message);
+        fileUploadText.innerText = 'Stream Audio File';
+      }
+    });
+
+  </script>
+</body>
+</html>

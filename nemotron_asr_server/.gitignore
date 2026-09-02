@@ -1,0 +1,10 @@
+# Checkpoints are downloaded separately, never committed (~4.8 GB)
+models/
+*.nemo
+
+__pycache__/
+*.py[cod]
+.venv/
+
+# runtime mic captures
+debug/

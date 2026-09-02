@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  nemotron_asr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nemotron_streaming_asr
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - INDIC_NEMO_PATH=/models/indic-asr-nemotron-600m/indic_nemotron_v1_1_sft_600k_lr1-averaged-40k.nemo
+      - BHILI_NEMO_PATH=/models/bhili-asr-nemotron-600m/indic_nemotron_bhili_sft_lr1-averaged.nemo
+      - ASR_ATT_CONTEXT=${ASR_ATT_CONTEXT:-96,3}
+      - ASR_DEBUG_CAPTURE=${ASR_DEBUG_CAPTURE:-0}
+      # Batching. Larger batches raise throughput but also change results:
+      # batched GPU kernels are not batch-size invariant, and greedy RNNT
+      # amplifies ~1e-3 encoder differences into visible transcript changes.
+      - ASR_MAX_BATCH=${ASR_MAX_BATCH:-128}
+      - ASR_BATCH_WINDOW_MS=${ASR_BATCH_WINDOW_MS:-25}
+      - ASR_MEL_WINDOW_MS=${ASR_MEL_WINDOW_MS:-5}
+      # Endpointing
+      - ASR_VAD=${ASR_VAD:-1}
+      - ASR_VAD_SILENCE_MS=${ASR_VAD_SILENCE_MS:-400}
+      - ASR_DEFAULT_LANG=${ASR_DEFAULT_LANG:-hi}
+    volumes:
+      - ./models:/models:ro
+      # mic captures land on the host when ASR_DEBUG_CAPTURE=1
+      - ./debug:/app/debug
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
