@@ -1,0 +1,27 @@
+docs/reference/environment-variables.md
+  s_22c40936dffbed::t_a4e458601f84ad 107
+setup.sh
+  s_22c40936dffbed::t_a4e458601f84ad 306,379
+docs/quickstart/install-and-run.md
+  s_22c40936dffbed::t_a4e458601f84ad 96
+README.md
+  s_22c40936dffbed::t_a4e458601f84ad 169,191
+voice_2_voice_server/.env.example
+  s_22c40936dffbed::t_a4e458601f84ad 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "354b9bfdefaef8cb16b34169dbe4cc5ec309ab7c",
+  "prompts": {},
+  "sessions": {
+    "s_22c40936dffbed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "02400a93-65f0-41ac-a2d2-32f882b3b7a5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
