@@ -1,0 +1,26 @@
+voicera_frontend/app/api/outbound-call/route.ts
+  s_22c40936dffbed::t_8f5b5eb9955917 3-9
+voicera_frontend/app/api/telemetry/gpu/route.ts
+  s_22c40936dffbed::t_5aadcd060a461a 3-7
+voicera_frontend/.env.example
+  s_22c40936dffbed::t_3910ec456aea98 2-7
+deploy/compose/docker-compose.prod.yml
+  s_22c40936dffbed::t_627cf81abbbfa9 131
+  s_22c40936dffbed::t_8ef0a7ab38edff 47-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "7e7e04d19acd76d4104f371f0c5ea94db57c041a",
+  "prompts": {},
+  "sessions": {
+    "s_22c40936dffbed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "02400a93-65f0-41ac-a2d2-32f882b3b7a5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "geojoseph19 <geojofficial@gmail.com>"
+    }
+  }
+}
