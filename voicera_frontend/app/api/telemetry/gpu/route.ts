@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 
-const VOICE_SERVER_URL = process.env.VOICE_SERVER_URL || "http://localhost:7860"
+const VOICE_SERVER_URL = (
+  process.env.VOICE_SERVER_URL ||
+  process.env.NEXT_PUBLIC_JOHNAIC_SERVER_URL ||
+  "http://localhost:7860"
+).replace(/\/$/, "")
 
 export async function GET() {
   try {

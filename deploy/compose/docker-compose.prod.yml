@@ -44,6 +44,9 @@ services:
       # This compose file runs real MongoDB (not FerretDB); mongo:7 requires
       # authSource=admin for the root user regardless of what's in .env.
       - MONGODB_AUTH_SOURCE=admin
+      # Batch run/stop calls go to the voice server over the compose network,
+      # not localhost (which would resolve inside this container).
+      - VOICE_SERVER_URL=http://voice_server:7860
     depends_on:
       mongodb: { condition: service_healthy }
       minio:   { condition: service_healthy }
@@ -125,6 +128,7 @@ services:
     environment:
       - NODE_ENV=production
       - API_URL=http://backend:8000
+      - VOICE_SERVER_URL=http://voice_server:7860
     depends_on: [backend]
     networks: [voicera_network]
 
