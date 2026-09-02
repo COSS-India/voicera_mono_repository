@@ -93,7 +93,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 ### Voice server (`voice_2_voice_server/.env`)
 
 ```env
-VOBIZ_API_BASE=https://api.vobiz.in/v1
+VOBIZ_API_BASE=https://api.vobiz.ai/api/v1
 VOBIZ_CALLER_ID=+91XXXXXXXXXX
 
 JOHNAIC_SERVER_URL=https://your-public-voice-url
